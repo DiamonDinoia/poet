@@ -25,6 +25,7 @@ include(CTest)
 
 option(POET_BUILD_BENCHMARKS "Build POET benchmark executables" OFF)
 option(POET_STRICT_WARNINGS "Enable the project's default warning profile" ON)
+option(POET_BUILD_DEVEL "Build POET development utilities" OFF)
 
 if(NOT DEFINED POET_BUILD_TESTS)
   set(POET_BUILD_TESTS ${BUILD_TESTING})
@@ -65,6 +66,10 @@ if(POET_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)
 endif()
+
+if (POET_BUILD_DEVEL)
+  add_subdirectory(devel)
+endif ()
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
