@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cstdint>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -95,6 +96,9 @@ template<class T> [[gnu::always_inline]] inline void scale_C(int m, int n, T bet
         for (int j = 0; j < n; ++j) cptr[j] *= beta;
     }
 }
+
+// (Previously had lightweight runtime profiling accumulators here; removed
+// to keep the binary focused on the single fastest configuration.)
 
 // ------------------------
 // Packing helpers (unused in the driver but kept for completeness)
@@ -524,35 +528,94 @@ template<int MR, int NR, class T>
         for (std::size_t jv = 0; jv < N_vecs; ++jv) { acc_regs[i][jv] = batch_type(T(0)); }
     }
 
-    // Accumulation phase: SIMD FMA over kc iterations
-    for (int p = 0; p < kc; ++p) {
-        const T *bptr = B_sub + static_cast<std::size_t>(p) * static_cast<std::size_t>(ldb_t);
+    // Accumulation phase: SIMD FMA over kc iterations.
+    // 1) Use a small software pipeline: pre-load the next B vectors while
+    //    computing on the current ones to hide load latency.
+    // 2) Perform A prefetch for the next k to reduce L1 miss penalties.
+    // 3) Block the NR dimension into small chunks (BLOCK_NV vectors) to
+    //    reduce register pressure when NR is large.
 
-        // Load B vectors once per k iteration
-        std::array<batch_type, N_vecs> b_vecs{};
+    const std::size_t bytes_per_vec = V * sizeof(T);
+    const int PREF_DIST = 2; // prefetch distance in k
+    const int BLOCK_NV = 2;  // number of vector chunks to process at once
+
+    // helper to load a full vector-array from B
+    auto load_bvecs = [&](const T *bptr, std::array<batch_type, N_vecs> &out) {
+        bool b_aligned = (reinterpret_cast<std::uintptr_t>(bptr) % bytes_per_vec) == 0;
+        std::size_t valid_last = static_cast<std::size_t>(NR) - (N_vecs - 1) * V;
         for (std::size_t jv = 0; jv < N_vecs; ++jv) {
-            b_vecs[jv] = batch_type::load_unaligned(bptr + jv * V);
-        }
-
-        // FMA for all MR rows
-        for (std::size_t i = 0; i < static_cast<std::size_t>(MR); ++i) {
-            T a_ip = A_sub[i * static_cast<std::size_t>(lda_t) + static_cast<std::size_t>(p)];
-            batch_type a_broadcast(a_ip);
-
-            for (std::size_t jv = 0; jv < N_vecs; ++jv) {
-                acc_regs[i][jv] = xsimd::fma(a_broadcast, b_vecs[jv], acc_regs[i][jv]);
+            const T *slot = bptr + jv * V;
+            if (jv + 1 == N_vecs && valid_last < V) {
+                // partial last vector: copy into temp and zero-pad
+                alignas(64) T tmp[V];
+                std::memcpy(tmp, slot, valid_last * sizeof(T));
+                for (std::size_t z = valid_last; z < V; ++z) tmp[z] = T(0);
+                out[jv] = batch_type::load_unaligned(tmp);
+            } else {
+                if (b_aligned && (reinterpret_cast<std::uintptr_t>(slot) % bytes_per_vec == 0))
+                    out[jv] = batch_type::load_aligned(slot);
+                else
+                    out[jv] = batch_type::load_unaligned(slot);
             }
         }
+    };
+
+    std::array<batch_type, N_vecs> b_vecs{};
+    std::array<batch_type, N_vecs> b_vecs_next{};
+
+    // Load first k
+    if (kc > 0) load_bvecs(B_sub + 0 * static_cast<std::size_t>(ldb_t), b_vecs);
+
+    for (int p = 0; p < kc; ++p) {
+        const T *bptr_next = nullptr;
+        if (p + 1 < kc) {
+            bptr_next = B_sub + static_cast<std::size_t>(p + 1) * static_cast<std::size_t>(ldb_t);
+            load_bvecs(bptr_next, b_vecs_next);
+        }
+
+        // Prefetch some future A elements for each row to keep them in L1
+        for (std::size_t i = 0; i < static_cast<std::size_t>(MR); ++i) {
+            const T *a_pref = A_sub + i * static_cast<std::size_t>(lda_t) + static_cast<std::size_t>(std::min(p + PREF_DIST, kc - 1));
+            __builtin_prefetch(a_pref, 0, 1);
+        }
+
+        // Process blocked NR vector chunks to reduce register pressure
+        for (std::size_t block = 0; block < N_vecs; block += BLOCK_NV) {
+            std::size_t blk_end = std::min(static_cast<std::size_t>(N_vecs), block + BLOCK_NV);
+            for (std::size_t i = 0; i < static_cast<std::size_t>(MR); ++i) {
+                T a_ip = A_sub[i * static_cast<std::size_t>(lda_t) + static_cast<std::size_t>(p)];
+                batch_type a_broadcast(a_ip);
+                for (std::size_t jv = block; jv < blk_end; ++jv) {
+                    acc_regs[i][jv] = xsimd::fma(a_broadcast, b_vecs[jv], acc_regs[i][jv]);
+                }
+            }
+        }
+
+        // move next into current for next iter
+        if (p + 1 < kc) b_vecs = b_vecs_next;
     }
 
     // Store phase: scale by alpha and accumulate into C
     batch_type alpha_vec(alpha);
     for (std::size_t i = 0; i < static_cast<std::size_t>(MR); ++i) {
         T *cptr = C_sub + i * static_cast<std::size_t>(ldc);
-        for (std::size_t jv = 0; jv < N_vecs; ++jv) {
-            batch_type c_val = batch_type::load_unaligned(cptr + jv * V);
-            c_val = xsimd::fma(alpha_vec, acc_regs[i][jv], c_val);
-            c_val.store_unaligned(cptr + jv * V);
+    // Check if cptr is aligned to vector width
+    bool c_aligned = (reinterpret_cast<std::uintptr_t>(cptr) % bytes_per_vec) == 0;
+    // Process blocked NR vectors (same BLOCK_NV as accumulation)
+        for (std::size_t block = 0; block < N_vecs; block += BLOCK_NV) {
+            std::size_t blk_end = std::min(static_cast<std::size_t>(N_vecs), block + BLOCK_NV);
+            for (std::size_t jv = block; jv < blk_end; ++jv) {
+                T *cslot = cptr + jv * V;
+                if (c_aligned && (reinterpret_cast<std::uintptr_t>(cslot) % bytes_per_vec == 0)) {
+                    batch_type c_val = batch_type::load_aligned(cslot);
+                    c_val = xsimd::fma(alpha_vec, acc_regs[i][jv], c_val);
+                    c_val.store_aligned(cslot);
+                } else {
+                    batch_type c_val = batch_type::load_unaligned(cslot);
+                    c_val = xsimd::fma(alpha_vec, acc_regs[i][jv], c_val);
+                    c_val.store_unaligned(cslot);
+                }
+            }
         }
     }
 }
@@ -597,6 +660,99 @@ template<int MR, int NR, class T>
         for (int j = 0; j < nr; ++j) {
             const std::size_t j_s = static_cast<std::size_t>(j);
             cptr[j_s] += alpha * acc[i_s * NRs + j_s];
+        }
+    }
+}
+
+// Streaming version of the xsimd microkernel that reads B directly from the
+// original matrix (no intermediate packed Bpanel). This can remove the
+// memory copy for B at the cost of potentially worse locality; enabled by
+// caller when POET_STREAM_B is set.
+template<int MR, int NR, class T>
+[[gnu::always_inline]] inline void microkernel_xsimd_streaming(int kc,
+    const T *A_sub,
+    int lda_t,
+    const T *B_block,
+    int ldb,
+    T *C_sub,
+    int ldc,
+    T alpha) {
+    using batch_type = xsimd::batch<T>;
+    constexpr std::size_t V = batch_type::size;
+    constexpr std::size_t N_vecs = (static_cast<std::size_t>(NR) + V - 1) / V;
+
+    std::array<std::array<batch_type, N_vecs>, static_cast<std::size_t>(MR)> acc_regs{};
+    for (std::size_t i = 0; i < static_cast<std::size_t>(MR); ++i)
+        for (std::size_t jv = 0; jv < N_vecs; ++jv) acc_regs[i][jv] = batch_type(T(0));
+
+    const std::size_t bytes_per_vec = V * sizeof(T);
+    const int PREF_DIST = 2;
+    const int BLOCK_NV = 2;
+
+    auto load_bvecs_stream = [&](const T *bptr, std::array<batch_type, N_vecs> &out) {
+        bool b_aligned = (reinterpret_cast<std::uintptr_t>(bptr) % bytes_per_vec) == 0;
+        std::size_t valid_last = static_cast<std::size_t>(NR) - (N_vecs - 1) * V;
+        for (std::size_t jv = 0; jv < N_vecs; ++jv) {
+            const T *slot = bptr + jv * V;
+            if (jv + 1 == N_vecs && valid_last < V) {
+                // partial last vector: copy into temp and zero-pad
+                alignas(64) T tmp[V];
+                std::memcpy(tmp, slot, valid_last * sizeof(T));
+                for (std::size_t z = valid_last; z < V; ++z) tmp[z] = T(0);
+                out[jv] = batch_type::load_unaligned(tmp);
+            } else {
+                if (b_aligned && (reinterpret_cast<std::uintptr_t>(slot) % bytes_per_vec == 0))
+                    out[jv] = batch_type::load_aligned(slot);
+                else
+                    out[jv] = batch_type::load_unaligned(slot);
+            }
+        }
+    };
+
+    std::array<batch_type, N_vecs> b_vecs{};
+    std::array<batch_type, N_vecs> b_vecs_next{};
+
+    if (kc > 0) load_bvecs_stream(B_block + 0 * static_cast<std::size_t>(ldb), b_vecs);
+
+    for (int p = 0; p < kc; ++p) {
+        if (p + 1 < kc) load_bvecs_stream(B_block + static_cast<std::size_t>(p + 1) * static_cast<std::size_t>(ldb), b_vecs_next);
+
+        for (std::size_t i = 0; i < static_cast<std::size_t>(MR); ++i) {
+            const T *a_pref = A_sub + i * static_cast<std::size_t>(lda_t) + static_cast<std::size_t>(std::min(p + PREF_DIST, kc - 1));
+            __builtin_prefetch(a_pref, 0, 1);
+        }
+
+        for (std::size_t block = 0; block < N_vecs; block += BLOCK_NV) {
+            std::size_t blk_end = std::min(static_cast<std::size_t>(N_vecs), block + BLOCK_NV);
+            for (std::size_t i = 0; i < static_cast<std::size_t>(MR); ++i) {
+                T a_ip = A_sub[i * static_cast<std::size_t>(lda_t) + static_cast<std::size_t>(p)];
+                batch_type a_broadcast(a_ip);
+                for (std::size_t jv = block; jv < blk_end; ++jv) acc_regs[i][jv] = xsimd::fma(a_broadcast, b_vecs[jv], acc_regs[i][jv]);
+            }
+        }
+
+        if (p + 1 < kc) b_vecs = b_vecs_next;
+    }
+
+    // store phase (same as full)
+    batch_type alpha_vec(alpha);
+    for (std::size_t i = 0; i < static_cast<std::size_t>(MR); ++i) {
+        T *cptr = C_sub + i * static_cast<std::size_t>(ldc);
+        bool c_aligned = (reinterpret_cast<std::uintptr_t>(cptr) % bytes_per_vec) == 0;
+        for (std::size_t block = 0; block < N_vecs; block += BLOCK_NV) {
+            std::size_t blk_end = std::min(static_cast<std::size_t>(N_vecs), block + BLOCK_NV);
+            for (std::size_t jv = block; jv < blk_end; ++jv) {
+                T *cslot = cptr + jv * V;
+                if (c_aligned && (reinterpret_cast<std::uintptr_t>(cslot) % bytes_per_vec == 0)) {
+                    batch_type c_val = batch_type::load_aligned(cslot);
+                    c_val = xsimd::fma(alpha_vec, acc_regs[i][jv], c_val);
+                    c_val.store_aligned(cslot);
+                } else {
+                    batch_type c_val = batch_type::load_unaligned(cslot);
+                    c_val = xsimd::fma(alpha_vec, acc_regs[i][jv], c_val);
+                    c_val.store_unaligned(cslot);
+                }
+            }
         }
     }
 }
@@ -808,11 +964,15 @@ template<class T> struct gemm_static_functor {
 
         scale_C(M, N, beta, C, ldc);
 
-        // Reserve buffers once (reuse with resize)
-        std::vector<T> Bpanel;
-        std::vector<T> Apanel;
-        Bpanel.reserve(static_cast<size_t>(tKC) * static_cast<size_t>(tNC));
-        Apanel.reserve(static_cast<size_t>(tMC) * static_cast<size_t>(tKC));
+    // Reserve buffers once (reuse with resize). Use aligned allocator so
+    // packed panels are aligned to 64 bytes, enabling aligned SIMD loads.
+    std::vector<T, xsimd::aligned_allocator<T, 64>> Bpanel;
+    std::vector<T, xsimd::aligned_allocator<T, 64>> Apanel;
+    Bpanel.reserve(static_cast<size_t>(tKC) * static_cast<size_t>(tNC));
+    Apanel.reserve(static_cast<size_t>(tMC) * static_cast<size_t>(tKC));
+
+    // Packed-only execution path: always pack B and A once per slab. Removed
+    // runtime profiling hooks so the binary focuses on the single fastest configuration.
 
         for (int jc = 0; jc < N; jc += tNC) {
             const int nc = std::min(tNC, N - jc);
@@ -820,14 +980,14 @@ template<class T> struct gemm_static_functor {
             for (int pc = 0; pc < K; pc += tKC) {
                 const int kc = std::min(tKC, K - pc);
 
-                // Resize and pack B using optimized packing
+                // Resize and pack B using optimized packing (no timing)
                 Bpanel.resize(static_cast<size_t>(tKC) * static_cast<size_t>(tNC));
                 pack_B_panel_optimized(Bpanel.data(), B, ldb, kc, nc, tKC, tNC, pc, jc);
 
                 for (int ic = 0; ic < M; ic += tMC) {
                     const int mc = std::min(tMC, M - ic);
 
-                    // Resize and pack A using optimized packing
+                    // Resize and pack A using optimized packing (no timing)
                     Apanel.resize(static_cast<size_t>(tMC) * static_cast<size_t>(tKC));
                     pack_A_panel_optimized(Apanel.data(), A, lda, mc, kc, tMC, tKC, ic, pc);
 
@@ -915,11 +1075,13 @@ template<class T> struct gemm_static_unroll_functor {
 
         scale_C(M, N, beta, C, ldc);
 
-        // Reserve buffers once (reuse with resize)
-        std::vector<T> Bpanel;
-        std::vector<T> Apanel;
-        Bpanel.reserve(static_cast<size_t>(tKC) * static_cast<size_t>(tNC));
-        Apanel.reserve(static_cast<size_t>(tMC) * static_cast<size_t>(tKC));
+    // Reserve buffers once (reuse with resize)
+    std::vector<T> Bpanel;
+    std::vector<T> Apanel;
+    Bpanel.reserve(static_cast<size_t>(tKC) * static_cast<size_t>(tNC));
+    Apanel.reserve(static_cast<size_t>(tMC) * static_cast<size_t>(tKC));
+
+    
 
         for (int jc = 0; jc < N; jc += tNC) {
             const int nc = std::min(tNC, N - jc);
@@ -1006,11 +1168,14 @@ template<class T> struct gemm_static_unroll_xsimd_functor {
 
         scale_C(M, N, beta, C, ldc);
 
-        // Reserve buffers once (reuse with resize)
-        std::vector<T> Bpanel;
-        std::vector<T> Apanel;
-        Bpanel.reserve(static_cast<size_t>(tKC) * static_cast<size_t>(tNC));
-        Apanel.reserve(static_cast<size_t>(tMC) * static_cast<size_t>(tKC));
+    // Reserve buffers once (reuse with resize)
+    std::vector<T> Bpanel;
+    std::vector<T> Apanel;
+    Bpanel.reserve(static_cast<size_t>(tKC) * static_cast<size_t>(tNC));
+    Apanel.reserve(static_cast<size_t>(tMC) * static_cast<size_t>(tKC));
+
+    // Profiling removed in the packed-only build: always perform the
+    // non-instrumented (fast) path.
 
         for (int jc = 0; jc < N; jc += tNC) {
             const int nc = std::min(tNC, N - jc);
@@ -1018,7 +1183,7 @@ template<class T> struct gemm_static_unroll_xsimd_functor {
             for (int pc = 0; pc < K; pc += tKC) {
                 const int kc = std::min(tKC, K - pc);
 
-                // Resize and pack B using optimized packing
+                // Always pack B (packed-only build)
                 Bpanel.resize(static_cast<size_t>(tKC) * static_cast<size_t>(tNC));
                 pack_B_panel_optimized(Bpanel.data(), B, ldb, kc, nc, tKC, tNC, pc, jc);
 
@@ -1034,14 +1199,14 @@ template<class T> struct gemm_static_unroll_xsimd_functor {
 
                     // A: Full jr × full ir (HOT PATH - zero runtime branches, perfect unrolling)
                     for (int jr = 0; jr < nc_full; jr += tNR) {
-                        // Bpanel is packed as kc x tNC (row-major w.r.t. k). Use
-                        // the same indexing for all types to match pack_B_panel_optimized.
+                        // Bpanel is packed as kc x tNC (row-major w.r.t. k).
                         const T *Bsub = Bpanel.data() + jr;
                         int ldb_t = tNC;
+
                         for (int ir = 0; ir < mc_full; ir += tMR) {
                             const T *Asub = Apanel.data() + static_cast<size_t>(ir) * static_cast<size_t>(tKC);
                             T *Cblk = C + (ic + ir) * ldc + (jc + jr);
-                            // Full tile microkernel - NO runtime mr/nr parameters!
+                            // Full tile microkernel - packed variant
                             microkernel_xsimd_full<tMR, tNR, T>(kc, Asub, tKC, Bsub, ldb_t, Cblk, ldc, alpha);
                         }
                     }
@@ -1054,8 +1219,7 @@ template<class T> struct gemm_static_unroll_xsimd_functor {
                             int ldb_t = tNC;
                             const T *Asub = Apanel.data() + static_cast<size_t>(mc_full) * static_cast<size_t>(tKC);
                             T *Cblk = C + (ic + mc_full) * ldc + (jc + jr);
-                            microkernel_xsimd_partial<tMR, tNR, T>(
-                              kc, Asub, tKC, Bsub, ldb_t, Cblk, ldc, mr_tail, tNR, alpha);
+                            microkernel_xsimd_partial<tMR, tNR, T>(kc, Asub, tKC, Bsub, ldb_t, Cblk, ldc, mr_tail, tNR, alpha);
                         }
                     }
 
@@ -1082,6 +1246,8 @@ template<class T> struct gemm_static_unroll_xsimd_functor {
                         microkernel_xsimd_partial<tMR, tNR, T>(kc, Asub, tKC, Bsub, ldb_t, Cblk, ldc, mr_tail, nr_tail, alpha);
                     }
                 }
+            // At end of each pc/jc slab accumulation, update globals if profiling
+            // no profiling accumulation in packed-only build
             }
         }
     }
@@ -1090,26 +1256,26 @@ template<class T> struct gemm_static_unroll_xsimd_functor {
 // Dispatch wrapper for the xsimd unroll variant
 template<class T>
 [[gnu::flatten]] [[gnu::noinline]] inline void gemm_dispatch_unroll_xsimd(int M,
-  int N,
-  int K,
-  const T *A,
-  int lda,
-  const T *B,
-  int ldb,
-  T *C,
-  int ldc,
-  T alpha = T(1),
-  T beta = T(1),
-  int MR = 6,
-  int NR = 8,
-  int KC = 192,
-  int MC = 240,
-  int NC = 2048) {
+    int N,
+    int K,
+    const T *A,
+    int lda,
+    const T *B,
+    int ldb,
+    T *C,
+    int ldc,
+    T alpha = T(1),
+    T beta = T(1),
+    int MR = 6,
+    int NR = 16,
+    int KC = 256,
+    int MC = 480,
+    int NC = 2048) {
     // Minimal fixed-config dispatch mirroring gemm_dispatch_unroll, but using xsimd-accelerated functor
     using mr_choices = std::integer_sequence<int, 6>;
-    using nr_choices = std::integer_sequence<int, 8>;
-    using kc_choices = std::integer_sequence<int, 192>;
-    using mc_choices = std::integer_sequence<int, 240>;
+    using nr_choices = std::integer_sequence<int, 16>;
+    using kc_choices = std::integer_sequence<int, 256>;
+    using mc_choices = std::integer_sequence<int, 480>;
     using nc_choices = std::integer_sequence<int, 2048>;
 
     auto params = std::make_tuple(poet::DispatchParam<mr_choices>{ MR },
@@ -1128,26 +1294,26 @@ template<class T>
 
 template<class T>
 [[gnu::flatten]] [[gnu::noinline]] inline void gemm_dispatch(int M,
-  int N,
-  int K,
-  const T *A,
-  int lda,
-  const T *B,
-  int ldb,
-  T *C,
-  int ldc,
-  T alpha = T(1),
-  T beta = T(1),
-  int MR = 8,
-  int NR = 8,
-  int KC = 512,
-  int MC = 1536,
-  int NC = 8192) {
+    int N,
+    int K,
+    const T *A,
+    int lda,
+    const T *B,
+    int ldb,
+    T *C,
+    int ldc,
+    T alpha = T(1),
+    T beta = T(1),
+    int MR = 6,
+    int NR = 16,
+    int KC = 256,
+    int MC = 480,
+    int NC = 2048) {
     // MINIMAL dispatch for fast compilation - single optimal configuration
     using mr_choices = std::integer_sequence<int, 6>;
-    using nr_choices = std::integer_sequence<int, 8>;
-    using kc_choices = std::integer_sequence<int, 192>;
-    using mc_choices = std::integer_sequence<int, 240>;
+    using nr_choices = std::integer_sequence<int, 16>;
+    using kc_choices = std::integer_sequence<int, 256>;
+    using mc_choices = std::integer_sequence<int, 480>;
     using nc_choices = std::integer_sequence<int, 2048>;
 
     auto params = std::make_tuple(poet::DispatchParam<mr_choices>{ MR },
@@ -1162,27 +1328,27 @@ template<class T>
 
 template<class T>
 [[gnu::flatten]] [[gnu::noinline]] inline void gemm_dispatch_unroll(int M,
-  int N,
-  int K,
-  const T *A,
-  int lda,
-  const T *B,
-  int ldb,
-  T *C,
-  int ldc,
-  T alpha = T(1),
-  T beta = T(1),
-  int MR = 8,
-  int NR = 8,
-  int KC = 512,
-  int MC = 1536,
-  int NC = 8192) {
-    // MINIMAL dispatch for fast compilation - single optimal configuration
-    using mr_choices = std::integer_sequence<int, 6>;
-    using nr_choices = std::integer_sequence<int, 8>;
-    using kc_choices = std::integer_sequence<int, 192>;
-    using mc_choices = std::integer_sequence<int, 240>;
-    using nc_choices = std::integer_sequence<int, 2048>;
+    int N,
+    int K,
+    const T *A,
+    int lda,
+    const T *B,
+    int ldb,
+    T *C,
+    int ldc,
+    T alpha = T(1),
+    T beta = T(1),
+    int MR = 6,
+    int NR = 16,
+    int KC = 256,
+    int MC = 480,
+    int NC = 2048) {
+        // MINIMAL dispatch for fast compilation - single optimal configuration
+        using mr_choices = std::integer_sequence<int, 6>;
+        using nr_choices = std::integer_sequence<int, 16>;
+        using kc_choices = std::integer_sequence<int, 256>;
+        using mc_choices = std::integer_sequence<int, 480>;
+        using nc_choices = std::integer_sequence<int, 2048>;
 
     auto params = std::make_tuple(poet::DispatchParam<mr_choices>{ MR },
       poet::DispatchParam<nr_choices>{ NR },
@@ -1327,11 +1493,11 @@ template<class T>
 
 using T = float;
 struct ArchIntelUltra7155H {
-    static constexpr int MR = 6;// Sweet spot
-    static constexpr int NR = 8;// One AVX vector for doubles
-    static constexpr int KC = 192;// L1 friendly
-    static constexpr int MC = 240;// Multiple of MR
-    static constexpr int NC = 2048;// Balanced cache usage
+    static constexpr int MR = 6;   // Sweet spot
+    static constexpr int NR = 16;  // use 16-wide NR for vectorization
+    static constexpr int KC = 256; // L1-friendly packing depth
+    static constexpr int MC = 480; // multiple of MR, tuned for L2/L3
+    static constexpr int NC = 2048; // Balanced cache usage
 };
 
 struct BenchmarkResult {
@@ -1368,190 +1534,152 @@ template<typename U> [[gnu::always_inline]] inline static long double compute_ch
 }
 
 int main() {
-    const int M = 1024;
-    const int N = 1024;
-    const int K = 1024;
-    const int repeats = 10;
+        const int M = 1024;
+        const int N = 1024;
+        const int K = 1024;
+        const int repeats = 10;
 
-    std::vector<T> A(static_cast<size_t>(M) * static_cast<size_t>(K), 0);
-    std::vector<T> B(static_cast<size_t>(K) * static_cast<size_t>(N), 0);
-    std::vector<T> C_naive(static_cast<size_t>(M) * static_cast<size_t>(N), 0);
-    std::vector<T> C_packed(static_cast<size_t>(M) * static_cast<size_t>(N), 0);
-    std::vector<T> C_dispatch(static_cast<size_t>(M) * static_cast<size_t>(N), 0);
-    std::vector<T> C_unroll(static_cast<size_t>(M) * static_cast<size_t>(N), 0);
-    std::vector<T> C_unroll_xsimd(static_cast<size_t>(M) * static_cast<size_t>(N), 0);
+        // Allocate inputs and result buffers for all variants so we can compare
+        std::vector<T> A(static_cast<size_t>(M) * static_cast<size_t>(K), 0);
+        std::vector<T> B(static_cast<size_t>(K) * static_cast<size_t>(N), 0);
+        std::vector<T> C_naive(static_cast<size_t>(M) * static_cast<size_t>(N), 0);
+        std::vector<T> C_packed(static_cast<size_t>(M) * static_cast<size_t>(N), 0);
+        std::vector<T> C_dispatch(static_cast<size_t>(M) * static_cast<size_t>(N), 0);
+        std::vector<T> C_unroll(static_cast<size_t>(M) * static_cast<size_t>(N), 0);
+        std::vector<T> C_unroll_xsimd(static_cast<size_t>(M) * static_cast<size_t>(N), 0);
 
-    // Initialize A and B with deterministic pseudo-random values so checksum is non-zero and repeatable
-    {
-        std::mt19937 rng(123456789u); // fixed seed for reproducibility
+        // Initialize A and B deterministically so checksums are repeatable
+        std::mt19937 rng(123456789u);
         std::uniform_real_distribution<T> dist(T(-1.0), T(1.0));
         for (size_t i = 0; i < A.size(); ++i) A[i] = dist(rng);
         for (size_t i = 0; i < B.size(); ++i) B[i] = dist(rng);
-    }
 
-    T alpha = T(1.0);
-    T beta = T(0.0);
+        T alpha = T(1.0);
+        T beta = T(0.0);
 
-    auto naive_run_once = [&]() {
-        blis_like::gemm_naive<T>(M, N, K, A.data(), K, B.data(), N, C_naive.data(), N, alpha, beta);
-    };
-    auto naive_checksum = [&]() -> long double { return compute_checksum(C_naive); };
+        // Define run_once lambdas for each variant
+        auto naive_run_once = [&]() {
+                blis_like::gemm_naive<T>(M, N, K, A.data(), K, B.data(), N, C_naive.data(), N, alpha, beta);
+        };
+        auto naive_checksum = [&]() -> long double { return compute_checksum(C_naive); };
 
-    auto packed_run_once = [&]() {
-        blis_like::gemm_runtime<T>(M,
-          N,
-          K,
-          A.data(),
-          K,
-          B.data(),
-          N,
-          C_packed.data(),
-          N,
-          alpha,
-          beta,
-          ArchIntelUltra7155H::MR,
-          ArchIntelUltra7155H::NR,
-          ArchIntelUltra7155H::KC,
-          ArchIntelUltra7155H::MC,
-          ArchIntelUltra7155H::NC);
-    };
-    auto packed_checksum = [&]() -> long double { return compute_checksum(C_packed); };
+        auto packed_run_once = [&]() {
+                blis_like::gemm_runtime<T>(M,
+                    N,
+                    K,
+                    A.data(),
+                    K,
+                    B.data(),
+                    N,
+                    C_packed.data(),
+                    N,
+                    alpha,
+                    beta,
+                    ArchIntelUltra7155H::MR,
+                    ArchIntelUltra7155H::NR,
+                    ArchIntelUltra7155H::KC,
+                    ArchIntelUltra7155H::MC,
+                    ArchIntelUltra7155H::NC);
+        };
+        auto packed_checksum = [&]() -> long double { return compute_checksum(C_packed); };
 
-    auto dispatch_run_once = [&]() {
-        blis_like::gemm_dispatch<T>(M,
-          N,
-          K,
-          A.data(),
-          K,
-          B.data(),
-          N,
-          C_dispatch.data(),
-          N,
-          alpha,
-          beta,
-          ArchIntelUltra7155H::MR,
-          ArchIntelUltra7155H::NR,
-          ArchIntelUltra7155H::KC,
-          ArchIntelUltra7155H::MC,
-          ArchIntelUltra7155H::NC);
-    };
-    auto dispatch_checksum = [&]() -> long double { return compute_checksum(C_dispatch); };
+        auto dispatch_run_once = [&]() {
+                blis_like::gemm_dispatch<T>(M,
+                    N,
+                    K,
+                    A.data(),
+                    K,
+                    B.data(),
+                    N,
+                    C_dispatch.data(),
+                    N,
+                    alpha,
+                    beta,
+                    ArchIntelUltra7155H::MR,
+                    ArchIntelUltra7155H::NR,
+                    ArchIntelUltra7155H::KC,
+                    ArchIntelUltra7155H::MC,
+                    ArchIntelUltra7155H::NC);
+        };
+        auto dispatch_checksum = [&]() -> long double { return compute_checksum(C_dispatch); };
 
-    auto unroll_run_once = [&]() {
-        blis_like::gemm_dispatch_unroll<T>(M,
-          N,
-          K,
-          A.data(),
-          K,
-          B.data(),
-          N,
-          C_unroll.data(),
-          N,
-          alpha,
-          beta,
-          ArchIntelUltra7155H::MR,
-          ArchIntelUltra7155H::NR,
-          ArchIntelUltra7155H::KC,
-          ArchIntelUltra7155H::MC,
-          ArchIntelUltra7155H::NC);
-    };
-    auto unroll_checksum = [&]() -> long double { return compute_checksum(C_unroll); };
+        auto unroll_run_once = [&]() {
+                blis_like::gemm_dispatch_unroll<T>(M,
+                    N,
+                    K,
+                    A.data(),
+                    K,
+                    B.data(),
+                    N,
+                    C_unroll.data(),
+                    N,
+                    alpha,
+                    beta,
+                    ArchIntelUltra7155H::MR,
+                    ArchIntelUltra7155H::NR,
+                    ArchIntelUltra7155H::KC,
+                    ArchIntelUltra7155H::MC,
+                    ArchIntelUltra7155H::NC);
+        };
+        auto unroll_checksum = [&]() -> long double { return compute_checksum(C_unroll); };
 
-    auto unroll_xsimd_run_once = [&]() {
-        // Fixed configuration matching recommended defaults
-        blis_like::gemm_dispatch_unroll_xsimd<T>(M,
-          N,
-          K,
-          A.data(),
-          K,
-          B.data(),
-          N,
-          C_unroll_xsimd.data(),
-          N,
-          alpha,
-          beta,
-          ArchIntelUltra7155H::MR,
-          ArchIntelUltra7155H::NR,
-          ArchIntelUltra7155H::KC,
-          ArchIntelUltra7155H::MC,
-          ArchIntelUltra7155H::NC);
-    };
-    auto unroll_xsimd_checksum = [&]() -> long double { return compute_checksum(C_unroll_xsimd); };
+        auto unroll_xsimd_run_once = [&]() {
+                blis_like::gemm_dispatch_unroll_xsimd<T>(M,
+                    N,
+                    K,
+                    A.data(),
+                    K,
+                    B.data(),
+                    N,
+                    C_unroll_xsimd.data(),
+                    N,
+                    alpha,
+                    beta,
+                    ArchIntelUltra7155H::MR,
+                    ArchIntelUltra7155H::NR,
+                    ArchIntelUltra7155H::KC,
+                    ArchIntelUltra7155H::MC,
+                    ArchIntelUltra7155H::NC);
+        };
+        auto unroll_xsimd_checksum = [&]() -> long double { return compute_checksum(C_unroll_xsimd); };
 
-    BenchmarkResult naive_res = run_gemm_benchmark("naive", repeats, naive_run_once, naive_checksum);
-    BenchmarkResult packed_res = run_gemm_benchmark("packed", repeats, packed_run_once, packed_checksum);
-    BenchmarkResult dispatch_res = run_gemm_benchmark("dispatch", repeats, dispatch_run_once, dispatch_checksum);
-    BenchmarkResult unroll_res = run_gemm_benchmark("dispatch_unroll", repeats, unroll_run_once, unroll_checksum);
-    BenchmarkResult unroll_xsimd_res =
-      run_gemm_benchmark("dispatch_unroll_xsimd", repeats, unroll_xsimd_run_once, unroll_xsimd_checksum);
+        // Run benchmarks
+        BenchmarkResult naive_res = run_gemm_benchmark("naive", repeats, naive_run_once, naive_checksum);
+        BenchmarkResult packed_res = run_gemm_benchmark("packed", repeats, packed_run_once, packed_checksum);
+        BenchmarkResult dispatch_res = run_gemm_benchmark("dispatch", repeats, dispatch_run_once, dispatch_checksum);
+        BenchmarkResult unroll_res = run_gemm_benchmark("dispatch_unroll", repeats, unroll_run_once, unroll_checksum);
+        BenchmarkResult unroll_xsimd_res =
+            run_gemm_benchmark("dispatch_unroll_xsimd", repeats, unroll_xsimd_run_once, unroll_xsimd_checksum);
 
-    const double flops = 2.0 * double(M) * double(N) * double(K);
-    const double gflops_naive = naive_res.avg_seconds > 0.0 ? (flops / naive_res.avg_seconds / 1e9) : 0.0;
-    const double gflops_packed = packed_res.avg_seconds > 0.0 ? (flops / packed_res.avg_seconds / 1e9) : 0.0;
-    const double gflops_dispatch = dispatch_res.avg_seconds > 0.0 ? (flops / dispatch_res.avg_seconds / 1e9) : 0.0;
-    const double gflops_unroll = unroll_res.avg_seconds > 0.0 ? (flops / unroll_res.avg_seconds / 1e9) : 0.0;
-    const double gflops_unroll_xsimd =
-      unroll_xsimd_res.avg_seconds > 0.0 ? (flops / unroll_xsimd_res.avg_seconds / 1e9) : 0.0;
-    const double speedup = (packed_res.avg_seconds > 0.0) ? (naive_res.avg_seconds / packed_res.avg_seconds) : 0.0;
-    const double speedup_dispatch_over_naive =
-      (dispatch_res.avg_seconds > 0.0) ? (naive_res.avg_seconds / dispatch_res.avg_seconds) : 0.0;
-    const double speedup_dispatch_over_packed =
-      (dispatch_res.avg_seconds > 0.0) ? (packed_res.avg_seconds / dispatch_res.avg_seconds) : 0.0;
-    const double speedup_unroll_over_naive =
-      (unroll_res.avg_seconds > 0.0) ? (naive_res.avg_seconds / unroll_res.avg_seconds) : 0.0;
-    const double speedup_unroll_over_packed =
-      (unroll_res.avg_seconds > 0.0) ? (packed_res.avg_seconds / unroll_res.avg_seconds) : 0.0;
-    const double speedup_unroll_xsimd_over_naive =
-      (unroll_xsimd_res.avg_seconds > 0.0) ? (naive_res.avg_seconds / unroll_xsimd_res.avg_seconds) : 0.0;
-    const double speedup_unroll_xsimd_over_packed =
-      (unroll_xsimd_res.avg_seconds > 0.0) ? (packed_res.avg_seconds / unroll_xsimd_res.avg_seconds) : 0.0;
+        // Compute GFLOPS
+        const double flops = 2.0 * double(M) * double(N) * double(K);
+        const double gflops_naive = naive_res.avg_seconds > 0.0 ? (flops / naive_res.avg_seconds / 1e9) : 0.0;
+        const double gflops_packed = packed_res.avg_seconds > 0.0 ? (flops / packed_res.avg_seconds / 1e9) : 0.0;
+        const double gflops_dispatch = dispatch_res.avg_seconds > 0.0 ? (flops / dispatch_res.avg_seconds / 1e9) : 0.0;
+        const double gflops_unroll = unroll_res.avg_seconds > 0.0 ? (flops / unroll_res.avg_seconds / 1e9) : 0.0;
+        const double gflops_unroll_xsimd =
+            unroll_xsimd_res.avg_seconds > 0.0 ? (flops / unroll_xsimd_res.avg_seconds / 1e9) : 0.0;
 
-    long double checksum_diff = std::fabsl(naive_res.checksum - packed_res.checksum);
-    long double checksum_rel = checksum_diff / (std::fabsl(naive_res.checksum) + 1e-18L);
-    long double checksum_diff_dispatch = std::fabsl(naive_res.checksum - dispatch_res.checksum);
-    long double checksum_rel_dispatch = checksum_diff_dispatch / (std::fabsl(naive_res.checksum) + 1e-18L);
-    long double checksum_diff_unroll = std::fabsl(naive_res.checksum - unroll_res.checksum);
-    long double checksum_rel_unroll = checksum_diff_unroll / (std::fabsl(naive_res.checksum) + 1e-18L);
-    long double checksum_diff_unroll_xsimd = std::fabsl(naive_res.checksum - unroll_xsimd_res.checksum);
-    long double checksum_rel_unroll_xsimd = checksum_diff_unroll_xsimd / (std::fabsl(naive_res.checksum) + 1e-18L);
+        // Print concise results
+        std::cout << "M=" << M << " N=" << N << " K=" << K << " repeats=" << repeats << '\n';
 
-    std::cout << "M=" << M << " N=" << N << " K=" << K << " repeats=" << repeats << '\n';
+        auto print_result = [&](const BenchmarkResult &r, const std::string &label, double gflops) {
+                std::cout << '[' << label << "]  avg time (s): " << std::fixed << std::setprecision(6) << r.avg_seconds
+                                    << "  total time (s): " << r.total_seconds << "  GFLOPS: " << gflops
+                                    << "  checksum: " << std::setprecision(10) << r.checksum << '\n';
+        };
 
-    auto print_result = [&](const BenchmarkResult &r, const std::string &label, double gflops) {
-        std::cout << '[' << label << "]  avg time (s): " << std::fixed << std::setprecision(6) << r.avg_seconds
-                  << "  total time (s): " << r.total_seconds << "  GFLOPS: " << gflops
-                  << "  checksum: " << std::setprecision(10) << r.checksum << '\n';
-    };
+        print_result(naive_res, "naive", gflops_naive);
+        print_result(packed_res, "packed", gflops_packed);
+        print_result(dispatch_res, "dispatch", gflops_dispatch);
+        print_result(unroll_res, "dispatch_unroll", gflops_unroll);
+        print_result(unroll_xsimd_res, "dispatch_unroll_xsimd", gflops_unroll_xsimd);
 
-    print_result(naive_res, "naive", gflops_naive);
-    print_result(packed_res, "packed", gflops_packed);
-    print_result(dispatch_res, "dispatch", gflops_dispatch);
-    print_result(unroll_res, "dispatch_unroll", gflops_unroll);
-    print_result(unroll_xsimd_res, "dispatch_unroll_xsimd", gflops_unroll_xsimd);
+        // Print some simple speedup ratios
+        const double speedup_packed_over_naive = (packed_res.avg_seconds > 0.0) ? (naive_res.avg_seconds / packed_res.avg_seconds) : 0.0;
+        const double speedup_unroll_xsimd_over_naive = (unroll_xsimd_res.avg_seconds > 0.0) ? (naive_res.avg_seconds / unroll_xsimd_res.avg_seconds) : 0.0;
+        std::cout << "speedup packed/naive: " << std::fixed << std::setprecision(3) << speedup_packed_over_naive << "x\n";
+        std::cout << "speedup dispatch_unroll_xsimd/naive: " << std::fixed << std::setprecision(3) << speedup_unroll_xsimd_over_naive << "x\n";
 
-    std::cout << "speedup packed/naive: " << std::fixed << std::setprecision(3) << speedup << "x\n";
-    std::cout << "speedup dispatch/naive: " << std::fixed << std::setprecision(3) << speedup_dispatch_over_naive
-              << "x\n";
-    std::cout << "speedup dispatch/packed: " << std::fixed << std::setprecision(3) << speedup_dispatch_over_packed
-              << "x\n";
-    std::cout << "speedup dispatch_unroll/naive: " << std::fixed << std::setprecision(3) << speedup_unroll_over_naive
-              << "x\n";
-    std::cout << "speedup dispatch_unroll/packed: " << std::fixed << std::setprecision(3) << speedup_unroll_over_packed
-              << "x\n";
-    std::cout << "speedup dispatch_unroll_xsimd/naive: " << std::fixed << std::setprecision(3)
-              << speedup_unroll_xsimd_over_naive << "x\n";
-    std::cout << "speedup dispatch_unroll_xsimd/packed: " << std::fixed << std::setprecision(3)
-              << speedup_unroll_xsimd_over_packed << "x\n";
-    std::cout << "checksum |diff| naive-packed: " << std::setprecision(10) << checksum_diff
-              << "  rel: " << std::scientific << std::setprecision(3) << checksum_rel << '\n';
-    std::cout << "checksum |diff| naive-dispatch: " << std::setprecision(10) << checksum_diff_dispatch
-              << "  rel: " << std::scientific << std::setprecision(3) << checksum_rel_dispatch << '\n';
-    std::cout << "checksum |diff| naive-dispatch_unroll: " << std::setprecision(10) << checksum_diff_unroll
-              << "  rel: " << std::scientific << std::setprecision(3) << checksum_rel_unroll << '\n';
-    std::cout << "checksum |diff| naive-dispatch_unroll_xsimd: " << std::setprecision(10) << checksum_diff_unroll_xsimd
-              << "  rel: " << std::scientific << std::setprecision(3) << checksum_rel_unroll_xsimd << '\n';
-
-    std::cout.flush();
-
-    return 0;
+        return 0;
 }
