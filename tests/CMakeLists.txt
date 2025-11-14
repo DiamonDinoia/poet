@@ -13,6 +13,7 @@ add_executable(poet_tests
   poet_header_tests.cpp
   static_dispatch_tests.cpp
   static_for_tests.cpp
+  static_for_constexpr_tests.cpp
 )
 
 target_link_libraries(poet_tests PRIVATE Catch2::Catch2WithMain poet)

@@ -87,6 +87,23 @@ constexpr void static_loop(Func &&func) {
 /// total iteration count, clamped to `1` for empty ranges).
 /// \tparam Func Functor exposing `template <auto I>` call operators.
 /// \param func Functor instance invoked for each iteration.
+// Variant that forwards callables that accept an integral-constant
+// parameter. This is the constexpr-friendly form: the lambda receives a
+// `std::integral_constant` and can therefore access its value in a
+// compile-time context via `decltype(arg)::value`.
+template <std::intmax_t Begin, std::intmax_t End, std::intmax_t Step = 1,
+          std::size_t BlockSize =
+              compute_default_static_loop_block_size<Begin, End, Step>(),
+          typename Func>
+constexpr void static_for_constexpr(Func &&func) {
+  using Callable = std::remove_reference_t<Func>;
+  Callable callable(std::forward<Func>(func));
+
+  static_loop<Begin, End, Step, BlockSize>(callable);
+}
+
+// Original adapter for functors exposing `template <auto I>` call
+// operators. Kept unmodified to preserve existing behaviour.
 template <std::intmax_t Begin, std::intmax_t End, std::intmax_t Step = 1,
           std::size_t BlockSize =
               compute_default_static_loop_block_size<Begin, End, Step>(),
