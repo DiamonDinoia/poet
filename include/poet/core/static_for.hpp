@@ -91,30 +91,51 @@ constexpr void static_loop(Func &&func) {
 // parameter. This is the constexpr-friendly form: the lambda receives a
 // `std::integral_constant` and can therefore access its value in a
 // compile-time context via `decltype(arg)::value`.
-template <std::intmax_t Begin, std::intmax_t End, std::intmax_t Step = 1,
-          std::size_t BlockSize =
-              compute_default_static_loop_block_size<Begin, End, Step>(),
-          typename Func>
-constexpr void static_for_constexpr(Func &&func) {
-  using Callable = std::remove_reference_t<Func>;
-  Callable callable(std::forward<Func>(func));
-
-  static_loop<Begin, End, Step, BlockSize>(callable);
-}
-
-// Original adapter for functors exposing `template <auto I>` call
-// operators. Kept unmodified to preserve existing behaviour.
+// Unified `static_for` API.
+// Prefer callables invocable with `std::integral_constant` (constexpr-friendly
+// lambdas). If the callable is not invocable that way, fall back to the
+// original adapter that wraps functors exposing `template <auto I>` call
+// operators.
 template <std::intmax_t Begin, std::intmax_t End, std::intmax_t Step = 1,
           std::size_t BlockSize =
               compute_default_static_loop_block_size<Begin, End, Step>(),
           typename Func>
 constexpr void static_for(Func &&func) {
   using Functor = std::remove_reference_t<Func>;
-  Functor functor(std::forward<Func>(func));
 
-  detail::template_static_loop_invoker<Functor> invoker{functor};
-
-  static_loop<Begin, End, Step, BlockSize>(invoker);
+  if constexpr (std::is_invocable_v<Functor,
+                                    std::integral_constant<std::intmax_t,
+                                                           Begin>>) {
+    // Constexpr-friendly callable: forwards integral_constant to the
+    // user-provided callable. Preserve lvalue references so the
+    // original callable (e.g., accumulators) is updated rather than a
+    // local copy.
+    if constexpr (std::is_lvalue_reference_v<Func>) {
+      static_loop<Begin, End, Step, BlockSize>(func);
+    } else {
+      Functor callable(std::forward<Func>(func));
+      static_loop<Begin, End, Step, BlockSize>(callable);
+    }
+  } else {
+    // Fallback: adapter for functors exposing `template <auto I>` call
+    // operators (original behaviour). For lvalues we pass the address of
+    // the original object so the adapter updates it; for rvalues we make a
+    // local copy and point at that.
+    if constexpr (std::is_lvalue_reference_v<Func>) {
+      // Wrap the lvalue functor in a lambda that accepts the
+      // integral_constant and invokes the functor's template operator.
+      auto adapter = [&](auto index_constant) {
+        func.template operator()<decltype(index_constant)::value>();
+      };
+      static_loop<Begin, End, Step, BlockSize>(adapter);
+    } else {
+      Functor functor(std::forward<Func>(func));
+      auto adapter = [&](auto index_constant) {
+        functor.template operator()<decltype(index_constant)::value>();
+      };
+      static_loop<Begin, End, Step, BlockSize>(adapter);
+    }
+  }
 }
 
 } // namespace poet
