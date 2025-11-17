@@ -40,6 +40,31 @@ constexpr void enumerate() {
 }
 ```
 
+In addition to template call operators, `static_for` also supports callables
+that accept a `std::integral_constant<std::intmax_t, I>` parameter. This form
+is particularly convenient for `constexpr` code, because the current index is
+available as a compile-time value via `decltype(index)::value`:
+
+```cpp
+#include <array>
+#include <poet/core/static_for.hpp>
+
+constexpr std::array<int, 4> squares() {
+  std::array<int, 4> values{};
+  poet::static_for<0, 4>([&](auto index) {
+    constexpr auto i = decltype(index)::value;
+    values[static_cast<std::size_t>(i)] = i * i;
+  });
+  return values;
+}
+```
+
+By default, `static_for` chooses a block size equal to the number of
+iterations in the half-open range `[Begin, End)`, clamped to
+`poet::kMaxStaticLoopBlock` (currently `256`). You can override the block size
+explicitly via the fourth template parameter when you need finer-grained
+control over unrolling.
+
 For runtime-controlled loops, `poet::dynamic_for` bridges the same
 unrolling machinery with a runtime entry point. The helper accepts an inclusive
 `begin` and exclusive `end` bound and invokes a callable with the runtime index
@@ -58,11 +83,24 @@ std::vector<std::size_t> visit(std::size_t begin, std::size_t end) {
 }
 ```
 
+A convenience overload `dynamic_for<Unroll>(count, func)` iterates over the
+range `[0, count)`.
+
 Small unroll factors (the default is `8`) tend to deliver the best balance
 between instruction-cache residency and loop efficiency. The helper enforces an
 inclusive upper bound of `poet::kMaxStaticLoopBlock` (currently `256`)
 iterations per block, so the maximum supported unroll factor is `256`, matching
-the compile-time unroller's limit.
+the compile-time unroller's limit. If `end <= begin`, the helper performs no
+iterations and the callable is never invoked.
+
+You can either include the core headers directly or use the umbrella header:
+
+```cpp
+#include <poet/poet.hpp>
+```
+
+which exposes `poet::static_for`, `poet::dynamic_for`, and the dispatch
+utilities.
 
 ### Runtime to compile-time dispatch
 
@@ -85,7 +123,10 @@ auto params = std::make_tuple(
 poet::dispatch(kernel{}, params, current_scale);
 ```
 
-If no combination matches the runtime inputs, the functor is never invoked.
+If no combination matches the runtime inputs, the functor is never invoked. For
+non-void functors, `dispatch` returns a default-constructed result value when no
+match exists, which can be used as a sentinel to detect the absence of a
+matching configuration.
 
 ### Configuration Options
 
@@ -98,6 +139,9 @@ If no combination matches the runtime inputs, the functor is never invoked.
 | `POET_CLANG_TIDY_CHECKS` | Optional override for the checks executed by `clang-tidy`. | `""` |
 | `POET_ENABLE_CPPCHECK` | Run `cppcheck` during the build. | `OFF` |
 | `POET_CPPCHECK_OPTIONS` | Extra arguments forwarded to `cppcheck`. | `--enable=warning,style,performance,portability` |
+| `POET_BUILD_TESTS` | Build the POET test suite. | `BUILD_TESTING` (CMake's global testing toggle) |
+| `POET_BUILD_BENCHMARKS` | Build POET benchmark executables. | `OFF` |
+| `POET_BUILD_DEVEL` | Build development utilities in the `devel/` tree. | `OFF` |
 
 ## Getting Started
 

@@ -65,25 +65,35 @@ constexpr void static_loop(Func &&func) {
 
 } // namespace poet::detail
 
-/// \brief Adapts a functor with a `template <auto I>` call operator to
-/// `static_loop` using the specified step.
+/// \brief Adapts a callable to `static_loop` over a compile-time integer range.
+///
+/// This helper provides the unified `poet::static_for` API. It executes a
+/// compile-time unrolled loop over the half-open range `[Begin, End)` using the
+/// specified `Step`, where `Step` can be positive or negative. The iteration
+/// space is partitioned into blocks of `BlockSize` elements, and each block is
+/// emitted through `static_loop`.
+///
+/// Callables are supported in two forms:
+/// - A callable that accepts a `std::integral_constant<std::intmax_t, I>`
+///   argument. This form is constexpr-friendly and lets the implementation
+///   forward the index as a compile-time value.
+/// - A functor exposing `template <auto I>` call operators. In this case,
+///   `static_for` internally adapts the functor to the integral-constant based
+///   machinery.
+///
+/// The default `BlockSize` spans the entire range, clamped to
+/// `poet::kMaxStaticLoopBlock` (currently `256`), to balance unrolling with
+/// compile-time cost. Lvalue callables are preserved by reference, while
+/// rvalues are copied into a local instance for the duration of the loop.
 ///
 /// \tparam Begin Initial value of the range.
 /// \tparam End Exclusive terminator of the range.
 /// \tparam Step Increment applied between iterations (defaults to `1`).
 /// \tparam BlockSize Number of iterations expanded per block (defaults to the
-/// total iteration count, clamped to `1` for empty ranges).
-/// \tparam Func Functor exposing `template <auto I>` call operators.
-/// \param func Functor instance invoked for each iteration.
-// Variant that forwards callables that accept an integral-constant
-// parameter. This is the constexpr-friendly form: the lambda receives a
-// `std::integral_constant` and can therefore access its value in a
-// compile-time context via `decltype(arg)::value`.
-// Unified `static_for` API.
-// Prefer callables invocable with `std::integral_constant` (constexpr-friendly
-// lambdas). If the callable is not invocable that way, fall back to the
-// original adapter that wraps functors exposing `template <auto I>` call
-// operators.
+///                   total iteration count, clamped to `1` for empty ranges and
+///                   to `poet::kMaxStaticLoopBlock` for large ranges).
+/// \tparam Func Callable type.
+/// \param func Callable instance invoked once per iteration.
 template <std::intmax_t Begin, std::intmax_t End, std::intmax_t Step = 1,
           std::size_t BlockSize =
               detail::compute_default_static_loop_block_size<Begin, End, Step>(),

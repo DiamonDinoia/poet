@@ -167,12 +167,17 @@ using dispatch_result_t = typename dispatch_result<Functor, ArgumentTuple,
 ///
 /// The functor is invoked with the first template parameter combination whose
 /// values match the supplied runtime inputs. When no match exists, the functor
-/// is never invoked and a default-constructed result is returned.
+/// is never invoked and a default-constructed result is returned for
+/// non-void functors.
+///
+/// The functor must expose a templated call operator of the form
+/// `template <int... Params> Result operator()(Args...)`, where `Args...` are
+/// the runtime arguments forwarded through `dispatch`.
 ///
 /// \param functor Callable exposing `template <int...>` call operators.
 /// \param params Tuple of `DispatchParam` values describing the candidate ranges.
 /// \param args Runtime arguments forwarded to the functor upon invocation.
-/// \return The functor's result when non-void.
+/// \return The functor's result when non-void; otherwise `void`.
 /// \note When `ResultType` is `void`, the helper performs the side effects but
 ///       does not return a value.
 template <typename Functor, typename ParamTuple, typename... Args>
