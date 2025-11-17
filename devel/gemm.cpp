@@ -1,20 +1,20 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
-#include <cstdint>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <immintrin.h>
 #include <iomanip>
 #include <iostream>
 #include <poet/poet.hpp>
 #include <random>
 #include <type_traits>
 #include <vector>
-#include <cstring>
-#include <cstdlib>
-#include <immintrin.h>
 
 // Restrict macro for better vectorization
 #if defined(__GNUC__) || defined(__clang__)
@@ -82,7 +82,7 @@ struct ArchFallback {
 // Utilities
 // ------------------------
 
-template<class T> [[gnu::always_inline]] inline void scale_C(int m, int n, T beta, T * RESTRICT C, int ldc) {
+template<class T> [[gnu::always_inline]] inline void scale_C(int m, int n, T beta, T *RESTRICT C, int ldc) {
     if (beta == T(1)) return;
     if (beta == T(0)) {
         for (int i = 0; i < m; ++i) {
@@ -104,7 +104,8 @@ template<class T> [[gnu::always_inline]] inline void scale_C(int m, int n, T bet
 // Packing helpers (unused in the driver but kept for completeness)
 // ------------------------
 
-template<class T> [[gnu::always_inline]] inline void pack_A_block(int mc, int kc, const T * RESTRICT A, int lda, T * RESTRICT Atilde) {
+template<class T>
+[[gnu::always_inline]] inline void pack_A_block(int mc, int kc, const T *RESTRICT A, int lda, T *RESTRICT Atilde) {
     for (int i = 0; i < mc; ++i) {
         const T *arow = A + i * lda;
         T *out = Atilde + i * kc;
@@ -112,7 +113,8 @@ template<class T> [[gnu::always_inline]] inline void pack_A_block(int mc, int kc
     }
 }
 
-template<class T> [[gnu::always_inline]] inline void pack_B_block(int kc, int nc, const T * RESTRICT B, int ldb, T * RESTRICT Btilde) {
+template<class T>
+[[gnu::always_inline]] inline void pack_B_block(int kc, int nc, const T *RESTRICT B, int ldb, T *RESTRICT Btilde) {
     for (int p = 0; p < kc; ++p) {
         const T *brow = B + p * ldb;
         T *out = Btilde + p * nc;
@@ -126,11 +128,11 @@ template<class T> [[gnu::always_inline]] inline void pack_B_block(int kc, int nc
 
 template<class T>
 void microkernel_runtime(int kc,
-  const T * RESTRICT A_sub,
+  const T *RESTRICT A_sub,
   int lda_t,
-  const T * RESTRICT B_sub,
+  const T *RESTRICT B_sub,
   int ldb_t,
-  T * RESTRICT C_sub,
+  T *RESTRICT C_sub,
   int ldc,
   int mr,
   int nr,
@@ -187,11 +189,11 @@ void microkernel_runtime(int kc,
 
 template<int MR_max, int NR_max, class T>
 [[gnu::always_inline]] inline void microkernel_template(int kc,
-  const T * RESTRICT A_sub,
+  const T *RESTRICT A_sub,
   int lda_t,
-  const T * RESTRICT B_sub,
+  const T *RESTRICT B_sub,
   int ldb_t,
-  T * RESTRICT C_sub,
+  T *RESTRICT C_sub,
   int ldc,
   int mr,
   int nr,
@@ -224,8 +226,14 @@ template<int MR_max, int NR_max, class T>
 }
 
 template<int tMR, int tNR, class T>
-[[gnu::always_inline]] inline void
-  microkernel_fulltile(int kc, const T * RESTRICT A_sub, int lda_t, const T * RESTRICT B_sub, int ldb_t, T * RESTRICT C_sub, int ldc, T alpha) {
+[[gnu::always_inline]] inline void microkernel_fulltile(int kc,
+  const T *RESTRICT A_sub,
+  int lda_t,
+  const T *RESTRICT B_sub,
+  int ldb_t,
+  T *RESTRICT C_sub,
+  int ldc,
+  T alpha) {
     static_assert(tMR > 0 && tNR > 0, "tile sizes must be positive");
     constexpr std::size_t MRs = static_cast<std::size_t>(tMR);
     constexpr std::size_t NRs = static_cast<std::size_t>(tNR);
@@ -429,8 +437,14 @@ template<int MR_max, int NR_max, class T> struct microkernel_unroll_store_outer_
 
 // ========== NON-SIMD FULL TILE MICROKERNEL: Zero runtime branches ==========
 template<int MR, int NR, class T>
-[[gnu::always_inline]] inline void
-  microkernel_unroll_full(int kc, const T * RESTRICT A_sub, int lda_t, const T * RESTRICT B_sub, int ldb_t, T * RESTRICT C_sub, int ldc, T alpha) {
+[[gnu::always_inline]] inline void microkernel_unroll_full(int kc,
+  const T *RESTRICT A_sub,
+  int lda_t,
+  const T *RESTRICT B_sub,
+  int ldb_t,
+  T *RESTRICT C_sub,
+  int ldc,
+  T alpha) {
     static_assert(MR > 0 && NR > 0, "tile sizes must be positive");
     constexpr std::size_t MRs = static_cast<std::size_t>(MR);
     constexpr std::size_t NRs = static_cast<std::size_t>(NR);
@@ -456,11 +470,11 @@ template<int MR, int NR, class T>
 // ========== NON-SIMD PARTIAL TILE MICROKERNEL: Simple fallback for tails ==========
 template<int MR, int NR, class T>
 [[gnu::always_inline]] inline void microkernel_unroll_partial(int kc,
-  const T * RESTRICT A_sub,
+  const T *RESTRICT A_sub,
   int lda_t,
-  const T * RESTRICT B_sub,
+  const T *RESTRICT B_sub,
   int ldb_t,
-  T * RESTRICT C_sub,
+  T *RESTRICT C_sub,
   int ldc,
   int mr,
   int nr,
@@ -707,11 +721,11 @@ template<typename T>
 
 template<class T> struct gemm_static_functor {
     int M, N, K;
-    const T * RESTRICT A;
+    const T *RESTRICT A;
     int lda;
-    const T * RESTRICT B;
+    const T *RESTRICT B;
     int ldb;
-    T * RESTRICT C;
+    T *RESTRICT C;
     int ldc;
     T alpha;
     T beta;
@@ -721,15 +735,15 @@ template<class T> struct gemm_static_functor {
 
         scale_C(M, N, beta, C, ldc);
 
-    // Reserve buffers once (reuse with resize).
-    // Note: xsimd aligned allocator removed; use plain vectors here.
-    std::vector<T> Bpanel;
-    std::vector<T> Apanel;
-    Bpanel.reserve(static_cast<size_t>(tKC) * static_cast<size_t>(tNC));
-    Apanel.reserve(static_cast<size_t>(tMC) * static_cast<size_t>(tKC));
+        // Reserve buffers once (reuse with resize).
+        // Note: xsimd aligned allocator removed; use plain vectors here.
+        std::vector<T> Bpanel;
+        std::vector<T> Apanel;
+        Bpanel.reserve(static_cast<size_t>(tKC) * static_cast<size_t>(tNC));
+        Apanel.reserve(static_cast<size_t>(tMC) * static_cast<size_t>(tKC));
 
-    // Packed-only execution path: always pack B and A once per slab. Removed
-    // runtime profiling hooks so the binary focuses on the single fastest configuration.
+        // Packed-only execution path: always pack B and A once per slab. Removed
+        // runtime profiling hooks so the binary focuses on the single fastest configuration.
 
         for (int jc = 0; jc < N; jc += tNC) {
             const int nc = std::min(tNC, N - jc);
@@ -779,7 +793,7 @@ template<class T> struct gemm_static_functor {
                         const int nr_tail = nc - nc_full;
                         const T *Bsub;
                         int ldb_t;
-                        if constexpr (std::is_same<T,float>::value) {
+                        if constexpr (std::is_same<T, float>::value) {
                             Bsub = Bpanel.data() + static_cast<size_t>(nc_full) * static_cast<size_t>(tKC);
                             ldb_t = tKC;
                         } else {
@@ -789,7 +803,8 @@ template<class T> struct gemm_static_functor {
                         for (int ir = 0; ir < mc_full; ir += tMR) {
                             const T *Asub = Apanel.data() + static_cast<size_t>(ir) * static_cast<size_t>(tKC);
                             T *Cblk = C + (ic + ir) * ldc + (jc + nc_full);
-                            microkernel_unroll_partial<tMR, tNR, T>(kc, Asub, tKC, Bsub, ldb_t, Cblk, ldc, tMR, nr_tail, alpha);
+                            microkernel_unroll_partial<tMR, tNR, T>(
+                              kc, Asub, tKC, Bsub, ldb_t, Cblk, ldc, tMR, nr_tail, alpha);
                         }
                     }
 
@@ -799,7 +814,7 @@ template<class T> struct gemm_static_functor {
                         const int nr_tail = nc - nc_full;
                         const T *Bsub;
                         int ldb_t;
-                        if constexpr (std::is_same<T,float>::value) {
+                        if constexpr (std::is_same<T, float>::value) {
                             Bsub = Bpanel.data() + static_cast<size_t>(nc_full) * static_cast<size_t>(tKC);
                             ldb_t = tKC;
                         } else {
@@ -808,7 +823,8 @@ template<class T> struct gemm_static_functor {
                         }
                         const T *Asub = Apanel.data() + static_cast<size_t>(mc_full) * static_cast<size_t>(tKC);
                         T *Cblk = C + (ic + mc_full) * ldc + (jc + nc_full);
-                        microkernel_unroll_partial<tMR, tNR, T>(kc, Asub, tKC, Bsub, ldb_t, Cblk, ldc, mr_tail, nr_tail, alpha);
+                        microkernel_unroll_partial<tMR, tNR, T>(
+                          kc, Asub, tKC, Bsub, ldb_t, Cblk, ldc, mr_tail, nr_tail, alpha);
                     }
                 }
             }
@@ -818,11 +834,11 @@ template<class T> struct gemm_static_functor {
 
 template<class T> struct gemm_static_unroll_functor {
     int M, N, K;
-    const T * RESTRICT A;
+    const T *RESTRICT A;
     int lda;
-    const T * RESTRICT B;
+    const T *RESTRICT B;
     int ldb;
-    T * RESTRICT C;
+    T *RESTRICT C;
     int ldc;
     T alpha;
     T beta;
@@ -832,15 +848,15 @@ template<class T> struct gemm_static_unroll_functor {
 
         scale_C(M, N, beta, C, ldc);
 
-    // Reserve buffers once (reuse with resize)
-    std::vector<T> Bpanel;
-    std::vector<T> Apanel;
-    Bpanel.reserve(static_cast<size_t>(tKC) * static_cast<size_t>(tNC));
-    Apanel.reserve(static_cast<size_t>(tMC) * static_cast<size_t>(tKC));
+        // Reserve buffers once (reuse with resize)
+        std::vector<T> Bpanel;
+        std::vector<T> Apanel;
+        Bpanel.reserve(static_cast<size_t>(tKC) * static_cast<size_t>(tNC));
+        Apanel.reserve(static_cast<size_t>(tMC) * static_cast<size_t>(tKC));
 
-// Unrolled static functor removed: keeping only core packed/static functor
-// and runtime/dispatch entry points. The unrolled dispatch variant is
-// omitted per request to keep only naive, packed, and dispatch paths.
+        // Unrolled static functor removed: keeping only core packed/static functor
+        // and runtime/dispatch entry points. The unrolled dispatch variant is
+        // omitted per request to keep only naive, packed, and dispatch paths.
 
         for (int jc = 0; jc < N; jc += tNC) {
             const int nc = std::min(tNC, N - jc);
@@ -892,7 +908,8 @@ template<class T> struct gemm_static_unroll_functor {
                         for (int ir = 0; ir < mc_full; ir += tMR) {
                             const T *Asub = Apanel.data() + static_cast<size_t>(ir) * static_cast<size_t>(tKC);
                             T *Cblk = C + (ic + ir) * ldc + (jc + nc_full);
-                            microkernel_unroll_partial<tMR, tNR, T>(kc, Asub, tKC, Bsub, tNC, Cblk, ldc, tMR, nr_tail, alpha);
+                            microkernel_unroll_partial<tMR, tNR, T>(
+                              kc, Asub, tKC, Bsub, tNC, Cblk, ldc, tMR, nr_tail, alpha);
                         }
                     }
 
@@ -903,7 +920,8 @@ template<class T> struct gemm_static_unroll_functor {
                         const T *Bsub = Bpanel.data() + nc_full;
                         const T *Asub = Apanel.data() + static_cast<size_t>(mc_full) * static_cast<size_t>(tKC);
                         T *Cblk = C + (ic + mc_full) * ldc + (jc + nc_full);
-                        microkernel_unroll_partial<tMR, tNR, T>(kc, Asub, tKC, Bsub, tNC, Cblk, ldc, mr_tail, nr_tail, alpha);
+                        microkernel_unroll_partial<tMR, tNR, T>(
+                          kc, Asub, tKC, Bsub, tNC, Cblk, ldc, mr_tail, nr_tail, alpha);
                     }
                 }
             }
@@ -922,21 +940,21 @@ template<class T> struct gemm_static_unroll_functor {
 
 template<class T>
 [[gnu::flatten]] [[gnu::noinline]] inline void gemm_dispatch(int M,
-    int N,
-    int K,
-    const T * RESTRICT A,
-    int lda,
-    const T * RESTRICT B,
-    int ldb,
-    T * RESTRICT C,
-    int ldc,
-    T alpha = T(1),
-    T beta = T(1),
-    int MR = 6,
-    int NR = 16,
-    int KC = 256,
-    int MC = 480,
-    int NC = 2048) {
+  int N,
+  int K,
+  const T *RESTRICT A,
+  int lda,
+  const T *RESTRICT B,
+  int ldb,
+  T *RESTRICT C,
+  int ldc,
+  T alpha = T(1),
+  T beta = T(1),
+  int MR = 6,
+  int NR = 16,
+  int KC = 256,
+  int MC = 480,
+  int NC = 2048) {
     // MINIMAL dispatch for fast compilation - single optimal configuration
     using mr_choices = std::integer_sequence<int, 6>;
     using nr_choices = std::integer_sequence<int, 8>;
@@ -956,27 +974,27 @@ template<class T>
 
 template<class T>
 [[gnu::flatten]] [[gnu::noinline]] inline void gemm_dispatch_unroll(int M,
-    int N,
-    int K,
-    const T * RESTRICT A,
-    int lda,
-    const T * RESTRICT B,
-    int ldb,
-    T * RESTRICT C,
-    int ldc,
-    T alpha = T(1),
-    T beta = T(1),
-    int MR = 6,
-    int NR = 16,
-    int KC = 256,
-    int MC = 480,
-    int NC = 2048) {
-        // MINIMAL dispatch for fast compilation - single optimal configuration
-        using mr_choices = std::integer_sequence<int, 6>;
-        using nr_choices = std::integer_sequence<int, 8>;
-        using kc_choices = std::integer_sequence<int, 256>;
-        using mc_choices = std::integer_sequence<int, 480>;
-        using nc_choices = std::integer_sequence<int, 2048>;
+  int N,
+  int K,
+  const T *RESTRICT A,
+  int lda,
+  const T *RESTRICT B,
+  int ldb,
+  T *RESTRICT C,
+  int ldc,
+  T alpha = T(1),
+  T beta = T(1),
+  int MR = 6,
+  int NR = 16,
+  int KC = 256,
+  int MC = 480,
+  int NC = 2048) {
+    // MINIMAL dispatch for fast compilation - single optimal configuration
+    using mr_choices = std::integer_sequence<int, 6>;
+    using nr_choices = std::integer_sequence<int, 8>;
+    using kc_choices = std::integer_sequence<int, 256>;
+    using mc_choices = std::integer_sequence<int, 480>;
+    using nc_choices = std::integer_sequence<int, 2048>;
 
     auto params = std::make_tuple(poet::DispatchParam<mr_choices>{ MR },
       poet::DispatchParam<nr_choices>{ NR },
@@ -992,11 +1010,11 @@ template<class T>
 void gemm(int M,
   int N,
   int K,
-  const T * RESTRICT A,
+  const T *RESTRICT A,
   int lda,
-  const T * RESTRICT B,
+  const T *RESTRICT B,
   int ldb,
-  T * RESTRICT C,
+  T *RESTRICT C,
   int ldc,
   T alpha = T(1),
   T beta = T(1),
@@ -1010,7 +1028,7 @@ void gemm(int M,
     assert(lda >= std::max(1, K));
     assert(ldb >= std::max(1, N));
     assert(ldc >= std::max(1, N));
-/*  */
+    /*  */
     // Optional: scale C by beta once
     scale_C(M, N, beta, C, ldc);
 
@@ -1060,11 +1078,11 @@ template<class T>
 [[gnu::flatten]] [[gnu::noinline]] inline void gemm_runtime(int M,
   int N,
   int K,
-  const T * RESTRICT A,
+  const T *RESTRICT A,
   int lda,
-  const T * RESTRICT B,
+  const T *RESTRICT B,
   int ldb,
-  T * RESTRICT C,
+  T *RESTRICT C,
   int ldc,
   T alpha = T(1),
   T beta = T(1),
@@ -1089,11 +1107,11 @@ template<class T>
 [[gnu::flatten]] [[gnu::noinline]] inline void gemm_naive(int M,
   int N,
   int K,
-  const T * RESTRICT A,
+  const T *RESTRICT A,
   int lda,
-  const T * RESTRICT B,
+  const T *RESTRICT B,
   int ldb,
-  T * RESTRICT C,
+  T *RESTRICT C,
   int ldc,
   T alpha = T(1),
   T beta = T(1)) {
@@ -1162,106 +1180,107 @@ template<typename U> [[gnu::always_inline]] inline static long double compute_ch
 }
 
 int main() {
-        const int M = 1024 / 2;
-        const int N = 1024 / 2;
-        const int K = 1024 / 2;
-        const int repeats = 5;
+    const int M = 1024 / 2;
+    const int N = 1024 / 2;
+    const int K = 1024 / 2;
+    const int repeats = 5;
 
-        // Allocate inputs and result buffers for all variants so we can compare
-        std::vector<T> A(static_cast<size_t>(M) * static_cast<size_t>(K), 0);
-        std::vector<T> B(static_cast<size_t>(K) * static_cast<size_t>(N), 0);
-        std::vector<T> C_naive(static_cast<size_t>(M) * static_cast<size_t>(N), 0);
-        std::vector<T> C_packed(static_cast<size_t>(M) * static_cast<size_t>(N), 0);
-        std::vector<T> C_dispatch(static_cast<size_t>(M) * static_cast<size_t>(N), 0);
+    // Allocate inputs and result buffers for all variants so we can compare
+    std::vector<T> A(static_cast<size_t>(M) * static_cast<size_t>(K), 0);
+    std::vector<T> B(static_cast<size_t>(K) * static_cast<size_t>(N), 0);
+    std::vector<T> C_naive(static_cast<size_t>(M) * static_cast<size_t>(N), 0);
+    std::vector<T> C_packed(static_cast<size_t>(M) * static_cast<size_t>(N), 0);
+    std::vector<T> C_dispatch(static_cast<size_t>(M) * static_cast<size_t>(N), 0);
 
-        // Initialize A and B deterministically so checksums are repeatable
-        std::mt19937 rng(42);
-        std::uniform_real_distribution<T> dist(T(-1.0), T(1.0));
-        for (size_t i = 0; i < A.size(); ++i) A[i] = dist(rng);
-        for (size_t i = 0; i < B.size(); ++i) B[i] = dist(rng);
+    // Initialize A and B deterministically so checksums are repeatable
+    std::mt19937 rng(42);
+    std::uniform_real_distribution<T> dist(T(-1.0), T(1.0));
+    for (size_t i = 0; i < A.size(); ++i) A[i] = dist(rng);
+    for (size_t i = 0; i < B.size(); ++i) B[i] = dist(rng);
 
-        T alpha = T(1.0);
-        T beta = T(0.0);
+    T alpha = T(1.0);
+    T beta = T(0.0);
 
-        // Define run_once lambdas for each variant
-        auto naive_run_once = [&]() {
-                blis_like::gemm_naive<T>(M, N, K, A.data(), K, B.data(), N, C_naive.data(), N, alpha, beta);
-        };
-        auto naive_checksum = [&]() -> long double { return compute_checksum(C_naive); };
+    // Define run_once lambdas for each variant
+    auto naive_run_once = [&]() {
+        blis_like::gemm_naive<T>(M, N, K, A.data(), K, B.data(), N, C_naive.data(), N, alpha, beta);
+    };
+    auto naive_checksum = [&]() -> long double { return compute_checksum(C_naive); };
 
-        auto packed_run_once = [&]() {
-                blis_like::gemm_runtime<T>(M,
-                    N,
-                    K,
-                    A.data(),
-                    K,
-                    B.data(),
-                    N,
-                    C_packed.data(),
-                    N,
-                    alpha,
-                    beta,
-                    ArchIntelUltra7155H::MR,
-                    ArchIntelUltra7155H::NR,
-                    ArchIntelUltra7155H::KC,
-                    ArchIntelUltra7155H::MC,
-                    ArchIntelUltra7155H::NC);
-        };
-        auto packed_checksum = [&]() -> long double { return compute_checksum(C_packed); };
+    auto packed_run_once = [&]() {
+        blis_like::gemm_runtime<T>(M,
+          N,
+          K,
+          A.data(),
+          K,
+          B.data(),
+          N,
+          C_packed.data(),
+          N,
+          alpha,
+          beta,
+          ArchIntelUltra7155H::MR,
+          ArchIntelUltra7155H::NR,
+          ArchIntelUltra7155H::KC,
+          ArchIntelUltra7155H::MC,
+          ArchIntelUltra7155H::NC);
+    };
+    auto packed_checksum = [&]() -> long double { return compute_checksum(C_packed); };
 
-        auto dispatch_run_once = [&]() {
-                blis_like::gemm_dispatch<T>(M,
-                    N,
-                    K,
-                    A.data(),
-                    K,
-                    B.data(),
-                    N,
-                    C_dispatch.data(),
-                    N,
-                    alpha,
-                    beta,
-                    ArchIntelUltra7155H::MR,
-                    ArchIntelUltra7155H::NR,
-                    ArchIntelUltra7155H::KC,
-                    ArchIntelUltra7155H::MC,
-                    ArchIntelUltra7155H::NC);
-        };
-        auto dispatch_checksum = [&]() -> long double { return compute_checksum(C_dispatch); };
+    auto dispatch_run_once = [&]() {
+        blis_like::gemm_dispatch<T>(M,
+          N,
+          K,
+          A.data(),
+          K,
+          B.data(),
+          N,
+          C_dispatch.data(),
+          N,
+          alpha,
+          beta,
+          ArchIntelUltra7155H::MR,
+          ArchIntelUltra7155H::NR,
+          ArchIntelUltra7155H::KC,
+          ArchIntelUltra7155H::MC,
+          ArchIntelUltra7155H::NC);
+    };
+    auto dispatch_checksum = [&]() -> long double { return compute_checksum(C_dispatch); };
 
     // dispatch_unroll benchmark removed per request
 
 
-        // Run benchmarks
-        BenchmarkResult naive_res = run_gemm_benchmark("naive", repeats, naive_run_once, naive_checksum);
-        BenchmarkResult packed_res = run_gemm_benchmark("packed", repeats, packed_run_once, packed_checksum);
-        BenchmarkResult dispatch_res = run_gemm_benchmark("dispatch", repeats, dispatch_run_once, dispatch_checksum);
+    // Run benchmarks
+    BenchmarkResult naive_res = run_gemm_benchmark("naive", repeats, naive_run_once, naive_checksum);
+    BenchmarkResult packed_res = run_gemm_benchmark("packed", repeats, packed_run_once, packed_checksum);
+    BenchmarkResult dispatch_res = run_gemm_benchmark("dispatch", repeats, dispatch_run_once, dispatch_checksum);
     // dispatch_unroll benchmark removed per request
-        // xsimd variant removed: dispatch_unroll_xsimd benchmark omitted
+    // xsimd variant removed: dispatch_unroll_xsimd benchmark omitted
 
-        // Compute GFLOPS
-        const double flops = 2.0 * double(M) * double(N) * double(K);
-        const double gflops_naive = naive_res.avg_seconds > 0.0 ? (flops / naive_res.avg_seconds / 1e9) : 0.0;
-        const double gflops_packed = packed_res.avg_seconds > 0.0 ? (flops / packed_res.avg_seconds / 1e9) : 0.0;
-        const double gflops_dispatch = dispatch_res.avg_seconds > 0.0 ? (flops / dispatch_res.avg_seconds / 1e9) : 0.0;
+    // Compute GFLOPS
+    const double flops = 2.0 * double(M) * double(N) * double(K);
+    const double gflops_naive = naive_res.avg_seconds > 0.0 ? (flops / naive_res.avg_seconds / 1e9) : 0.0;
+    const double gflops_packed = packed_res.avg_seconds > 0.0 ? (flops / packed_res.avg_seconds / 1e9) : 0.0;
+    const double gflops_dispatch = dispatch_res.avg_seconds > 0.0 ? (flops / dispatch_res.avg_seconds / 1e9) : 0.0;
     // unroll GFLOPS omitted
 
-        // Print concise results
-        std::cout << "M=" << M << " N=" << N << " K=" << K << " repeats=" << repeats << '\n';
+    // Print concise results
+    std::cout << "M=" << M << " N=" << N << " K=" << K << " repeats=" << repeats << '\n';
 
-        auto print_result = [&](const BenchmarkResult &r, const std::string &label, double gflops) {
-                std::cout << '[' << label << "]  avg time (s): " << std::fixed << std::setprecision(6) << r.avg_seconds
-                                    << "  total time (s): " << r.total_seconds << "  GFLOPS: " << gflops
-                                    << "  checksum: " << std::setprecision(10) << r.checksum << '\n';
-        };
+    auto print_result = [&](const BenchmarkResult &r, const std::string &label, double gflops) {
+        std::cout << '[' << label << "]  avg time (s): " << std::fixed << std::setprecision(6) << r.avg_seconds
+                  << "  total time (s): " << r.total_seconds << "  GFLOPS: " << gflops
+                  << "  checksum: " << std::setprecision(10) << r.checksum << '\n';
+    };
 
-        print_result(naive_res, "naive", gflops_naive);
-        print_result(packed_res, "packed", gflops_packed);
-        print_result(dispatch_res, "dispatch", gflops_dispatch);
+    print_result(naive_res, "naive", gflops_naive);
+    print_result(packed_res, "packed", gflops_packed);
+    print_result(dispatch_res, "dispatch", gflops_dispatch);
 
-        // Print some simple speedup ratios
-        const double speedup_packed_over_naive = (packed_res.avg_seconds > 0.0) ? (naive_res.avg_seconds / packed_res.avg_seconds) : 0.0;
-        std::cout << "speedup packed/naive: " << std::fixed << std::setprecision(3) << speedup_packed_over_naive << "x\n";
+    // Print some simple speedup ratios
+    const double speedup_packed_over_naive =
+      (packed_res.avg_seconds > 0.0) ? (naive_res.avg_seconds / packed_res.avg_seconds) : 0.0;
+    std::cout << "speedup packed/naive: " << std::fixed << std::setprecision(3) << speedup_packed_over_naive << "x\n";
 
-        return 0;
+    return 0;
 }

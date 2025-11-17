@@ -26,6 +26,7 @@ struct offset_sequence<Offset, std::integer_sequence<int, Values...>> {
 
 }  // namespace poet::detail
 
+// Public alias that composes the offset with an integer sequence.
 template <int Start, int End>
 using make_range = typename detail::offset_sequence<
     Start, std::make_integer_sequence<int, End - Start + 1>>::type;

@@ -7,9 +7,9 @@
 #include <vector>
 
 namespace {
-using poet::compute_range_count;
-using poet::compute_default_static_loop_block_size;
-using poet::kMaxStaticLoopBlock;
+using poet::detail::compute_range_count;
+using poet::detail::kMaxStaticLoopBlock;
+using poet::detail::compute_default_static_loop_block_size;
 
 constexpr std::size_t kForwardBlockSize = 2;
 static_assert(kForwardBlockSize <= kMaxStaticLoopBlock,
@@ -55,7 +55,7 @@ static_assert(compute_default_static_loop_block_size<
 
 constexpr std::array<int, 4> enumerate_forward() {
   std::array<int, 4> values{};
-  poet::static_loop<0, 4, 1, kForwardBlockSize>(
+  poet::detail::static_loop<0, 4, 1, kForwardBlockSize>(
       [&values](auto index_constant) {
     const auto index = static_cast<std::size_t>(index_constant);
     values[index] = static_cast<int>(index);
@@ -65,7 +65,7 @@ constexpr std::array<int, 4> enumerate_forward() {
 
 constexpr std::array<int, 4> enumerate_forward_with_defaults() {
   std::array<int, 4> values{};
-  poet::static_loop<0, 4>([&values](auto index_constant) {
+  poet::detail::static_loop<0, 4>([&values](auto index_constant) {
     const auto index = static_cast<std::size_t>(index_constant);
     values[index] = static_cast<int>(index + 1);
   });
@@ -74,7 +74,7 @@ constexpr std::array<int, 4> enumerate_forward_with_defaults() {
 
 constexpr std::array<int, 5> enumerate_with_remainder() {
   std::array<int, 5> values{};
-  poet::static_loop<0, 5, 1, kRemainderBlockSize>(
+  poet::detail::static_loop<0, 5, 1, kRemainderBlockSize>(
       [&values](auto index_constant) {
     const auto index = static_cast<std::size_t>(index_constant);
     values[index] = static_cast<int>(index + 1);
@@ -214,7 +214,7 @@ static_assert(incremented[3] == 4);
 
 TEST_CASE("static_loop emits descending sequences at runtime", "[static_for][loop]") {
   std::vector<int> values;
-  poet::static_loop<3, -1, -1, kForwardBlockSize>(
+  poet::detail::static_loop<3, -1, -1, kForwardBlockSize>(
       [&values](auto index_constant) {
     values.push_back(static_cast<int>(index_constant));
   });

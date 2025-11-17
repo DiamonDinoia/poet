@@ -7,6 +7,7 @@
 #include <utility>
 
 #include <poet/core/static_for.hpp>
+#include <poet/core/static_dispatch.hpp>
 
 namespace poet {
 
@@ -24,29 +25,30 @@ struct dynamic_block_invoker {
 };
 
 template <typename Func, std::size_t BlockSize>
-inline void execute_runtime_block(Func &func, std::size_t base) {
+inline void execute_runtime_block([[maybe_unused]] Func &func,
+                                  [[maybe_unused]] std::size_t base) {
   if constexpr (BlockSize > 0) {
     dynamic_block_invoker<Func> invoker{func, base};
     static_for<0, static_cast<std::intmax_t>(BlockSize), 1, BlockSize>(
         invoker);
   } else {
-    (void)func;
-    (void)base;
+    // Nothing to do when the block size is zero.
   }
 }
 
-template <typename Func, std::size_t Tail>
-inline void dispatch_tail(Func &func, std::size_t base, std::size_t count) {
-  if (count == Tail) {
-    execute_runtime_block<Func, Tail>(func, base);
-  } else if constexpr (Tail > 0) {
-    dispatch_tail<Func, Tail - 1>(func, base, count);
-  } else {
-    (void)func;
-    (void)base;
-    (void)count;
+// Helper functor used by dynamic_for to dispatch tail sizes. It must live at
+// namespace scope because local classes are not allowed to declare member
+// templates in C++.
+template <typename Callable>
+struct tail_caller_for_dynamic_for {
+  Callable &callable;
+
+  template <int Tail>
+  void operator()(std::size_t base) const {
+    execute_runtime_block<Callable, static_cast<std::size_t>(Tail)>(
+        callable, base);
   }
-}
+};
 
 } // namespace poet::detail
 
@@ -69,19 +71,18 @@ inline void dispatch_tail(Func &func, std::size_t base, std::size_t count) {
 template <std::size_t Unroll = 8, typename Func>
 inline void dynamic_for(std::size_t begin, std::size_t end, Func &&func) {
   static_assert(Unroll > 0, "dynamic_for requires Unroll > 0");
-  static_assert(Unroll <= kMaxStaticLoopBlock,
+  static_assert(Unroll <= detail::kMaxStaticLoopBlock,
                 "dynamic_for supports unroll factors up to kMaxStaticLoopBlock");
 
   using Callable = std::remove_reference_t<Func>;
-  Callable callable(std::forward<Func>(func));
+  [[maybe_unused]] Callable callable(std::forward<Func>(func));
 
   if (end <= begin) {
-    (void)callable;
     return;
   }
 
   std::size_t index = begin;
-  std::size_t remaining = end - begin;
+  [[maybe_unused]] std::size_t remaining = end - begin;
 
   while (remaining >= Unroll) {
     detail::execute_runtime_block<Callable, Unroll>(callable, index);
@@ -91,10 +92,19 @@ inline void dynamic_for(std::size_t begin, std::size_t end, Func &&func) {
 
   if constexpr (Unroll > 1) {
     if (remaining > 0) {
-      detail::dispatch_tail<Callable, Unroll - 1>(callable, index, remaining);
+      // Use the generic poet::dispatch machinery to dispatch the tail size
+      // to a compile-time template parameter. This builds a single
+      // DispatchParam describing the candidate tail sizes [0, Unroll-1] and
+      // forwards the runtime base index to the TailCaller functor.
+      detail::tail_caller_for_dynamic_for<Callable> tail_caller{callable};
+
+      using TailRange = poet::make_range<0, (static_cast<int>(Unroll) - 1)>;
+      auto params = std::make_tuple(poet::DispatchParam<TailRange>{
+          static_cast<int>(remaining)});
+      poet::dispatch(tail_caller, params, index);
     }
   } else {
-    (void)remaining;
+    // When Unroll == 1 the `remaining` variable is unused.
   }
 }
 

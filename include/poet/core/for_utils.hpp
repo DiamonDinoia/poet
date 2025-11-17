@@ -9,22 +9,10 @@
 
 namespace poet {
 
+namespace detail {
+
 inline constexpr std::size_t kMaxStaticLoopBlock = 256;
 
-/// \brief Computes the number of elements produced by a compile-time range.
-///
-/// The resulting count corresponds to the number of iterations performed by a
-/// loop starting at `Begin`, repeatedly adding `Step`, and stopping before
-/// reaching `End`. Positive and negative step values are supported as long as
-/// the range progresses toward the end point.
-///
-/// \tparam Begin The initial value of the range.
-/// \tparam End The exclusive terminator of the range.
-/// \tparam Step The increment applied after each iteration.
-/// \return The number of steps required to reach the end of the range.
-/// \throws Nothing.
-/// \note Attempts to use a zero step or a step that cannot reach the end will
-/// trigger a compile-time diagnostic.
 template <std::intmax_t Begin, std::intmax_t End, std::intmax_t Step>
 [[nodiscard]] constexpr std::size_t compute_range_count() noexcept {
   static_assert(Step != 0, "static_for requires a non-zero step");
@@ -48,8 +36,6 @@ template <std::intmax_t Begin, std::intmax_t End, std::intmax_t Step>
     return static_cast<std::size_t>((distance + magnitude - 1) / magnitude);
   }
 }
-
-namespace detail {
 
 template <typename Func, std::intmax_t Begin, std::intmax_t Step,
           std::size_t StartIndex, std::size_t... Is>
@@ -115,6 +101,16 @@ struct template_static_loop_invoker {
 };
 
 } // namespace poet::detail
+
+// --- Public compatibility wrappers ---
+
+// Preserve the previously exported constant for downstream consumers.
+inline constexpr std::size_t kMaxStaticLoopBlock = detail::kMaxStaticLoopBlock;
+
+template <std::intmax_t Begin, std::intmax_t End, std::intmax_t Step>
+[[nodiscard]] constexpr std::size_t compute_range_count() noexcept {
+  return detail::compute_range_count<Begin, End, Step>();
+}
 
 } // namespace poet
 

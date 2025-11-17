@@ -6,6 +6,8 @@
 #include <numeric>
 #include <vector>
 
+using poet::detail::kMaxStaticLoopBlock;
+
 TEST_CASE("dynamic_for handles divisible counts", "[dynamic_for]") {
   std::vector<std::size_t> visited;
   poet::dynamic_for<4>(0U, 16U, [&visited](std::size_t index) {
@@ -75,7 +77,7 @@ TEST_CASE("dynamic_for honours custom unroll factors", "[dynamic_for]") {
 }
 
 TEST_CASE("dynamic_for supports the maximum unroll factor", "[dynamic_for]") {
-  constexpr std::size_t kMaxUnroll = poet::kMaxStaticLoopBlock;
+  constexpr std::size_t kMaxUnroll = kMaxStaticLoopBlock;
   std::vector<std::size_t> visited;
   const std::size_t begin = 11U;
   const std::size_t end = begin + kMaxUnroll;
