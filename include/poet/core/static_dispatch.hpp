@@ -6,6 +6,9 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <variant>
+#include <optional>
+#include <functional>
 
 namespace poet {
 
@@ -45,63 +48,35 @@ struct DispatchParam {
 
 namespace detail {
 
-template <typename Functor, typename... Seq>
-struct cartesian_product;
+// Helper to extract the minimum value from a sequence
+template <typename Sequence>
+struct sequence_min;
 
-template <typename Functor, int... HeadValues, typename Seq, typename... Tail>
-struct cartesian_product<Functor, std::integer_sequence<int, HeadValues...>, Seq,
-                         Tail...> {
-  template <int... Prefix>
-  static void apply(Functor &functor) {
-    (cartesian_product<Functor, Seq, Tail...>::template apply<Prefix..., HeadValues>(
-         functor),
-     ...);
-  }
-};
+template <int First, int... Rest>
+struct sequence_min<std::integer_sequence<int, First, Rest...>>
+    : std::integral_constant<int, First> {};
 
-template <typename Functor, int... HeadValues>
-struct cartesian_product<Functor, std::integer_sequence<int, HeadValues...>> {
-  template <int... Prefix>
-  static void apply(Functor &functor) {
-    (functor.template operator()<Prefix..., HeadValues>(), ...);
-  }
-};
+// Helper to extract the maximum value from a sequence
+template <typename Sequence>
+struct sequence_max;
 
-template <typename Functor, typename... Seq>
-void product(Functor &functor, Seq...) {
-  cartesian_product<Functor, Seq...>::template apply<>(functor);
-}
+template <int First>
+struct sequence_max<std::integer_sequence<int, First>>
+    : std::integral_constant<int, First> {};
 
-template <typename Functor, std::size_t N, typename ArgumentTuple,
-          typename ResultType>
-struct dispatcher_caller {
-  Functor &functor;
-  const std::array<int, N> &runtime_values;
-  ArgumentTuple &arguments;
-  std::conditional_t<std::is_void_v<ResultType>, char, ResultType> result{};
+template <int First, int Second, int... Rest>
+struct sequence_max<std::integer_sequence<int, First, Second, Rest...>>
+    : std::integral_constant<int, (First > sequence_max<std::integer_sequence<int, Second, Rest...>>::value
+                                   ? First
+                                   : sequence_max<std::integer_sequence<int, Second, Rest...>>::value)> {};
 
-  template <int... Params>
-  void operator()() {
-    static constexpr std::array<int, sizeof...(Params)> probe{Params...};
-    if (probe == runtime_values) {
-      if constexpr (std::is_void_v<ResultType>) {
-        std::apply(
-            [&](auto &&...args) {
-              functor.template operator()<Params...>(
-                  std::forward<decltype(args)>(args)...);
-            },
-            arguments);
-      } else {
-        result = std::apply(
-            [&](auto &&...args) {
-              return functor.template operator()<Params...>(
-                  std::forward<decltype(args)>(args)...);
-            },
-            arguments);
-      }
-    }
-  }
-};
+// Helper to compute the size of a sequence
+template <typename Sequence>
+struct sequence_size;
+
+template <int... Values>
+struct sequence_size<std::integer_sequence<int, Values...>>
+    : std::integral_constant<std::size_t, sizeof...(Values)> {};
 
 template <typename Sequence>
 struct sequence_first;
@@ -161,14 +136,133 @@ template <typename Functor, typename ArgumentTuple, typename SequenceTuple>
 using dispatch_result_t = typename dispatch_result<Functor, ArgumentTuple,
                                                    SequenceTuple>::type;
 
+// O(1) dispatcher using array-based lookup
+template <typename Functor, typename ArgumentTuple, typename ResultType, typename... Seq>
+struct array_dispatcher {
+  static constexpr std::size_t table_size = (sequence_size<Seq>::value * ...);
+
+  using function_type = std::conditional_t<std::is_void_v<ResultType>,
+                                           std::function<void()>,
+                                           std::function<ResultType()>>;
+
+  // Compute index from compile-time parameters
+  template <int... Params>
+  static constexpr std::size_t param_index() {
+    return param_index_impl<0, Params...>();
+  }
+
+  template <std::size_t Idx, int Param, int... Rest>
+  static constexpr std::size_t param_index_impl() {
+    using CurrentSeq = std::tuple_element_t<Idx, std::tuple<Seq...>>;
+    constexpr int min_val = sequence_min<CurrentSeq>::value;
+    constexpr std::size_t offset = static_cast<std::size_t>(Param - min_val);
+
+    if constexpr (sizeof...(Rest) > 0) {
+      constexpr std::size_t stride = remaining_product<Idx + 1>();
+      return offset * stride + param_index_impl<Idx + 1, Rest...>();
+    } else {
+      return offset;
+    }
+  }
+
+  template <std::size_t StartIdx>
+  static constexpr std::size_t remaining_product() {
+    return remaining_product_impl<StartIdx>(std::make_index_sequence<sizeof...(Seq) - StartIdx>{});
+  }
+
+  template <std::size_t StartIdx, std::size_t... Is>
+  static constexpr std::size_t remaining_product_impl(std::index_sequence<Is...>) {
+    return (sequence_size<std::tuple_element_t<StartIdx + Is, std::tuple<Seq...>>>::value * ...);
+  }
+
+  // Compute index from runtime values
+  static std::optional<std::size_t> runtime_index(const std::array<int, sizeof...(Seq)>& runtime_vals) {
+    return runtime_index_impl<0>(runtime_vals);
+  }
+
+  template <std::size_t Idx>
+  static std::optional<std::size_t> runtime_index_impl(const std::array<int, sizeof...(Seq)>& vals) {
+    if constexpr (Idx >= sizeof...(Seq)) {
+      return 0;
+    } else {
+      using CurrentSeq = std::tuple_element_t<Idx, std::tuple<Seq...>>;
+      constexpr int min_val = sequence_min<CurrentSeq>::value;
+      constexpr int max_val = sequence_max<CurrentSeq>::value;
+      const int val = vals[Idx];
+
+      if (val < min_val || val > max_val) {
+        return std::nullopt;
+      }
+
+      const std::size_t offset = static_cast<std::size_t>(val - min_val);
+
+      if constexpr (Idx + 1 < sizeof...(Seq)) {
+        auto rest = runtime_index_impl<Idx + 1>(vals);
+        if (!rest) {
+          return std::nullopt;
+        }
+        constexpr std::size_t stride = remaining_product<Idx + 1>();
+        return offset * stride + *rest;
+      } else {
+        return offset;
+      }
+    }
+  }
+
+  // Populate one entry in the lookup table
+  template <int... Params>
+  static void populate_entry(std::array<std::optional<function_type>, table_size>& table,
+                            Functor& functor, ArgumentTuple& args) {
+    constexpr std::size_t idx = param_index<Params...>();
+
+    if constexpr (std::is_void_v<ResultType>) {
+      table[idx] = [&functor, &args]() {
+        std::apply([&functor](auto&&... a) {
+          functor.template operator()<Params...>(std::forward<decltype(a)>(a)...);
+        }, args);
+      };
+    } else {
+      table[idx] = [&functor, &args]() -> ResultType {
+        return std::apply([&functor](auto&&... a) -> ResultType {
+          return functor.template operator()<Params...>(std::forward<decltype(a)>(a)...);
+        }, args);
+      };
+    }
+  }
+
+  // Cartesian product expansion
+  template <int... HeadValues, typename... Tail>
+  static void populate_all(std::array<std::optional<function_type>, table_size>& table,
+                          Functor& functor, ArgumentTuple& args,
+                          std::integer_sequence<int, HeadValues...>, Tail... tail) {
+    (populate_with_prefix<HeadValues>(table, functor, args, tail...), ...);
+  }
+
+  template <int... Prefix, int... NextValues, typename... Tail>
+  static void populate_with_prefix(std::array<std::optional<function_type>, table_size>& table,
+                                   Functor& functor, ArgumentTuple& args,
+                                   std::integer_sequence<int, NextValues...>, Tail... tail) {
+    (populate_with_prefix<Prefix..., NextValues>(table, functor, args, tail...), ...);
+  }
+
+  template <int... Params>
+  static void populate_with_prefix(std::array<std::optional<function_type>, table_size>& table,
+                                   Functor& functor, ArgumentTuple& args) {
+    populate_entry<Params...>(table, functor, args);
+  }
+};
+
 }  // namespace poet::detail
 
-/// \brief Dispatches runtime integers to compile-time template parameters.
+/// \brief Dispatches runtime integers to compile-time template parameters with O(1) lookup.
 ///
-/// The functor is invoked with the first template parameter combination whose
+/// The functor is invoked with the template parameter combination whose
 /// values match the supplied runtime inputs. When no match exists, the functor
 /// is never invoked and a default-constructed result is returned for
 /// non-void functors.
+///
+/// This implementation uses an array-based lookup table for O(1) dispatch performance,
+/// trading memory for speed compared to the linear search approach.
 ///
 /// The functor must expose a templated call operator of the form
 /// `template <int... Params> Result operator()(Args...)`, where `Args...` are
@@ -182,22 +276,40 @@ using dispatch_result_t = typename dispatch_result<Functor, ArgumentTuple,
 ///       does not return a value.
 template <typename Functor, typename ParamTuple, typename... Args>
 decltype(auto) dispatch(Functor &&functor, ParamTuple &&params, Args &&...args) {
-  using TupleType = std::remove_reference_t<ParamTuple>;
-  constexpr std::size_t param_count = std::tuple_size_v<TupleType>;
   auto runtime_values = detail::extract_runtime_values(params);
   auto sequences = detail::extract_sequences(params);
   auto argument_tuple = std::forward_as_tuple(std::forward<Args>(args)...);
   using result_type = detail::dispatch_result_t<Functor, decltype(argument_tuple),
                                                 decltype(sequences)>;
-  detail::dispatcher_caller<Functor, param_count, decltype(argument_tuple),
-                            result_type>
-      caller{functor, runtime_values, argument_tuple};
-  std::apply(
-      [&](auto &&...seq) { detail::product(caller, std::forward<decltype(seq)>(seq)...); },
+
+  // Build lookup table
+  return std::apply(
+      [&](auto &&...seq) -> decltype(auto) {
+        using dispatcher = detail::array_dispatcher<Functor, decltype(argument_tuple),
+                                                    result_type, std::remove_reference_t<decltype(seq)>...>;
+
+        typename dispatcher::function_type table[dispatcher::table_size] = {};
+        std::array<std::optional<typename dispatcher::function_type>, dispatcher::table_size> opt_table;
+
+        // Populate the table with all combinations
+        dispatcher::populate_all(opt_table, functor, argument_tuple,
+                                std::forward<decltype(seq)>(seq)...);
+
+        // Lookup and invoke
+        auto idx = dispatcher::runtime_index(runtime_values);
+        if (idx && opt_table[*idx]) {
+          if constexpr (std::is_void_v<result_type>) {
+            (*opt_table[*idx])();
+          } else {
+            return (*opt_table[*idx])();
+          }
+        } else {
+          if constexpr (!std::is_void_v<result_type>) {
+            return result_type{};
+          }
+        }
+      },
       sequences);
-  if constexpr (!std::is_void_v<result_type>) {
-    return caller.result;
-  }
 }
 
 }  // namespace poet
