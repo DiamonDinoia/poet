@@ -23,6 +23,16 @@ project(POET LANGUAGES CXX)
 
 include(CTest)
 
+# Enable coverage instrumentation when requested. This only adds flags to
+# project/test targets (not dependencies) so we avoid instrumenting external
+# libraries.
+option(POET_ENABLE_COVERAGE "Enable code coverage instrumentation for POET and tests" OFF)
+if(POET_ENABLE_COVERAGE)
+  # Use list form so flags are added separately (avoids quoted single-argument issues)
+  set(POET_COVERAGE_COMPILE_FLAGS -O0 -g --coverage)
+  set(POET_COVERAGE_LINK_FLAGS --coverage)
+endif()
+
 option(POET_BUILD_BENCHMARKS "Build POET benchmark executables" OFF)
 option(POET_STRICT_WARNINGS "Enable the project's default warning profile" ON)
 option(POET_BUILD_DEVEL "Build POET development utilities" OFF)
@@ -115,3 +125,45 @@ set(CPACK_PACKAGE_CONTACT "support@example.com")
 set(CPACK_GENERATOR "TGZ")
 
 include(CPack)
+
+## Coverage target -----------------------------------------------------------
+# Adds a `coverage` custom target that runs tests and produces an HTML report.
+# It prefers `gcovr` if available, otherwise falls back to `lcov` + `genhtml`.
+find_program(GCOVR_EXECUTABLE gcovr)
+find_program(LCOV_EXECUTABLE lcov)
+find_program(GENHTML_EXECUTABLE genhtml)
+
+# Prefer lcov+genhtml when available (more robust on complex build trees).
+if(LCOV_EXECUTABLE AND GENHTML_EXECUTABLE)
+  set(LCOV_INFO ${CMAKE_BINARY_DIR}/coverage.info)
+  set(LCOV_FILTERED ${CMAKE_BINARY_DIR}/coverage.filtered.info)
+  set(COVERAGE_DIR ${CMAKE_BINARY_DIR}/coverage)
+
+  add_custom_target(coverage
+    DEPENDS poet_tests
+    COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR} --output-on-failure
+    COMMAND ${LCOV_EXECUTABLE} --capture --directory ${CMAKE_BINARY_DIR} --output-file ${LCOV_INFO} --ignore-errors inconsistent,unused
+    # remove system and external deps (allow patterns to be adjusted)
+    COMMAND ${LCOV_EXECUTABLE} --remove ${LCOV_INFO} "/usr/*" "*/_deps/*" --output-file ${LCOV_FILTERED} --ignore-errors inconsistent,unused
+    COMMAND ${GENHTML_EXECUTABLE} -o ${COVERAGE_DIR} ${LCOV_FILTERED}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    COMMENT "Running tests and generating coverage report (lcov+genhtml) -> ${COVERAGE_DIR}/index.html"
+    VERBATIM
+  )
+elseif(GCOVR_EXECUTABLE)
+  # Fall back to gcovr if lcov/genhtml aren't available
+  add_custom_target(coverage
+    DEPENDS poet_tests
+    COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR} --output-on-failure
+    # Filter to project sources (include/poet and tests) to avoid dependency noise
+    COMMAND ${GCOVR_EXECUTABLE} -r ${CMAKE_SOURCE_DIR} --filter "include/poet/|tests/" --exclude ".*/_deps/.*" --exclude "/usr/.*" --gcov-ignore-errors=no_working_dir_found --html --html-details -o ${CMAKE_BINARY_DIR}/coverage-report.html
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    COMMENT "Running tests and generating coverage report (gcovr) -> ${CMAKE_BINARY_DIR}/coverage-report.html"
+    VERBATIM
+  )
+else()
+  message(STATUS "Coverage tools not found: install 'lcov'+'genhtml' or 'gcovr' to enable the 'coverage' target.")
+  add_custom_target(coverage
+    COMMAND ${CMAKE_COMMAND} -E echo "Coverage tools missing. Install 'lcov'+'genhtml' or 'gcovr' and re-run CMake to enable coverage generation."
+  )
+endif()

@@ -17,6 +17,11 @@ add_executable(poet_tests
 
 target_link_libraries(poet_tests PRIVATE Catch2::Catch2WithMain poet)
 
+if(POET_ENABLE_COVERAGE)
+  target_compile_options(poet_tests PRIVATE ${POET_COVERAGE_COMPILE_FLAGS})
+  target_link_options(poet_tests PRIVATE ${POET_COVERAGE_LINK_FLAGS})
+endif()
+
 target_compile_features(poet_tests PRIVATE cxx_std_17)
 
 poet_enable_sanitizers(poet_tests)

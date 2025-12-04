@@ -35,6 +35,15 @@ struct matrix_kernel {
   }
 };
 
+struct big_kernel {
+  template<int... Vs>
+  int operator()(int scale) const {
+    int s = 0;
+    ((s += Vs), ...);
+    return scale * s;
+  }
+};
+
 int run_manual(int width, int height, int scale) {
   if (width < 1 || width > 8 || height < 1 || height > 8) {
     return 0;
@@ -87,4 +96,42 @@ void run_dispatch_benchmarks() {
     }
     ankerl::nanobench::doNotOptimizeAway(total);
   });
+
+  // Large multi-dimensional dispatch benchmark
+  // We'll test a 5-dimensional dispatch with 4 options per-dimension
+  // (total table size 4^5 = 1024). We compare a contiguous range
+  // per-dimension vs a non-contiguous integer sequence with the same
+  // cardinality to observe dispatch differences.
+  {
+    using dim_seq_contig = poet::make_range<0, 3>; // 0,1,2,3
+    using dim_seq_noncontig = std::integer_sequence<int, 0, 10, 20, 30>;
+
+    // build parameter tuple for 5 dimensions
+    auto params_contig = std::make_tuple(
+      poet::DispatchParam<dim_seq_contig>{0}, poet::DispatchParam<dim_seq_contig>{1},
+      poet::DispatchParam<dim_seq_contig>{2}, poet::DispatchParam<dim_seq_contig>{3},
+      poet::DispatchParam<dim_seq_contig>{0});
+
+    auto params_noncontig = std::make_tuple(
+      poet::DispatchParam<dim_seq_noncontig>{0}, poet::DispatchParam<dim_seq_noncontig>{10},
+      poet::DispatchParam<dim_seq_noncontig>{20}, poet::DispatchParam<dim_seq_noncontig>{30},
+      poet::DispatchParam<dim_seq_noncontig>{0});
+
+
+    bench.run("big dispatch contiguous (5D x4)", [&] {
+      int total = 0;
+      for (int i = 0; i < 1000; ++i) {
+        total += poet::dispatch(big_kernel{}, params_contig, 3);
+      }
+      ankerl::nanobench::doNotOptimizeAway(total);
+    });
+
+    bench.run("big dispatch non-contiguous (5D x4)", [&] {
+      int total = 0;
+      for (int i = 0; i < 1000; ++i) {
+        total += poet::dispatch(big_kernel{}, params_noncontig, 3);
+      }
+      ankerl::nanobench::doNotOptimizeAway(total);
+    });
+  }
 }

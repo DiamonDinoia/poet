@@ -176,6 +176,16 @@ struct vector_accumulator {
 
 } // namespace
 
+// Helper functor for lvalue-preservation test. Must live at namespace scope
+// because member templates are not allowed in local classes.
+namespace {
+struct mutator {
+  int sum = 0;
+  template <auto I>
+  void operator()() { sum += static_cast<int>(I); }
+};
+} // namespace
+
 // Merged constexpr-friendly tests (previously in static_for_constexpr_tests.cpp)
 namespace {
 
@@ -239,4 +249,15 @@ TEST_CASE("static_for handles large iteration counts", "[static_for][limits]") {
 
   REQUIRE(values.front() == 0);
   REQUIRE(values.back() == (kSpan - 1) * (kSpan - 1));
+}
+
+TEST_CASE("static_for preserves lvalue functor state", "[static_for][lvalue]") {
+  mutator m;
+  // Passing an lvalue functor should update `m` itself.
+  poet::static_for<0, 4>(m);
+  REQUIRE(m.sum == (0 + 1 + 2 + 3));
+
+  // Passing an rvalue should not modify `m`.
+  poet::static_for<0, 4>(mutator{});
+  REQUIRE(m.sum == (0 + 1 + 2 + 3));
 }
