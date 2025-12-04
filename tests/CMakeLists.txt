@@ -12,6 +12,7 @@ add_executable(poet_tests
   dynamic_for_tests.cpp
   poet_header_tests.cpp
   static_dispatch_tests.cpp
+  static_dispatch_tuple_tests.cpp
   static_for_tests.cpp
 )
 
