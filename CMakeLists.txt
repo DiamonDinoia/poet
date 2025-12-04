@@ -22,6 +22,8 @@ include(${cpm_SOURCE_DIR}/CPM.cmake)
 project(POET LANGUAGES CXX)
 
 include(CTest)
+include(PoetStaticAnalysis)
+
 
 # Enable coverage instrumentation when requested. This only adds flags to
 # project/test targets (not dependencies) so we avoid instrumenting external

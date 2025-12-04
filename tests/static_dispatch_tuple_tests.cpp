@@ -1,4 +1,6 @@
+// cppcheck-suppress-file unknownMacro
 #include <poet/core/static_dispatch.hpp>
+
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -52,5 +54,6 @@ TEST_CASE("DispatchSet throws when requested and no match", "[static_dispatch][t
   using DS = DispatchSet<int, T<1, 1>>;
   auto ds = DS(9, 9);
 
+  // cppcheck-suppress unknownMacro
   REQUIRE_THROWS_AS(dispatch(throw_t, tuple_sum{}, ds, 0), std::runtime_error);
 }

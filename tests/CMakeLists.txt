@@ -26,6 +26,7 @@ endif()
 target_compile_features(poet_tests PRIVATE cxx_std_17)
 
 poet_enable_sanitizers(poet_tests)
+poet_configure_static_analysis(poet_tests)
 
 include(Catch)
 catch_discover_tests(poet_tests)

@@ -33,6 +33,7 @@ target_link_libraries(poet_benchmarks
 )
 
 poet_enable_warnings(poet_benchmarks)
+poet_configure_static_analysis(poet_benchmarks)
 
 add_custom_target(poet_run_benchmarks
   COMMAND $<TARGET_FILE:poet_benchmarks>

@@ -10,7 +10,6 @@
 
 namespace {
 
-constexpr std::intmax_t small_iterations = 8;
 constexpr std::intmax_t large_iterations = 512;
 
 // ------------------ FP-heavy workload remains ------------------
