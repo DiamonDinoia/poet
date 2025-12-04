@@ -63,13 +63,6 @@ include(PoetWarnings)
 include(PoetSanitizers)
 include(PoetStaticAnalysis)
 
-if(POET_STRICT_WARNINGS)
-  poet_enable_warnings(poet)
-endif()
-
-poet_enable_sanitizers(poet)
-poet_configure_static_analysis(poet)
-
 if(POET_BUILD_BENCHMARKS)
   add_subdirectory(benchmarks)
 endif()

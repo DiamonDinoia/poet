@@ -25,6 +25,10 @@ endif()
 
 target_compile_features(poet_tests PRIVATE cxx_std_17)
 
+if(POET_STRICT_WARNINGS)
+  poet_enable_warnings(poet_tests)
+endif()
+
 poet_enable_sanitizers(poet_tests)
 poet_configure_static_analysis(poet_tests)
 
