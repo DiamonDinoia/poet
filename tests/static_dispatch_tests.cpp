@@ -309,3 +309,50 @@ TEST_CASE("dispatch moderate table stress", "[static_dispatch][stress]") {
   REQUIRE(out == 107);
 }
 
+TEST_CASE("dispatch throws when no match exists with throw_t (non-void)",
+          "[static_dispatch][throw]") {
+  bool invoked = false;
+  auto params = std::make_tuple(DispatchParam<make_range<0, 2>>{3});
+
+  REQUIRE_THROWS_AS(
+      dispatch(poet::throw_t, guard_dispatcher{&invoked}, params, 8),
+      std::runtime_error);
+
+  REQUIRE_FALSE(invoked);
+}
+
+TEST_CASE("dispatch throws when no match exists with throw_t (void)",
+          "[static_dispatch][throw]") {
+  std::vector<int> values;
+  auto params = std::make_tuple(DispatchParam<make_range<1, 2>>{3},
+                                DispatchParam<make_range<3, 4>>{4});
+
+  REQUIRE_THROWS_AS(
+      dispatch(poet::throw_t, vector_dispatcher{&values}, params, 0),
+      std::runtime_error);
+
+  REQUIRE(values.empty());
+}
+
+TEST_CASE("dispatch preserved non-throwing behavior with nothrow_on_no_match (non-void)",
+          "[static_dispatch][nothrow]") {
+  bool invoked = false;
+  auto params = std::make_tuple(DispatchParam<make_range<0, 2>>{3});
+
+  const auto result = dispatch(guard_dispatcher{&invoked}, params, 8);
+
+  REQUIRE(result == 0);
+  REQUIRE_FALSE(invoked);
+}
+
+TEST_CASE("dispatch preserved non-throwing behavior with nothrow_on_no_match (void)",
+          "[static_dispatch][nothrow]") {
+  std::vector<int> values;
+  auto params = std::make_tuple(DispatchParam<make_range<1, 2>>{3},
+                                DispatchParam<make_range<3, 4>>{4});
+
+  REQUIRE_NOTHROW(dispatch(vector_dispatcher{&values}, params, 0));
+
+  REQUIRE(values.empty());
+}
+

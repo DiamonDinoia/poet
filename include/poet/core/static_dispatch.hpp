@@ -10,6 +10,7 @@
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <stdexcept>
 
 namespace poet {
 
@@ -265,6 +266,44 @@ decltype(auto) dispatch(Functor &&functor, ParamTuple &&params, Args &&...args) 
         }
     } else {
          if constexpr (!std::is_void_v<result_type>) return result_type{};
+    }
+}
+
+/// 
+/// Optional policy tag: when passed as the first argument to `dispatch`,
+/// requests that the function throw an exception if no matching
+/// compile-time combination is found for the runtime inputs.
+struct throw_on_no_match_t {};
+inline constexpr throw_on_no_match_t throw_t{};
+
+// Note: nothrow is the default behavior of `dispatch` (no explicit tag).
+
+/// 
+/// Overload that accepts `throw_t` as a first argument.
+/// When no match exists the function throws `std::runtime_error`.
+template<typename Functor, typename ParamTuple, typename... Args>
+decltype(auto) dispatch(throw_on_no_match_t, Functor &&functor, ParamTuple &&params, Args &&...args) {
+    auto sequences = detail::extract_sequences(params);
+    using argument_tuple_type = std::tuple<std::decay_t<Args>...>;
+    argument_tuple_type argument_tuple(std::forward<Args>(args)...);
+    using result_type = detail::dispatch_result_t<Functor, argument_tuple_type, decltype(sequences)>;
+
+    // Build variants for each runtime value
+    constexpr std::size_t N = std::tuple_size_v<std::remove_reference_t<ParamTuple>>;
+    auto variants = detail::make_variants(params, std::make_index_sequence<N>{});
+
+    // ensure all mapped successfully at runtime
+    bool ok = std::apply([](auto const&... vo){ return (vo.has_value() && ...); }, variants);
+
+    if (ok) {
+        detail::VisitCaller<std::decay_t<Functor>, decltype(argument_tuple)> caller{ &functor, &argument_tuple };
+        if constexpr (std::is_void_v<result_type>) {
+            std::apply([&](auto&... vo){ std::visit(caller, *vo...); }, variants);
+        } else {
+            return std::apply([&](auto&... vo){ return std::visit(caller, *vo...); }, variants);
+        }
+    } else {
+        throw std::runtime_error("poet::dispatch: no matching compile-time combination for runtime inputs");
     }
 }
 
