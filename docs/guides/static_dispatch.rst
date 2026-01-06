@@ -1,0 +1,93 @@
+Static Dispatch
+====================
+
+Overview
+--------
+
+``poet::dispatch`` translates a set of runtime values (e.g., function arguments, configuration options) into compile-time template parameters. It essentially performs a highly optimized lookup from ``runtime value -> compile-time constant`` and then invokes your templated code.
+
+This allows you to write "runtime-polymorphic" code that is actually compiled as a set of specialized, highly-optimized template instantiations.
+
+Features
+--------
+
+- **O(1) Dispatch**: Uses a table-based lookup (array of variants) to jump directly to the correct implementation.
+- **Range Support**: Easily specify ranges of valid values (e.g., dispatch an integer from 0 to 10).
+- **Multiple Arguments**: Dispatch on tuples of values (e.g., dispatching based on *both* width and height).
+- **Sparse Dispatch**: Use ``DispatchSet`` to list only specific valid combinations, avoiding combinatorial explosion.
+
+Usage
+-----
+
+Basic Range Dispatch
+~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: cpp
+
+   #include <poet/poet.hpp>
+   
+   struct Kernel {
+       template <int N>
+       void operator()(float* data) {
+           // This code is compiled specifically for N
+           // Compiler can optimize given N is constant.
+       }
+   };
+
+   // Runtime value
+   int n = get_runtime_size(); // e.g., 5
+
+   // Define possible compile-time candidates: [1, 16]
+   using Range = poet::make_range<1, 16>;
+   poet::DispatchParam<Range> param{n};
+
+   // Dispatch!
+   // If n is in [1, 16], calls Kernel::operator()<n>(data)
+   poet::dispatch(Kernel{}, std::make_tuple(param), data_ptr);
+
+Explicit Sets (Sparse Dispatch)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you only allow specific combinations (e.g., square matrices of size 2x2, 4x4, or non-square 2x4), use ``DispatchSet``.
+
+.. code-block:: cpp
+
+    using namespace poet;
+
+    // Define valid (rows, cols) pairs
+    using Shapes = DispatchSet<int,
+        T<2, 2>,
+        T<4, 4>,
+        T<2, 4>
+    >;
+
+    struct MatMul {
+        template <int Rows, int Cols>
+        void operator()() {
+            // Specialized matrix multiplication
+        }
+    };
+
+    void run_matmul(int r, int c) {
+        Shapes valid_shapes(r, c);
+        
+        // Dispatches only if (r,c) matches one of the tuples above
+        poet::dispatch(MatMul{}, valid_shapes);
+    }
+
+Error Handling
+--------------
+
+By default, if the runtime values do not match any compile-time candidate, ``dispatch`` does nothing (returns void or default value).
+
+You can force a check by passing ``poet::throw_t`` as the first argument:
+
+.. code-block:: cpp
+
+   poet::dispatch(poet::throw_t, Kernel{}, params, args...);
+   // Throws std::runtime_error if no match found.
+
+Implementation Details
+----------------------
+
+Internally, ``static_dispatch`` constructs a table of ``std::variant`` types, where each variant holds a ``std::integral_constant``. It uses ``std::visit`` to invoke the callable. For ranges, it optimizes the mapping from integer to variant index to be O(1) (simple arithmetic offset). For sparse sets, it may use linear search or other strategies depending on the structure, but the ``DispatchSet`` interface is designed for efficient lookups where possible.

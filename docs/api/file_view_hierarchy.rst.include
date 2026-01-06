@@ -1,0 +1,18 @@
+
+File Hierarchy
+--------------
+
+
+.. raw:: html
+
+   <ul class="treeView" id="file-treeView">
+     <li>
+       <ul class="collapsibleList">
+         <li>File <a href="file_include_poet_core_dynamic_for.hpp.html#file-include-poet-core-dynamic-for.hpp">dynamic_for.hpp</a></li><li>File <a href="file_include_poet_core_for_utils.hpp.html#file-include-poet-core-for-utils.hpp">for_utils.hpp</a></li><li>File <a href="file_include_poet_poet.hpp.html#file-include-poet-poet.hpp">poet.hpp</a></li><li>File <a href="file_include_poet_core_static_dispatch.hpp.html#file-include-poet-core-static-dispatch.hpp">static_dispatch.hpp</a></li><li class="lastChild">File <a href="file_include_poet_core_static_for.hpp.html#file-include-poet-core-static-for.hpp">static_for.hpp</a></li>
+       </ul>
+     </li><!-- only tree view element -->
+   </ul><!-- /treeView file-treeView -->
+
+.. end raw html for treeView
+
+

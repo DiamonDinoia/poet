@@ -1,0 +1,528 @@
+
+Full API
+--------
+
+Namespaces
+**********
+
+
+.. toctree::
+   :maxdepth: 5
+
+   namespace_poet.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   namespace_poet__detail.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   namespace_std.rst
+
+Classes and Structs
+*******************
+
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1dispatch__result.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1dispatch__result_3_01_functor_00_01_argument_tuple_00_01std_1_1tuple_3_01_seq_8_8_8_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1dispatch__result__helper.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1dynamic__block__invoker.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1is__contiguous__sequence.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1is__contiguous__sequence_3_01std_1_1integer__sequence_3_01int_00_01_values_8_8_8_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1is__dispatch__set.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1is__dispatch__set_3_01_dispatch_set_3_01_v_00_01_tuples_8_8_8_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1is__tuple.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1is__tuple_3_01std_1_1tuple_3_01_ts_8_8_8_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1offset__sequence.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1offset__sequence_3_01_offset_00_01std_1_1integer__sequence_3_01int_00_01_values_8_8_8_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1result__holder.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1result__holder_3_01void_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1result__of__seq__call.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1result__of__seq__call_3_01std_1_1integer__sequence_3_01_value_type_01_4_e886f0b8f25e85c4b3999bfb0eec323b.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1result__of__seq__call_3_01std_1_1integer__sequence_3_01_value_type_00_01e33346b552ab3a74ad6cf41adc2c01bd.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1seq__equal.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1seq__equal_3_01std_1_1integer__sequence_3_01_t_00_01_a_8_8_8_01_4_00_01s6a00732a063aa7caa618904520a4ee9f.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1seq__matcher__helper.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1seq__matcher__helper_3_01std_1_1integer__sequence_3_01_value_type_00_01_dcc85199723d6cd475b54b11631e2ba2.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1sequence__contains.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1sequence__contains_3_01_value_00_01std_1_1integer__sequence_3_01int_00_01_values_8_8_8_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1sequence__first.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1sequence__first_3_01std_1_1integer__sequence_3_01int_00_01_first_00_01_rest_8_8_8_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1sequence__index__of.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1sequence__index__of_3_01_value_00_01std_1_1integer__sequence_3_01int_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1sequence__index__of_3_01_value_00_01std_1_1integer__sequence_3_01int_00_ea8484b7d93eef09ec12a2e7ea18f224.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1sequence__max.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1sequence__max_3_01std_1_1integer__sequence_3_01int_00_01_first_00_01_rest_8_8_8_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1sequence__min.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1sequence__min_3_01std_1_1integer__sequence_3_01int_00_01_first_00_01_rest_8_8_8_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1sequence__runtime__index.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1sequence__runtime__index_3_01std_1_1integer__sequence_3_01int_00_01_values_8_8_8_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1sequence__size.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1sequence__size_3_01std_1_1integer__sequence_3_01int_00_01_values_8_8_8_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1sequence__unique.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1sequence__unique_3_01std_1_1integer__sequence_3_01int_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1sequence__unique_3_01std_1_1integer__sequence_3_01int_00_01_first_00_01_rest_8_8_8_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1tail__caller__for__dynamic__for.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1template__static__loop__invoker.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1tuple__alt__from__seq.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1tuple__alt__from__seq_3_01std_1_1integer__sequence_3_01int_00_01_vs_8_8_8_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1unique__helper.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1unique__helper_3_01_head_00_01_rest_8_8_8_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1unique__helper_3_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1variant__from__seq.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1variant__from__seq_3_01std_1_1integer__sequence_3_01int_00_01_i_8_8_8_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1variant__from__tuple__seq.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1variant__from__tuple__seq_3_01std_1_1tuple_3_01_seq_8_8_8_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1variant__maker.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1detail_1_1_visit_caller.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1_dispatch_param.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1_dispatch_set.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1_dispatch_set_1_1convert__tuple.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1_dispatch_set_1_1convert__tuple_3_01_t_3_01_vs_8_8_8_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1_dispatch_set_1_1same__arity.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1_dispatch_set_1_1seq__len.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1_dispatch_set_1_1seq__len_3_01std_1_1integer__sequence_3_01_v_type_00_01_v_8_8_8_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1_t.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1throw__on__no__match__t.rst
+
+Functions
+*********
+
+
+.. toctree::
+   :maxdepth: 5
+
+   function_for__utils_8hpp_1ac49238eb2f0fa5708f622f2d7402ff3a.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_namespacepoet_1_1detail_1a5e744f84b60c5f6843f7d44b04401f1f.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_namespacepoet_1_1detail_1a349718d1df2c85b5917a7cc72185b55f.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_namespacepoet_1_1detail_1a89bbf62e82795d19b34329ec5ccc5482.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_namespacepoet_1_1detail_1a34cc3356aa4be3d9f242d6ca31b6374f.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_namespacepoet_1_1detail_1af6d0c2c30a2e814344d3685ba5f93ac6.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_namespacepoet_1_1detail_1a8c60b3e7e12ec67ac6869835ecbfe6ed.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_namespacepoet_1_1detail_1abc1677707d6ba366e0219182d72aacb7.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_namespacepoet_1_1detail_1a02dd67d6ca3fec0f4f19d515917cd5b9.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_namespacepoet_1_1detail_1a28ec470bc97e9dda53dda1937b72eb85.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_namespacepoet_1_1detail_1ab92ea1e3235eda39c8d8ebc3137083a8.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_namespacepoet_1_1detail_1ab64e4f319886836802de376e27c1ecc1.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_namespacepoet_1_1detail_1a3904e7469f3d601c001525ff1eea509b.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_namespacepoet_1_1detail_1aa2c0cb928cf34f1dbd62a6941f2e5c02.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_namespacepoet_1_1detail_1ae2d544b33aedc5901af1edeacf32b9f9.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_namespacepoet_1_1detail_1a0d521b7365e03231766558e7b7f3c081.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_namespacepoet_1_1detail_1a96e4dd09f58530ceb8d025680df43d43.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_namespacepoet_1_1detail_1a96e4dd09f58530ceb8d025680df43d43.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_static__dispatch_8hpp_1a70911e0d68523d4ee084006d3098cf93.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_static__dispatch_8hpp_1ad286555d2e20bdbf84cd1c051debb2a8.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_static__dispatch_8hpp_1a0f441423e3f2db3da9ce40d4d82fd775.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_static__dispatch_8hpp_1a1642a0a0e9b652b67cb6fa80f5b04318.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_static__dispatch_8hpp_1a59d4bbfb1bd0b6070dbf01474f14e4ee.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_static__dispatch_8hpp_1a676fdfcf8d6bb5f5e1dcbcc8b6e03156.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_dynamic__for_8hpp_1ab3cca68a9d664174662897dffc1f87f1.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_dynamic__for_8hpp_1a1c58ea3482dd8f60d0c1aff070ec01ff.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_dynamic__for_8hpp_1a192a6e1b6687cf6d174ec5c09d47946a.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_static__for_8hpp_1a79131cbff1d2843d2592a6129480ae55.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   function_static__for_8hpp_1aa79b1ee3440b36b279cff6ae0bd2222b.rst
+
+Variables
+*********
+
+
+.. toctree::
+   :maxdepth: 5
+
+   variable_namespacepoet_1_1detail_1ad2bfaab2b99a3b90c487a197585cf798.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   variable_dynamic__for_8hpp_1aa335e6dc31f3a14aa9e308e12ace5ecb.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   variable_for__utils_8hpp_1a0d76f059438b7a0c6d17da8d01a8047d.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   variable_static__dispatch_8hpp_1a9ae962bf22b98277fe5cb26b6d3b1fa4.rst
+
+Typedefs
+********
+
+
+.. toctree::
+   :maxdepth: 5
+
+   typedef_namespacepoet_1_1detail_1af75cc0fa9e0d9dc8eadf9fd996dd0aaa.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   typedef_namespacepoet_1_1detail_1ac8e2ddef4ea3786638118ae90eaa3eee.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   typedef_namespacepoet_1_1detail_1a6f371576d36fe943c2776883d94e8c58.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   typedef_static__dispatch_8hpp_1a533cbdb4f5b46446a9d66ea8414886c4.rst
