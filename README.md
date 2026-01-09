@@ -6,266 +6,159 @@
 [![Coverage](https://codecov.io/gh/DiamonDinoia/poet/branch/main/graph/badge.svg)](https://codecov.io/gh/DiamonDinoia/poet)
 [![Docs Status](https://readthedocs.org/projects/poet/badge/?version=latest)](https://poet.readthedocs.io/en/latest/)
 
-## Introduction
+POET is a small, header-only C++ utility library that provides compile-time oriented loop and dispatch primitives to make high-performance metaprogramming simpler and safer. It focuses on three complementary capabilities:
 
-POET (Performance Optimized Excessive Templates) is a header-only collection of modern C++ building blocks wrapped in a thin CMake package. The library ships with batteries-included tooling so teams can adopt strict warnings, sanitizers, and static analysis defaults without having to maintain a bespoke infrastructure for each project.
+- static_for — compile-time unrolled loops for iterating integer ranges or template packs.
+- dynamic_for — efficient runtime loops implemented by emitting compile-time unrolled blocks.
+- dispatch / dispatch_tuples / DispatchSet — map runtime integers or tuples to compile-time non-type template parameters for zero-cost specialization.
 
-## Documentation
+Why it matters
+--------------
+These utilities let you express algorithms that benefit from compile-time specialization (inlining, unrolling, and better optimization) while still driving them from runtime values. The result is code that is both efficient (no virtual calls, fewer branches) and expressive, useful in hotspots such as small-linear algebra, kernel selection, and template-based code generation.
 
-Documentation is available in the `docs/` directory. Online documentation is hosted at: https://poet.readthedocs.io/en/latest/ . You can also build it locally using Sphinx:
+In particular, POET's runtime-to-compile-time dispatch lets you select optimized, specialized code paths based on runtime choices with zero-cost abstraction.
 
+Performance benefits
+---------------------
+Making iteration counts and dispatch targets visible at compile time often improves register utilization and codegen quality: the compiler can allocate registers across unrolled iterations and specialized paths, reduce spills, enable better instruction scheduling, and expose opportunities for vectorization.
+
+Common hotspots that benefit
+- Small, fixed-size dense linear algebra (small GEMM, batched matrix ops)
+- Tight convolution / stencil kernels and small-kernel DSP code
+- Fixed-size FFT/DFT implementations
+- Hot parsing/serialization loops and state machines with fixed-state graphs
+- Kernel-selection/specialization in template-based libraries where runtime choices select optimized codepaths
+
+Minimal quick start
+-------------------
+
+Prerequisites
+- A C++17-capable compiler (GCC, Clang, MSVC).
+- CMake 3.20+ for CMake integration (optional).
+
+Install / Integrate
+1. Clone
 ```bash
-# Build the documentation
-cmake -B build-docs -S . -DPOET_GENERATE_DOCS=ON
-cmake --build build-docs --target docs
-
-# Open the generated HTML (Linux/macOS)
-open build-docs/docs/_build/html/index.html
-# or with xdg-open
-xdg-open build-docs/docs/_build/html/index.html
+git clone https://github.com/DiamonDinoia/poet.git
 ```
 
-The documentation covers:
-- **Installation**: Integration guides for CMake (add_subdirectory, FetchContent) and Makefiles.
-- **Guides**: Detailed usage examples for `static_for`, `dynamic_for`, and `static_dispatch`.
-- **API Reference**: Generated API documentation.
-
-### Compile-time iteration utilities
-
-POET ships `poet::static_for`, a header-only facility for unrolled
-compile-time loops. Functors can expose `template <auto I>` call operators and
-are invoked for each value in the requested range, including support for
-negative steps:
-
-```cpp
-#include <poet/core/static_for.hpp>
-
-struct printer {
-  template <auto I>
-  constexpr void operator()() const {
-    // Replace with a real compile-time action.
-    static_assert(I >= 0);
-  }
-};
-
-constexpr void enumerate() {
-  poet::static_for<0, 4>(printer{});         // Iterates 0, 1, 2, 3
-  poet::static_for<3, -1, -1>(printer{});    // Iterates 3, 2, 1, 0
-}
+2. CMake — add_subdirectory (recommended for local development)
+```cmake
+add_subdirectory(path/to/poet)
+add_executable(my_app main.cpp)
+target_link_libraries(my_app PRIVATE poet::poet)
 ```
 
-In addition to template call operators, `static_for` also supports callables
-that accept a `std::integral_constant<std::intmax_t, I>` parameter. This form
-is particularly convenient for `constexpr` code, because the current index is
-available as a compile-time value via `decltype(index)::value`:
-
-```cpp
-#include <array>
-#include <poet/core/static_for.hpp>
-
-constexpr std::array<int, 4> squares() {
-  std::array<int, 4> values{};
-  poet::static_for<0, 4>([&](auto index) {
-    constexpr auto i = decltype(index)::value;
-    values[static_cast<std::size_t>(i)] = i * i;
-  });
-  return values;
-}
+3. CMake — FetchContent
+```cmake
+include(FetchContent)
+FetchContent_Declare(poet GIT_REPOSITORY https://github.com/DiamonDinoia/poet.git GIT_TAG main)
+FetchContent_MakeAvailable(poet)
+target_link_libraries(my_app PRIVATE poet::poet)
 ```
 
-By default, `static_for` chooses a block size equal to the number of
-iterations in the half-open range `[Begin, End)`, clamped to
-`poet::kMaxStaticLoopBlock` (currently `256`). You can override the block size
-explicitly via the fourth template parameter when you need finer-grained
-control over unrolling.
+4. Header-only usage (no build step)
+- Add the repository `include/` directory to your compiler include path:
+  -g++ -std=c++17 -I/path/to/poet/include ...
 
-For runtime-controlled loops, `poet::dynamic_for` bridges the same
-unrolling machinery with a runtime entry point. The helper accepts an inclusive
-`begin` and exclusive `end` bound and invokes a callable with the runtime index
-for each step:
+Basic usage examples
+--------------------
 
-```cpp
-#include <poet/core/dynamic_for.hpp>
-#include <vector>
-
-std::vector<std::size_t> visit(std::size_t begin, std::size_t end) {
-  std::vector<std::size_t> visited;
-  poet::dynamic_for<4>(begin, end, [&](std::size_t index) {
-    visited.push_back(index);
-  });
-  return visited;
-}
-```
-
-A convenience overload `dynamic_for<Unroll>(count, func)` iterates over the
-range `[0, count)`.
-
-Small unroll factors (the default is `8`) tend to deliver the best balance
-between instruction-cache residency and loop efficiency. The helper enforces an
-inclusive upper bound of `poet::kMaxStaticLoopBlock` (currently `256`)
-iterations per block, so the maximum supported unroll factor is `256`, matching
-the compile-time unroller's limit. If `end <= begin`, the helper performs no
-iterations and the callable is never invoked.
-
-You can either include the core headers directly or use the umbrella header:
-
+Include the umbrella header:
 ```cpp
 #include <poet/poet.hpp>
 ```
 
-which exposes `poet::static_for`, `poet::dynamic_for`, and the dispatch
-utilities.
-
-### Runtime to compile-time dispatch
-
-When template parameters must be selected from runtime values, use
-`poet::dispatch` to probe a Cartesian product of integer sequences and
-invoke a templated functor once a match is found:
-
+static_for — compile-time unrolling
 ```cpp
-#include <poet/core/static_dispatch.hpp>
+#include <iostream>
 
-struct kernel {
-  template <int Width, int Height>
-  void operator()(int scale) const;
+int main() {
+  poet::static_for<0, 5>([](auto I) {
+    // I is std::integral_constant<std::intmax_t, N>
+    std::cout << decltype(I)::value << '\n';
+  });
+}
+```
+
+dynamic_for — runtime loop with compile-time blocks
+```cpp
+#include <iostream>
+
+int main() {
+  std::size_t n = 37;
+  poet::dynamic_for<8>(0u, n, [](std::size_t i) {
+    // body executed for i = 0..n-1 in unrolled blocks of 8
+    std::cout << i << '\n';
+  });
+}
+```
+
+dispatch — map runtime values to compile-time templates
+```cpp
+#include <iostream>
+
+struct Impl {
+  template<int N>
+  void operator()(int x) const {
+    std::cout << "specialized N=" << N << " x=" << x << '\n';
+  }
 };
 
-auto params = std::make_tuple(
-    poet::DispatchParam<poet::make_range<0, 7>>{requested_width},
-    poet::DispatchParam<poet::make_range<0, 7>>{requested_height});
-
-poet::dispatch(kernel{}, params, current_scale);
+int main() {
+  int runtime_choice = 2;
+  auto params = std::make_tuple(poet::DispatchParam<poet::make_range<0, 4>>{ runtime_choice });
+  poet::dispatch(Impl{}, params, 42); // calls Impl::operator()<2>(42) if in range
+}
 ```
 
-If no combination matches the runtime inputs, the functor is never invoked. For
-non-void functors, `dispatch` returns a default-constructed result value when no
-match exists, which can be used as a sentinel to detect the absence of a
-matching configuration.
+dispatch with DispatchSet — sparse tuple dispatch
+```cpp
+struct Impl2 {
+  template<int A, int B>
+  void operator()(const std::string &s) const {
+    std::cout << A << "," << B << " -> " << s << '\n';
+  }
+};
 
-### Configuration Options
-
-| Option | Description | Default |
-| --- | --- | --- |
-| `POET_WARNINGS_AS_ERRORS` | Treat compiler warnings as errors via PoetWarnings.cmake. | `ON` |
-| `POET_STRICT_WARNINGS` | Apply the curated warning profile to `poet::poet`. | `ON` |
-| `POET_ENABLE_SANITIZERS` | Master switch for sanitizer defaults (controls POET_ENABLE_ASAN/UBSAN defaults). | `OFF` |
-| `POET_ENABLE_ASAN` / `POET_ENABLE_UBSAN` | Enable AddressSanitizer / UndefinedBehaviorSanitizer when supported. Defaults follow `POET_ENABLE_SANITIZERS`. | `OFF` |
-| `POET_ENABLE_CLANG_TIDY` | Enable clang-tidy integration for the `poet::poet` target. | `ON` |
-| `POET_CLANG_TIDY_CHECKS` | Override checks executed by clang-tidy. | `""` |
-| `POET_CLANG_TIDY_WARNINGS_AS_ERRORS` | Treat clang-tidy warnings as errors. | `ON` |
-| `POET_ENABLE_CPPCHECK` | Enable cppcheck integration. | `ON` |
-| `POET_CPPCHECK_OPTIONS` | Extra arguments forwarded to `cppcheck`. | `--enable=warning,style,performance,portability` |
-| `POET_BUILD_TESTS` | Build the POET test suite. | `BUILD_TESTING` |
-| `POET_BUILD_BENCHMARKS` | Build POET benchmark executables. | `OFF` |
-| `POET_BUILD_DEVEL` | Build POET development utilities. | `OFF` |
-| `POET_GENERATE_DOCS` | Generate documentation (Doxygen + Sphinx). | `OFF` |
-| `POET_ENABLE_COVERAGE` | Enable code coverage instrumentation for POET and tests. | `OFF` |
-
-## Getting Started
-
-### Using `find_package`
-
-After installing POET (for example via `cmake --install` or a package manager), locate the package from your project:
-
-```cmake
-find_package(poet CONFIG REQUIRED)
-
-add_executable(your_target src/main.cpp)
-target_link_libraries(your_target PRIVATE poet::poet)
+int main() {
+  poet::DispatchSet<int, poet::T<1,2>, poet::T<3,4>> set(1, 2);
+  poet::dispatch(Impl2{}, set, std::string("hello")); // calls Impl2::operator()<1,2>
+}
 ```
 
-The imported target propagates include paths, warnings, sanitizer preferences, and static-analysis hooks.
+throwing dispatch — example
+---------------------------
+Some overloads of `dispatch` accept the tag `poet::throw_t` (alias of `throw_on_no_match_t`) as the first argument and will throw `std::runtime_error` when no compile-time match exists. This is useful when a missing specialization is a fatal configuration error.
 
-### FetchContent / CPM.cmake
+```cpp
+#include <iostream>
+#include <stdexcept>
 
-You can also consume POET directly from source without a prior install:
+struct Impl3 {
+  template<int N>
+  int operator()(int x) const { return N + x; }
+};
 
-```cmake
-FetchContent_Declare(
-  poet
-  GIT_REPOSITORY https://github.com/DiamonDinoia/poet.git
-  GIT_TAG <commit-or-tag>
-)
-FetchContent_MakeAvailable(poet)
+int main() {
+  try {
+    int runtime_choice = 10;
+    auto params = std::make_tuple(poet::DispatchParam<poet::make_range<0,4>>{ runtime_choice });
+    // Throws std::runtime_error because 10 is not in [0..4]
+    int result = poet::dispatch(poet::throw_t, Impl3{}, params, 5);
+    std::cout << result << '\n';
+  } catch (const std::runtime_error &e) {
+    std::cerr << "dispatch failed: " << e.what() << '\n';
+  }
+}
 ```
 
-```cmake
-CPMAddPackage(
-  NAME poet
-  GIT_REPOSITORY https://github.com/DiamonDinoia/poet.git
-  GIT_TAG <commit-or-tag>
-)
-```
+Documentation and License
+-------------------------
+- Full API docs and guides: docs/ (Sphinx/RST in repository)
+- License: see LICENSE
 
-### Manual include usage
+Contributing
+------------
+PRs and issues welcome. Keep changes small and test performance-sensitive code.
 
-When vendoring POET without CMake, add the `include/` directory to your compiler’s search path and include the headers you need. Link your targets against the headers normally—no additional libraries are required because POET is header-only. Note that the automatic warning, sanitizer, and tooling integrations are only available through the CMake modules.
-
-## Supported Compilers & Platforms
-
-POET targets C++17 and is routinely built with:
-
-- GCC 11 or newer on Linux.
-- Clang 13 or newer on Linux and macOS (AppleClang).
-- MSVC 19.30 or newer on Windows.
-
-Earlier toolchains may work but are not part of the official support matrix. Platform-specific sanitizer limitations (for example, MemorySanitizer requiring Linux) are enforced by the helper modules.
-
-## Building the Project
-
-```bash
-cmake -S . -B build
-cmake --build build
-```
-
-Use `cmake --install build` to install headers and CMake package metadata into your chosen prefix. The generated archive from CPack can be produced with `cpack` inside the build directory.
-
-To execute the automated checks after configuring, either run `ctest --output-on-failure` from the build directory or provide the build tree explicitly:
-
-```bash
-ctest --output-on-failure --test-dir build
-```
-
-## Building Tests
-
-The `tests/` directory hosts automated checks. Once populated, enable its targets in your preferred way (for example by adding `add_subdirectory(tests)` to a downstream project) and rebuild:
-
-```bash
-cmake --build build --target <test-target>
-ctest --output-on-failure --test-dir build
-```
-
-The Catch2 label `[static_for]` exercises the compile-time iteration utilities, with the `[static_for][loop]` and `[static_for][dispatch]` sections covering `static_loop` and `static_for` behaviour respectively.
-
-Contributions that expand this directory are welcome—see the Contributing section below for details.
-
-## Sanitizer Usage
-
-To enable sanitizers, toggle the master switch or the individual sanitizer cache variables at configure time:
-
-```bash
-# enable all sanitizer defaults
-cmake -S . -B build -DPOET_ENABLE_SANITIZERS=ON
-
-# or explicitly
-cmake -S . -B build -DPOET_ENABLE_ASAN=ON -DPOET_ENABLE_UBSAN=ON
-```
-
-POET detects whether the active compiler supports each sanitizer and applies the appropriate compile and link options.
-
-## Contributing
-
-Issues and pull requests are welcome. Please:
-
-1. Configure with the default warnings and tooling options enabled.
-2. Run the sanitizer and static analysis options relevant to your change.
-3. Add or update examples/tests where practical to demonstrate new behavior.
-4. Keep pull requests focused and documented, referencing any related issues.
-
-## Changelog & Versioning
-
-Track notable changes in `CHANGELOG.md` (to be added alongside the first tagged version) and in the GitHub Releases page. Each release will highlight breaking changes, new features, and fixes.
-
-## License
-
-POET is distributed under the terms of the [MIT License](LICENSE).
