@@ -4,93 +4,79 @@ Static Loops (static_for)
 Overview
 --------
 
-``poet::static_for`` implements a compile-time unrolled loop. It is useful when the loop boundaries are known at compile time and you want to generate code for each iteration independently. 
+``poet::static_for`` implements a compile-time unrolled loop. It is useful when loop
+bounds are known at compile time and you want the compiler to generate specialized,
+unrolled code for each iteration. To keep compile-time costs bounded the iteration
+space is partitioned into blocks (capped by default to 256); each block is expanded
+as an unrolled sequence of calls.
 
-It splits the iteration space into blocks (default 256) to handle large counts without crashing the compiler.
+What I represents
+-----------------
+- When the callable receives a parameter (e.g. `[](auto i){ ... }`), `i` is a
+  `std::integral_constant` wrapper; use `decltype(i)::value` or `i.value` to access
+  the integer at compile time.
+- When using a C++20 template lambda (`[]<auto I>() { ... }`) the template parameter
+  `I` is the compile-time integer itself and can be used directly as a non-type
+  template argument.
 
-Usage
------
+Behavior for ranges not divisible by block size
+----------------------------------------------
+The partitioning into blocks is an implementation detail to bound template
+instantiation depth; it does not change the iteration semantics:
 
-Simplified Iteration (Zero-based)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Given a range `[Begin, End)` and a BlockSize B (default computed/capped), the
+  implementation expands full blocks of B iterations where possible, and a final
+  partial block for the remaining iterations when `(End - Begin) % B != 0`.
+- Example: `poet::static_for<0, 100, 1, 8>(...)` expands 12 full blocks of 8
+  (0..95) and one final partial block (96..99). Every call inside the body is
+  invoked with the actual iteration index (0..99), not a block-relative index.
+- In other words, static_for yields the exact sequence of indices in `[Begin,End)`
+  (respecting the step), but generates the code as a sequence of unrolled blocks.
+- The block partitioning reduces compile-time blowup for large ranges; semantics
+  remain identical to an unrolled loop over the full range.
 
-The most convenient overload iterates from ``0`` to ``End`` with a step of 1.
+BlockSize and compile-time tradeoffs
+-----------------------------------
+- The fourth template parameter sets `BlockSize`. Smaller block sizes reduce the
+  size of each unrolled instantiation at the cost of more top-level block
+  instantiations; larger block sizes increase per-block code expansion.
+- A sensible default cap is used to balance compile time and generated code size.
+- If you hit compilation or performance issues, tune `BlockSize` to trade between
+  instantiation depth and per-block expansion.
 
-.. code-block:: cpp
+Callable signatures (summary)
+-----------------------------
+- Callable receives a `std::integral_constant` (C++17 style):
+  .. code-block:: cpp
 
-   // Iterate: 0, 1, 2, 3, 4
-   poet::static_for<5>([](auto i) {
-       std::cout << "i = " << i << "\n";
-   });
+     poet::static_for<3>([](auto i) {
+         constexpr int val = decltype(i)::value;
+         some_template<val>();
+     });
 
-Explicit Range
-~~~~~~~~~~~~~~
+- With C++20 template lambda:
+  .. code-block:: cpp
 
-Specifying the range ``[Begin, End)`` is also possible.
+     poet::static_for<3>([]<auto I>() {
+         some_template<I>();
+     });
 
-.. code-block:: cpp
+Examples
+--------
+- Divisible range:
 
-   // Iterate: 2, 3, 4
-   poet::static_for<2, 5>([](auto i) {
-       // ...
-   });
+  .. code-block:: cpp
 
-Custom Step
-~~~~~~~~~~~
+     // Iterates 0..7 (8 iterations), BlockSize default >= 8
+     poet::static_for<0, 8>([]<auto I>() {
+         // I = 0..7
+     });
 
-A custom step size (positive or negative) can be specified as the third template parameter.
+- Non-divisible range with BlockSize 8:
 
-.. code-block:: cpp
+  .. code-block:: cpp
 
-   // Iterate: 0, 2, 4
-   poet::static_for<0, 6, 2>([](auto i) {
-       constexpr int val = i;
-       process_even(val);
-   });
-
-   // Iterate: 4, 3, 2, 1
-   poet::static_for<4, 0, -1>([](auto i) {
-       // ...
-   });
-
-Controlling Block Size (Advanced)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-For very large loops or complex loop bodies, it might be desirable to control the block partitioning size to manage compile times. The 4th template parameter sets ``BlockSize``.
-
-.. code-block:: cpp
-
-   // Iterate 0..100 with step 1, but process in blocks of 16 iterations
-   poet::static_for<0, 100, 1, 16>([](auto i) {
-       // each block of 16 is expanded into a single function call
-   });
-
-Callable Signatures
--------------------
-
-Integral Constant (C++17)
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The callable is invoked with a ``std::integral_constant``. This allows the index `i` to be used in constant expressions.
-
-.. code-block:: cpp
-
-   poet::static_for<3>([](auto i) {
-       constexpr int val = i;
-       static_assert(val >= 0 && val < 3);
-
-       // Use as template argument
-       some_template<i.value>();
-   });
-
-Template Lambda (C++20)
-~~~~~~~~~~~~~~~~~~~~~~~
-
-When C++20 is available, template lambdas can be used directly. This is supported and provides a cleaner syntax for accessing the compile-time value.
-
-.. code-block:: cpp
-
-   poet::static_for<3>([]<auto I>() {
-       // I is available as a compile-time constant
-       some_template<I>();
-   });
+     // Iterates 0..99; expanded as 12 full blocks (8) + final block of 4
+     poet::static_for<0, 100, 1, 8>([](auto i) {
+         // decltype(i)::value ranges 0..99
+     });
