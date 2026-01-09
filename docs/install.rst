@@ -1,7 +1,7 @@
 Installation
 ============
 
-The POET library is header-only, which makes integration straightforward. You can obtain the code via Git and then use CMake or standard Makefiles to include it in your project.
+The POET library is header-only, which makes integration straightforward. The code can be obtained via Git and then integrated using CMake or standard Makefiles into a project.
 
 Git Clone
 ---------
@@ -20,7 +20,7 @@ POET is designed to be easily integrated into CMake projects.
 Option 1: add_subdirectory
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you have cloned (or added as a submodule) POET into a subdirectory (e.g., ``extern/poet``), you can simply add it to your ``CMakeLists.txt``:
+If POET has been cloned (or added as a submodule) into a subdirectory (e.g., ``extern/poet``), it can be added to ``CMakeLists.txt``:
 
 .. code-block:: cmake
 
@@ -32,7 +32,7 @@ If you have cloned (or added as a submodule) POET into a subdirectory (e.g., ``e
 Option 2: FetchContent
 ~~~~~~~~~~~~~~~~~~~~~~
 
-You can let CMake download specific versions using ``FetchContent``:
+CMake can download specific versions using ``FetchContent``:
 
 .. code-block:: cmake
 
@@ -49,10 +49,26 @@ You can let CMake download specific versions using ``FetchContent``:
    add_executable(my_app main.cpp)
    target_link_libraries(my_app PRIVATE poet::poet)
 
+Option 4: CPM.cmake
+~~~~~~~~~~~~~~~~~~~
+
+If `CPM.cmake <https://github.com/cpm-cmake/CPM.cmake>`_ is already used, POET can be fetched with:
+
+.. code-block:: cmake
+
+   CPMAddPackage(
+     NAME poet
+     GITHUB_REPOSITORY DiamonDinoia/poet
+     GIT_TAG main
+   )
+
+   add_executable(my_app main.cpp)
+   target_link_libraries(my_app PRIVATE poet::poet)
+
 Option 3: System Install
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can install POET to your system and use ``find_package``:
+POET can be installed to the system and used via ``find_package``:
 
 .. code-block:: bash
 
@@ -63,7 +79,10 @@ You can install POET to your system and use ``find_package``:
    cmake --build build
    sudo cmake --install build
 
-Then in your project:
+   # Optional: install to a custom prefix
+   # cmake --install build --prefix /custom/prefix
+
+Then in the consuming project:
 
 .. code-block:: cmake
 
@@ -75,7 +94,7 @@ Then in your project:
 Makefile Integration
 --------------------
 
-Since POET is header-only, you do not need to build any libraries. Simply point your compiler's include path to the ``include`` directory.
+Since POET is header-only, no libraries need to be built. The compiler's include path should point to the ``include`` directory.
 
 Assuming the POET repository is located at ``/path/to/poet``:
 

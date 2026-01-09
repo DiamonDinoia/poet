@@ -1,7 +1,7 @@
-POET Documentation
+POET
 ==================
 
-POET is a small, header-only C++ utility library that provides compile-time-oriented loop and dispatch primitives to make performance-sensitive metaprogramming simpler and safer. It exposes a few focused building blocks so you can write concise, zero-cost-specialized kernels driven by runtime values.
+POET is a small, header-only C++ utility library that provides compile-time-oriented loop and dispatch primitives to make performance-sensitive metaprogramming simpler and safer. It exposes a few focused building blocks to enable concise, zero-cost-specialized kernels driven by runtime values.
 
 Core primitives
 ---------------
@@ -20,36 +20,50 @@ Performance benefits
 - Zero-cost runtime-to-compile-time dispatch for selecting specialized codepaths.
 
 Common hotspots that benefit
+----------------------------
 - Small fixed-size linear algebra (small GEMM, batched matrix ops)
 - Tight convolution / stencil kernels and DSP micro-kernels
 - Fixed-size FFT/DFT implementations
 - Hot parsing/serialization loops and small-state machines
 - Kernel selection/specialization where runtime choices select optimized codepaths
 
-Quick start (one minute)
+Quick start
 ------------------------
 Prerequisites
 - C++17-capable compiler (GCC, Clang, MSVC)
 - CMake 3.20+ (recommended for downstream integration)
 
 Clone:
-.. code-block:: bash
-
-   git clone https://github.com/DiamonDinoia/poet.git
+   .. code-block:: bash
+      
+      git clone https://github.com/DiamonDinoia/poet.git
 
 Header-only usage
-- Add the repository's `include/` directory to your compiler include path and include the umbrella header:
+- Add the repository's `include/` directory to the compiler include path and include the umbrella header:
 
   .. code-block:: cpp
 
      #include <poet/poet.hpp>
 
-CMake integration (recommended)
+  .. code-block:: bash
+
+     g++ -std=c++17 -I/path/to/poet/include app.cpp -o app
+
+CMake integration
 - add_subdirectory (local development):
 
 .. code-block:: cmake
 
    add_subdirectory(path/to/poet)
+   add_executable(my_app main.cpp)
+   target_link_libraries(my_app PRIVATE poet::poet)
+
+- find_package (after install):
+
+.. code-block:: cmake
+
+   # After installing POET with `cmake --install`, discover it via CMake's package config
+   find_package(poet CONFIG REQUIRED)
    add_executable(my_app main.cpp)
    target_link_libraries(my_app PRIVATE poet::poet)
 
@@ -62,11 +76,39 @@ CMake integration (recommended)
    FetchContent_MakeAvailable(poet)
    target_link_libraries(my_app PRIVATE poet::poet)
 
+- CPM.cmake (downstream projects):
+
+.. code-block:: cmake
+
+   # Requires CPM.cmake available in the project
+   # See https://github.com/cpm-cmake/CPM.cmake for setup
+
+   CPMAddPackage(
+     NAME poet
+     GITHUB_REPOSITORY DiamonDinoia/poet
+     GIT_TAG main
+   )
+
+   add_executable(my_app main.cpp)
+   target_link_libraries(my_app PRIVATE poet::poet)
+
+Install with CMake
+------------------
+
+.. code-block:: bash
+
+   # Configure and build
+   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+   cmake --build build --parallel
+
+   # Install (choose a prefix or rely on default)
+   cmake --install build --prefix /custom/prefix
+
 High-level usage pointers
 - Read the short guides for practical patterns:
-  - guides/static_for — when you need compile-time unrolling.
-  - guides/dynamic_for — when you want low-overhead runtime loops in unrolled blocks.
-  - guides/static_dispatch — when you must map runtime choices to compile-time specializations.
+  - guides/static_for — when compile-time unrolling is needed.
+  - guides/dynamic_for — when low-overhead runtime loops in unrolled blocks are desired.
+  - guides/static_dispatch — when runtime choices must map to compile-time specializations.
 - Consult the API Reference for exact signatures and template parameters.
 
 Throwing dispatch
@@ -80,7 +122,7 @@ Documentation & license
 
 Contributing
 ------------
-PRs and issues welcome. Keep changes small and include tests for performance-sensitive code.
+PRs and issues welcome.
 
 .. toctree::
    :maxdepth: 2
@@ -101,4 +143,3 @@ PRs and issues welcome. Keep changes small and include tests for performance-sen
    :caption: API Reference
 
    api/library_root
-

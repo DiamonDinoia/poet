@@ -56,6 +56,18 @@ If ``begin > end``, it iterates backward (exclusive of ``end``):
    // 10, 9, 8, 7, 6
    poet::dynamic_for(10, 5, [](auto i) { ... });
 
+Backward + custom unroll and step
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+It is possible to combine a negative step with a custom unroll factor:
+
+.. code-block:: cpp
+
+   // 10, 8, 6, 4, 2
+   poet::dynamic_for<4>(10, 0, -2, [](auto i) {
+       // i is a runtime value
+   });
+
 Explicit Step
 ~~~~~~~~~~~~~
 
@@ -87,7 +99,19 @@ If it is known that the loop body is small (or large), the unroll factor can be 
 Tail Handling
 -------------
 
-When the total count isn't divisible by the unroll factor (e.g., 100 items with unroll 8 -> 12 chunks of 8 + 4 leftover), ``dynamic_for`` automatically handles the tail. It uses ``static_dispatch`` to jump to a specialized unrolled block for exactly those remaining items, ensuring the entire loop (head + tail) is efficient.
+When the total count isn't divisible by the unroll factor (e.g., 100 items with unroll 8 -> 12 chunks of 8 + 4 leftover), ``dynamic_for`` automatically handles the tail. It uses ``poet::dispatch`` to jump to a specialized unrolled block for exactly those remaining items, ensuring the entire loop (head + tail) is efficient.
+
+.. note:: The unroll factor must satisfy ``Unroll <= poet::kMaxStaticLoopBlock``.
+
+Example (tail not divisible by unroll)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: cpp
+
+   // Unroll by 3 with 10 iterations: 3+3+3 full blocks, 1-tail handled via poet::dispatch
+   poet::dynamic_for<3>(0, 10, 1, [](auto i) {
+       // i runs 0..9; the last 1 iteration is dispatched to a specialized unrolled block
+   });
 
 Callable Signature
 ------------------

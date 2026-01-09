@@ -41,9 +41,12 @@
 *.dwo
 
 # Build directories
-/build/
+build/
 build-*/
 
 # IDE files
 .vscode/
 .idea/
+
+# Doxygen output
+docs/api/

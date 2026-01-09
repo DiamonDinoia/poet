@@ -45,6 +45,29 @@ Basic Range Dispatch
    // If n is in [1, 16], calls Kernel::operator()<n>(data)
    poet::dispatch(Kernel{}, std::make_tuple(param), data_ptr);
 
+Cartesian product of ranges (multiple DispatchParam)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Dispatch over two independent ranges without enumerating a set:
+
+.. code-block:: cpp
+
+   struct Kernel2D {
+       template<int A, int B>
+       void operator()(float* data) const {
+           // Specialized for A,B
+       }
+   };
+
+   using AR = poet::make_range<1, 4>;  // 1..4 (inclusive)
+   using BR = poet::make_range<2, 3>;  // 2..3 (inclusive)
+   int a = getA(); int b = getB();
+   auto params = std::make_tuple(
+       poet::DispatchParam<AR>{a},
+       poet::DispatchParam<BR>{b}
+   );
+   poet::dispatch(Kernel2D{}, params, data_ptr);
+
 Explicit Sets (Sparse Dispatch)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -87,7 +110,19 @@ You can force a check by passing ``poet::throw_t`` as the first argument:
    poet::dispatch(poet::throw_t, Kernel{}, params, args...);
    // Throws std::runtime_error if no match found.
 
+The throwing overload with ``DispatchSet`` is also available:
+
+.. code-block:: cpp
+
+   using Shapes = poet::DispatchSet<int, poet::T<2,2>, poet::T<4,4>>;
+   Shapes s(r, c);
+   poet::dispatch(poet::throw_t, MatMul{}, s); // throws if (r,c) not allowed
+
 Implementation Details
 ----------------------
 
-Internally, ``static_dispatch`` constructs a table of ``std::variant`` types, where each variant holds a ``std::integral_constant``. It uses ``std::visit`` to invoke the callable. For ranges, it optimizes the mapping from integer to variant index to be O(1) (simple arithmetic offset). For sparse sets, it may use linear search or other strategies depending on the structure, but the ``DispatchSet`` interface is designed for efficient lookups where possible.
+Internally, ``dispatch`` constructs a table of ``std::variant`` types, where each variant holds a ``std::integral_constant``. It uses ``std::visit`` to invoke the callable. For ranges, it optimizes the mapping from integer to variant index to be O(1) (simple arithmetic offset). For sparse sets, it may use linear search or other strategies depending on the structure, but the ``DispatchSet`` interface is designed for efficient lookups where possible.
+
+Advanced: ``poet::dispatch_tuples`` exposes the tuple-of-sequences form used under the hood for ``DispatchSet`` and cartesian ParamTuples. Most users should call ``poet::dispatch`` instead.
+
+.. note:: ``poet::make_range<Start, End>`` is inclusive on both ends.

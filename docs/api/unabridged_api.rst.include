@@ -233,16 +233,6 @@ Classes and Structs
 .. toctree::
    :maxdepth: 5
 
-   structpoet_1_1detail_1_1tuple__alt__from__seq.rst
-
-.. toctree::
-   :maxdepth: 5
-
-   structpoet_1_1detail_1_1tuple__alt__from__seq_3_01std_1_1integer__sequence_3_01int_00_01_vs_8_8_8_01_4_01_4.rst
-
-.. toctree::
-   :maxdepth: 5
-
    structpoet_1_1detail_1_1unique__helper.rst
 
 .. toctree::
@@ -264,16 +254,6 @@ Classes and Structs
    :maxdepth: 5
 
    structpoet_1_1detail_1_1variant__from__seq_3_01std_1_1integer__sequence_3_01int_00_01_i_8_8_8_01_4_01_4.rst
-
-.. toctree::
-   :maxdepth: 5
-
-   structpoet_1_1detail_1_1variant__from__tuple__seq.rst
-
-.. toctree::
-   :maxdepth: 5
-
-   structpoet_1_1detail_1_1variant__from__tuple__seq_3_01std_1_1tuple_3_01_seq_8_8_8_01_4_01_4.rst
 
 .. toctree::
    :maxdepth: 5
@@ -342,7 +322,7 @@ Functions
 .. toctree::
    :maxdepth: 5
 
-   function_namespacepoet_1_1detail_1a5e744f84b60c5f6843f7d44b04401f1f.rst
+   function_namespacepoet_1_1detail_1a9bb729a19074363d3634446447b2119f.rst
 
 .. toctree::
    :maxdepth: 5
@@ -372,7 +352,7 @@ Functions
 .. toctree::
    :maxdepth: 5
 
-   function_namespacepoet_1_1detail_1abc1677707d6ba366e0219182d72aacb7.rst
+   function_namespacepoet_1_1detail_1a718a4e0c28ac494b480541c0920e3b0a.rst
 
 .. toctree::
    :maxdepth: 5
@@ -387,7 +367,7 @@ Functions
 .. toctree::
    :maxdepth: 5
 
-   function_namespacepoet_1_1detail_1ab92ea1e3235eda39c8d8ebc3137083a8.rst
+   function_namespacepoet_1_1detail_1a85df495054df964804da14a56a14fc56.rst
 
 .. toctree::
    :maxdepth: 5
@@ -412,17 +392,12 @@ Functions
 .. toctree::
    :maxdepth: 5
 
-   function_namespacepoet_1_1detail_1a0d521b7365e03231766558e7b7f3c081.rst
+   function_namespacepoet_1_1detail_1af420570afa885baadb897ad5cb538867.rst
 
 .. toctree::
    :maxdepth: 5
 
-   function_namespacepoet_1_1detail_1a96e4dd09f58530ceb8d025680df43d43.rst
-
-.. toctree::
-   :maxdepth: 5
-
-   function_namespacepoet_1_1detail_1a96e4dd09f58530ceb8d025680df43d43.rst
+   function_namespacepoet_1_1detail_1a10c944847c50ea7fe3656a951be5d384.rst
 
 .. toctree::
    :maxdepth: 5
@@ -516,11 +491,6 @@ Typedefs
    :maxdepth: 5
 
    typedef_namespacepoet_1_1detail_1ac8e2ddef4ea3786638118ae90eaa3eee.rst
-
-.. toctree::
-   :maxdepth: 5
-
-   typedef_namespacepoet_1_1detail_1a6f371576d36fe943c2776883d94e8c58.rst
 
 .. toctree::
    :maxdepth: 5

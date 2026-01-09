@@ -29,7 +29,7 @@ Common hotspots that benefit
 - Hot parsing/serialization loops and state machines with fixed-state graphs
 - Kernel-selection/specialization in template-based libraries where runtime choices select optimized codepaths
 
-Minimal quick start
+Quick start
 -------------------
 
 Prerequisites
@@ -49,7 +49,17 @@ add_executable(my_app main.cpp)
 target_link_libraries(my_app PRIVATE poet::poet)
 ```
 
-3. CMake — FetchContent
+3. CMake — find_package (after install)
+```cmake
+# After you install POET somewhere with `cmake --install`,
+# discover it via CMake's package config:
+find_package(poet CONFIG REQUIRED)
+
+add_executable(my_app main.cpp)
+target_link_libraries(my_app PRIVATE poet::poet)
+```
+
+4. CMake — FetchContent
 ```cmake
 include(FetchContent)
 FetchContent_Declare(poet GIT_REPOSITORY https://github.com/DiamonDinoia/poet.git GIT_TAG main)
@@ -57,9 +67,27 @@ FetchContent_MakeAvailable(poet)
 target_link_libraries(my_app PRIVATE poet::poet)
 ```
 
-4. Header-only usage (no build step)
-- Add the repository `include/` directory to your compiler include path:
-  -g++ -std=c++17 -I/path/to/poet/include ...
+4a. CMake — CPM.cmake
+```cmake
+# Requires CPM.cmake available in your project
+# See https://github.com/cpm-cmake/CPM.cmake for setup
+
+CPMAddPackage(
+  NAME poet
+  GITHUB_REPOSITORY DiamonDinoia/poet
+  GIT_TAG main
+)
+
+add_executable(my_app main.cpp)
+target_link_libraries(my_app PRIVATE poet::poet)
+```
+
+5. Header-only usage (no build step)
+- Add the repository `include/` directory to your compiler include path and compile your code:
+
+  ```bash
+  g++ -std=c++17 -I/path/to/poet/include your.cpp -o your_app
+  ```
 
 Basic usage examples
 --------------------
@@ -127,7 +155,7 @@ int main() {
 }
 ```
 
-throwing dispatch — example
+throwing dispatch 
 ---------------------------
 Some overloads of `dispatch` accept the tag `poet::throw_t` (alias of `throw_on_no_match_t`) as the first argument and will throw `std::runtime_error` when no compile-time match exists. This is useful when a missing specialization is a fatal configuration error.
 
@@ -156,9 +184,8 @@ int main() {
 Documentation and License
 -------------------------
 - Full API docs and guides: docs/ (Sphinx/RST in repository)
-- License: see LICENSE
+- License: MIT (see LICENSE file)
 
 Contributing
 ------------
-PRs and issues welcome. Keep changes small and test performance-sensitive code.
-
+PRs and issues welcome.
