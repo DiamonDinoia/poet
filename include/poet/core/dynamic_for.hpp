@@ -206,6 +206,61 @@ template<std::size_t Unroll = kDefaultUnroll, typename Func> inline void dynamic
     dynamic_for<Unroll>(static_cast<std::size_t>(0), count, std::forward<Func>(func));
 }
 
-}// namespace poet
+} // namespace poet
+
+
+#if __cplusplus >= 202002L
+#include <ranges>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <cstddef>
+
+namespace poet {
+
+// Adaptor holds the user callable.
+// Template ordering: Func first (deduced), Unroll second (optional).
+template<typename Func, std::size_t Unroll = poet::kDefaultUnroll>
+struct dynamic_for_adaptor {
+  Func func;
+  dynamic_for_adaptor(Func f) : func(std::move(f)) {}
+};
+
+// Range overload: accept any std::ranges::range.
+// Interprets the range as a sequence of consecutive indices starting at *begin(range).
+// This implementation computes the distance by iterating the range (works even when not sized).
+template<typename Func, std::size_t Unroll, typename Range>
+  requires std::ranges::range<Range>
+void operator|(Range &&r, dynamic_for_adaptor<Func, Unroll> const &ad) {
+  auto it = std::ranges::begin(r);
+  auto it_end = std::ranges::end(r);
+
+  if (it == it_end) return; // empty range
+
+  using ValT = std::remove_reference_t<decltype(*it)>;
+  ValT start = *it;
+
+  std::size_t count = 0;
+  for (auto jt = it; jt != it_end; ++jt) ++count;
+
+  // Call dynamic_for with [start, start+count) using step = +1
+  poet::dynamic_for<Unroll>(start, static_cast<ValT>(start + static_cast<ValT>(count)), ad.func);
+}
+
+// Tuple overload: accept tuple-like (begin, end, step)
+template<typename Func, std::size_t Unroll, typename B, typename E, typename S>
+void operator|(std::tuple<B, E, S> const &t, dynamic_for_adaptor<Func, Unroll> const &ad) {
+  auto [b, e, s] = t;
+  poet::dynamic_for<Unroll>(b, e, s, ad.func);
+}
+
+// Helper to construct adaptor with type deduction
+template<std::size_t U = poet::kDefaultUnroll, typename F>
+dynamic_for_adaptor<std::decay_t<F>, U> make_dynamic_for(F &&f) {
+  return dynamic_for_adaptor<std::decay_t<F>, U>(std::forward<F>(f));
+}
+
+} // namespace poet
+#endif // __cplusplus >= 202002L
 
 #endif// POET_CORE_DYNAMIC_FOR_HPP

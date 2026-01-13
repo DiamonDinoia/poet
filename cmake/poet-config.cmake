@@ -3,6 +3,6 @@
 
 include_guard(GLOBAL)
 
-include("${CMAKE_CURRENT_LIST_DIR}/PoetWarnings.cmake" OPTIONAL)
-include("${CMAKE_CURRENT_LIST_DIR}/PoetSanitizers.cmake" OPTIONAL)
-include("${CMAKE_CURRENT_LIST_DIR}/PoetStaticAnalysis.cmake" OPTIONAL)
+# Developer helper modules (warnings/sanitizers/static-analysis) are not
+# installed with the package. Consumers should only get the exported targets
+# from poet-targets.cmake.

@@ -1,7 +1,3 @@
 @PACKAGE_INIT@
 
 include("${CMAKE_CURRENT_LIST_DIR}/poet-targets.cmake")
-
-if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/poet-config.cmake")
-  include("${CMAKE_CURRENT_LIST_DIR}/poet-config.cmake")
-endif()

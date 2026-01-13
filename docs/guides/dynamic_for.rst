@@ -71,7 +71,12 @@ It is possible to combine a negative step with a custom unroll factor:
 Explicit Step
 ~~~~~~~~~~~~~
 
-An arbitrary step can be provided as a third argument.
+An arbitrary step can be provided as a third argument. The `step` parameter is the per-element stride: successive indices differ by `step`. The unroll factor (`Unroll`) controls how many consecutive elements are emitted in each compile-time unrolled block. After emitting a block of `Unroll` elements, the next block starts at `current_index + Unroll * step`.
+
+For example, with Unroll=4 and step=2 starting at 0:
+
+- Element sequence: 0, 2, 4, 6, 8, 10, 12, ... (individual indices)
+- Block starts: 0, 8, 16, ... (each block covers 4 elements: [0,2,4,6] then [8,10,12,14])
 
 .. code-block:: cpp
 
@@ -112,6 +117,84 @@ Example (tail not divisible by unroll)
    poet::dynamic_for<3>(0, 10, 1, [](auto i) {
        // i runs 0..9; the last 1 iteration is dispatched to a specialized unrolled block
    });
+
+Use with C++ ranges and piping
+-----------------------------
+
+POET's loop utilities operate on indices and invoke user callables. You can combine them with C++20 ranges and the pipe (`|`) syntax using the piping adaptor embedded in the header to get concise examples. The adaptor is an eager sink: it computes the range length (single-pass for non-sized ranges) and calls ``poet::dynamic_for``.
+
+Prerequisite: include the main header and ranges:
+
+.. code-block:: cpp
+
+   #include <poet/core/dynamic_for.hpp>
+   #include <ranges>
+
+Example 1 — Basic indexed range (iota + take)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: cpp
+
+   auto r = std::views::iota(0) | std::views::take(10);
+   // Equivalent to: poet::dynamic_for<4>(0, 10, 1, lambda);
+   r | poet::make_dynamic_for<4>([](int i){
+       // i iterates 0..9 (eagerly)
+   });
+
+Example 2 — Tuple (explicit begin, end, step)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: cpp
+
+   // Useful for non-unit step or precomputed bounds:
+   std::tuple{0, 24, 2} | poet::make_dynamic_for<4>([](int i){
+       // i = 0,2,4,...,22
+   });
+
+Example 3 — Transformed ranges (regular pattern)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If the transformation is a regular stride, prefer calling ``dynamic_for`` with the corresponding step:
+
+.. code-block:: cpp
+
+   auto t = std::views::iota(0)
+            | std::views::transform([](int x){ return x * 2; })
+            | std::views::take(5);
+   // Materialize or compute pattern: values are 0,2,4,6,8 -> step 2
+   poet::dynamic_for<4>(0, 10, 2, [](int v){
+       // handles 0,2,4,6,8 efficiently
+   });
+
+If the transformed range is not a simple arithmetic progression, prefer std::ranges::for_each or materialize the values.
+
+Example 4 — Negative step via tuple
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: cpp
+
+   std::tuple{10, 0, -2} | poet::make_dynamic_for<4>([](int i){
+       // i = 10,8,6,4,2
+   });
+
+Example 5 — Captures and mutable state
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: cpp
+
+   std::vector<int> out;
+   auto r = std::views::iota(0) | std::views::take(8);
+   r | poet::make_dynamic_for<4>([&out](int i){
+       out.push_back(i * i);
+   });
+   // out now contains {0,1,4,9,16,25,36,49}
+
+Notes & caveats
+---------------
+
+- The adaptor interprets a range as a sequence of consecutive values starting at ``*begin(range)`` and advancing by ``+1``. For non-consecutive sequences the adaptor may not be appropriate; prefer an explicit tuple with a `step` argument or use ``std::ranges::for_each``.
+- The adaptor computes the range length by iterating the range; this means non-sized ranges incur a single-pass traversal to determine the count.
+- The adaptor is an eager sink: it calls ``poet::dynamic_for`` (not a lazy view).
 
 Callable Signature
 ------------------

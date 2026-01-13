@@ -29,65 +29,6 @@ Common hotspots that benefit
 - Hot parsing/serialization loops and state machines with fixed-state graphs
 - Kernel-selection/specialization in template-based libraries where runtime choices select optimized codepaths
 
-Quick start
--------------------
-
-Prerequisites
-- A C++17-capable compiler (GCC, Clang, MSVC).
-- CMake 3.20+ for CMake integration (optional).
-
-Install / Integrate
-1. Clone
-```bash
-git clone https://github.com/DiamonDinoia/poet.git
-```
-
-2. CMake — add_subdirectory (recommended for local development)
-```cmake
-add_subdirectory(path/to/poet)
-add_executable(my_app main.cpp)
-target_link_libraries(my_app PRIVATE poet::poet)
-```
-
-3. CMake — find_package (after install)
-```cmake
-# After you install POET somewhere with `cmake --install`,
-# discover it via CMake's package config:
-find_package(poet CONFIG REQUIRED)
-
-add_executable(my_app main.cpp)
-target_link_libraries(my_app PRIVATE poet::poet)
-```
-
-4. CMake — FetchContent
-```cmake
-include(FetchContent)
-FetchContent_Declare(poet GIT_REPOSITORY https://github.com/DiamonDinoia/poet.git GIT_TAG main)
-FetchContent_MakeAvailable(poet)
-target_link_libraries(my_app PRIVATE poet::poet)
-```
-
-4a. CMake — CPM.cmake
-```cmake
-# Requires CPM.cmake available in your project
-# See https://github.com/cpm-cmake/CPM.cmake for setup
-
-CPMAddPackage(
-  NAME poet
-  GITHUB_REPOSITORY DiamonDinoia/poet
-  GIT_TAG main
-)
-
-add_executable(my_app main.cpp)
-target_link_libraries(my_app PRIVATE poet::poet)
-```
-
-5. Header-only usage (no build step)
-- Add the repository `include/` directory to your compiler include path and compile your code:
-
-  ```bash
-  g++ -std=c++17 -I/path/to/poet/include your.cpp -o your_app
-  ```
 
 Basic usage examples
 --------------------
@@ -121,6 +62,21 @@ int main() {
   });
 }
 ```
+
+Note on C++20 ranges and the piping adaptor
+-------------------------------------------
+The header <poet/core/dynamic_for.hpp> supports C++20 pipe ranges or tuple-like (begin,end,step) values into a dynamic_for. Example:
+
+```cpp
+#include <ranges>
+auto r = std::views::iota(0) | std::views::take(10);
+r | poet::make_dynamic_for<4>([](int i){ /* i = 0..9 (eager) */ });
+
+std::tuple{0, 24, 2} | poet::make_dynamic_for<4>([](int i){ /* i = 0,2,4,...,22 */ });
+```
+
+Notes:
+- The adaptor is an eager sink: it computes the length of the input (single-pass for non-sized ranges) and calls poet::dynamic_for immediately.
 
 dispatch — map runtime values to compile-time templates
 ```cpp
@@ -181,9 +137,67 @@ int main() {
 }
 ```
 
+Uninstall / Integrate
+---------------------
+
+(Installation instructions moved below the basic examples for readers who first want to see usage.)
+
+Install / Integrate
+1. Clone
+```bash
+git clone https://github.com/DiamonDinoia/poet.git
+```
+
+2. CMake — add_subdirectory (recommended for local development)
+```cmake
+add_subdirectory(path/to/poet)
+add_executable(my_app main.cpp)
+target_link_libraries(my_app PRIVATE poet::poet)
+```
+
+3. CMake — find_package (after install)
+```cmake
+# After you install POET somewhere with `cmake --install`,
+# discover it via CMake's package config:
+find_package(poet CONFIG REQUIRED)
+
+add_executable(my_app main.cpp)
+target_link_libraries(my_app PRIVATE poet::poet)
+```
+
+4. CMake — FetchContent
+```cmake
+include(FetchContent)
+FetchContent_Declare(poet GIT_REPOSITORY https://github.com/DiamonDinoia/poet.git GIT_TAG main)
+FetchContent_MakeAvailable(poet)
+target_link_libraries(my_app PRIVATE poet::poet)
+```
+
+5. CMake — CPM.cmake
+```cmake
+# Requires CPM.cmake available in your project
+# See https://github.com/cpm-cmake/CPM.cmake for setup
+
+CPMAddPackage(
+  NAME poet
+  GITHUB_REPOSITORY DiamonDinoia/poet
+  GIT_TAG main
+)
+
+add_executable(my_app main.cpp)
+target_link_libraries(my_app PRIVATE poet::poet)
+```
+
+6. Header-only usage (no build step)
+- Add the repository `include/` directory to your compiler include path and compile your code:
+
+  ```bash
+  g++ -std=c++17 -I/path/to/poet/include your.cpp -o your_app
+  ```
+
 Documentation and License
 -------------------------
-- Full API docs and guides: docs/ (Sphinx/RST in repository)
+- Full API docs and guides: https://poet.readthedocs.io/en/latest/ (includes Doxygen-generated API reference)
 - License: MIT (see LICENSE file)
 
 Contributing

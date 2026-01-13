@@ -152,3 +152,65 @@ TEST_CASE("dynamic_for supports the maximum unroll factor", "[dynamic_for]") {
 }
 
 // NOLINTEND(bugprone-throwing-static-initialization, boost-use-ranges)
+
+TEST_CASE("dynamic_for block start pattern with Unroll=4 step=2", "[dynamic_for]") {
+    std::vector<int> visited;
+
+    // With Unroll=4 and step=2, blocks should start at 0, 8, 16, ...
+    // Emit indices for range [0, 24) with step 2 -> indices: 0,2,...,22 (12 elements = 3 blocks)
+    poet::dynamic_for<4>(0, 24, 2, [&visited](int i) { visited.push_back(i); });
+
+    // Verify overall sequence
+    std::vector<int> expected;
+    for (int k = 0; k < 12; ++k) expected.push_back(k * 2);
+    REQUIRE(visited == expected);
+
+    // Verify block starts: visited[b*Unroll] == b * Unroll * step
+    constexpr int Unroll = 4;
+    constexpr int Step = 2;
+    const std::size_t num_blocks = visited.size() / Unroll;
+    for (std::size_t b = 0; b < num_blocks; ++b) {
+        REQUIRE(visited[b * Unroll] == static_cast<int>(b * Unroll * Step));
+    }
+}
+
+#if __cplusplus >= 202002L
+#include <ranges>
+#include <algorithm>
+#include <tuple>
+
+TEST_CASE("dynamic_for vs ranges (C++20)", "[dynamic_for][ranges][cpp20]") {
+    std::vector<int> via_ranges;
+    auto indices = std::views::iota(0) | std::views::take(10);
+    std::ranges::for_each(indices, [&via_ranges](int i){ via_ranges.push_back(i); });
+
+    std::vector<int> via_dynamic;
+    poet::dynamic_for<4>(0, 10, 1, [&via_dynamic](int i){ via_dynamic.push_back(i); });
+
+    REQUIRE(via_ranges == via_dynamic);
+
+    // Also test piping the range directly into dynamic_for adaptor
+    std::vector<int> via_pipe;
+    indices | poet::make_dynamic_for<4>([&via_pipe](int i){ via_pipe.push_back(i); });
+    REQUIRE(via_pipe == via_ranges);
+}
+
+TEST_CASE("dynamic_for with transformed ranges (C++20)", "[dynamic_for][ranges][cpp20]") {
+    std::vector<int> via_ranges;
+    auto r = std::views::iota(0)
+             | std::views::transform([](int i){ return i * 2; })
+             | std::views::take(5);
+    std::ranges::for_each(r, [&via_ranges](int v){ via_ranges.push_back(v); });
+
+    std::vector<int> via_dynamic;
+    // dynamic_for producing same transformed values: 0,2,4,6,8
+    poet::dynamic_for<4>(0, 10, 2, [&via_dynamic](int i){ via_dynamic.push_back(i); });
+
+    REQUIRE(via_ranges == via_dynamic);
+
+    // tuple pipeline
+    std::vector<int> via_tuple;
+    std::tuple{0, 10, 2} | poet::make_dynamic_for<4>([&via_tuple](int i){ via_tuple.push_back(i); });
+    REQUIRE(via_tuple == via_dynamic);
+}
+#endif // __cplusplus >= 202002L
