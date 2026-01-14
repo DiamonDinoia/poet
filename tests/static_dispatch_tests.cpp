@@ -243,6 +243,12 @@ TEST_CASE("dispatch preserves return value types correctly", "[static_dispatch]"
     REQUIRE(std::is_same_v<decltype(result), const double>);
 }
 
+TEST_CASE("dispatch return type is double at runtime", "[static_dispatch][type]") {
+    auto params = std::make_tuple(DispatchParam<make_range<1, 5>>{ 3 });
+    auto result = dispatch(return_type_dispatcher{}, params, 2.5);
+    REQUIRE(typeid(result) == typeid(double));
+}
+
 // Move-only return type: ensure dispatch can return move-only results
 TEST_CASE("dispatch handles move-only return types", "[static_dispatch][move-only]") {
     auto params = std::make_tuple(DispatchParam<make_range<0, 2>>{ 1 });
