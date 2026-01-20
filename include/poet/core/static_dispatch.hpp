@@ -277,12 +277,35 @@ namespace detail {
     }
 
     template<typename Functor, typename ArgumentTuple, typename... Seq> struct dispatch_result_helper {
+        // First preference: value-argument form (passes std::integral_constant values as parameters).
         template<std::size_t... Indices>
-        static auto test(std::index_sequence<Indices...>)
-          -> decltype(std::declval<Functor>().template operator()<sequence_first<Seq>::value...>(
-            std::get<Indices>(std::declval<ArgumentTuple>())...));
+        static auto compute_impl(std::true_type /*use_value_args*/, std::index_sequence<Indices...> /*idxs*/)
+          -> decltype(std::declval<Functor&>()(
+            std::integral_constant<int, sequence_first<Seq>::value>{}...,
+            std::get<Indices>(std::declval<ArgumentTuple&&>())...));
 
-        using type = decltype(test(std::make_index_sequence<std::tuple_size_v<ArgumentTuple>>{}));
+        // Fallback: template-parameter form.
+        template<std::size_t... Indices>
+        static auto compute_impl(std::false_type /*use_value_args*/, std::index_sequence<Indices...> /*idxs*/)
+          -> decltype(std::declval<Functor&>().template operator()<sequence_first<Seq>::value...>(
+            std::get<Indices>(std::declval<ArgumentTuple&&>())...));
+
+        // Detection of value-argument viability
+        template<std::size_t... Indices>
+        static auto is_value_args_valid(std::index_sequence<Indices...> /*idxs*/) -> decltype(
+          void(std::declval<Functor&>()(
+            std::integral_constant<int, sequence_first<Seq>::value>{}...,
+            std::get<Indices>(std::declval<ArgumentTuple&&>())...)),
+          std::true_type{});
+        static auto is_value_args_valid(...) -> std::false_type;
+
+        template<std::size_t... Indices>
+        static auto compute(std::index_sequence<Indices...> idxs)
+          -> decltype(compute_impl(is_value_args_valid(idxs), idxs)) {
+            return compute_impl(is_value_args_valid(idxs), idxs);
+        }
+
+        using type = decltype(compute(std::make_index_sequence<std::tuple_size_v<ArgumentTuple>>{}));
     };
 
     template<typename Functor, typename ArgumentTuple, typename SequenceTuple> struct dispatch_result;
@@ -362,6 +385,15 @@ namespace detail {
       private:
         Functor *func;
         ArgumentTuple args;
+        // Prefer value-argument form when viable; otherwise use template-parameter form.
+        template<typename F, typename AT, typename... IC> struct has_value_call {
+            template<std::size_t... Is>
+            static auto test(std::index_sequence<Is...> /*idxs*/) -> decltype(
+              std::declval<F&>()(IC{}..., std::get<Is>(std::declval<AT&&>())...), std::true_type{});
+            static auto test(...) -> std::false_type;
+            static constexpr bool value = decltype(test(
+              std::make_index_sequence<std::tuple_size_v<std::remove_reference_t<AT>>>{}))::value;
+        };
 
       public:
         VisitCaller(Functor *functor, ArgumentTuple &&arguments) : func(functor), args(std::move(arguments)) {}
@@ -369,7 +401,11 @@ namespace detail {
             // move the stored argument tuple into the call so move-only arguments are forwarded
             return std::apply(
               [this](auto &&...arg) -> decltype(auto) {
-                  return this->func->template operator()<IC::value...>(std::forward<decltype(arg)>(arg)...);
+                  if constexpr (has_value_call<Functor, ArgumentTuple, IC...>::value) {
+                      return (*this->func)(IC{}..., std::forward<decltype(arg)>(arg)...);
+                  } else {
+                      return this->func->template operator()<IC::value...>(std::forward<decltype(arg)>(arg)...);
+                  }
               },
               std::move(args));
         }
