@@ -55,3 +55,46 @@ TEST_CASE("DispatchSet throws when requested and no match", "[static_dispatch][t
     // cppcheck-suppress unknownMacro
     REQUIRE_THROWS_AS(dispatch(throw_t, tuple_sum{}, ds, 0), std::runtime_error);
 }
+
+TEST_CASE("DispatchSet with throw_t succeeds on valid match", "[static_dispatch][tuples][throw]") {
+    using DS = DispatchSet<int, T<1, 2>, T<3, 4>, T<5, 6>>;
+    auto ds = DS(3, 4);
+
+    const auto result = dispatch(throw_t, tuple_sum{}, ds, 10);
+    REQUIRE(result == 17);  // 10 + 3 + 4
+}
+
+TEST_CASE("DispatchSet with throw_t handles multiple valid tuples", "[static_dispatch][tuples][throw]") {
+    using DS = DispatchSet<int, T<1, 2>, T<3, 4>, T<5, 6>>;
+
+    // Test each valid combination
+    auto ds1 = DS(1, 2);
+    REQUIRE(dispatch(throw_t, tuple_sum{}, ds1, 0) == 3);  // 0 + 1 + 2
+
+    auto ds2 = DS(3, 4);
+    REQUIRE(dispatch(throw_t, tuple_sum{}, ds2, 0) == 7);  // 0 + 3 + 4
+
+    auto ds3 = DS(5, 6);
+    REQUIRE(dispatch(throw_t, tuple_sum{}, ds3, 0) == 11);  // 0 + 5 + 6
+
+    // Invalid combination
+    auto ds_invalid = DS(2, 3);
+    REQUIRE_THROWS_AS(dispatch(throw_t, tuple_sum{}, ds_invalid, 0), std::runtime_error);
+}
+
+TEST_CASE("DispatchSet with throw_t handles void return type", "[static_dispatch][tuples][throw]") {
+    using DS = DispatchSet<int, T<1, 2>, T<3, 4>>;
+
+    int result = 0;
+    auto ds1 = DS(1, 2);
+    dispatch(throw_t, tuple_voider{&result}, ds1, 100);
+    REQUIRE(result == 103);  // 100 + 1 + 2
+
+    auto ds2 = DS(3, 4);
+    dispatch(throw_t, tuple_voider{&result}, ds2, 50);
+    REQUIRE(result == 57);  // 50 + 3 + 4
+
+    // Invalid
+    auto ds_invalid = DS(2, 3);
+    REQUIRE_THROWS_AS(dispatch(throw_t, tuple_voider{&result}, ds_invalid, 100), std::runtime_error);
+}

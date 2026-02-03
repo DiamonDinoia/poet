@@ -154,8 +154,6 @@ template<typename Seq> struct DispatchParam {
     using seq_type = Seq;
 };
 
-namespace detail {}// namespace detail
-
 namespace detail {
 
     // Helper to extract the minimum value from a sequence
@@ -362,9 +360,8 @@ namespace detail {
             constexpr std::size_t len = sequence_size<Seq>::value;
             const int idx = val - first;
 
-            // Optimized bounds check: casting to unsigned handles negative values by
-            // wrapping.
-            if (static_cast<unsigned>(idx) >= static_cast<unsigned>(len)) { return std::nullopt; }
+            // Bounds check: explicitly handle negative indices and out-of-range positive indices
+            if (idx < 0 || static_cast<std::size_t>(idx) >= len) { return std::nullopt; }
             return variant_from_seq<Seq>::maker::make_by_index(static_cast<std::size_t>(idx));
         } else {
             // Fallback for non-contiguous sequences.

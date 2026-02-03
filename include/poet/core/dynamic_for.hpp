@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -25,7 +26,7 @@ namespace detail {
     /// \brief Helper functor that adapts a user lambda for use with static_for.
     ///
     /// This struct wraps a runtime function pointer/reference along with base and
-    /// step values. It exposes a compile-time call operator that calculates the
+    /// stride values. It exposes a compile-time call operator that calculates the
     /// actual runtime index based on the compile-time offset `I` and invokes the
     /// user function.
     ///
@@ -34,12 +35,12 @@ namespace detail {
     template<typename Func, typename T> struct dynamic_block_invoker {
         Func *func;
         T base;
-        T step;
+        T stride;
 
         template<auto I> constexpr void operator()() const {
             // Invoke the user lambda with the current runtime index.
-            // The runtime index is computed as: base + (compile_time_offset * step).
-            (*func)(base + (static_cast<T>(I) * step));
+            // The runtime index is computed as: base + (compile_time_offset * stride).
+            (*func)(base + (static_cast<T>(I) * stride));
         }
     };
 
@@ -53,10 +54,10 @@ namespace detail {
     /// \tparam T Loop counter type.
     /// \tparam BlockSize Number of iterations to unroll in this block.
     template<typename Func, typename T, std::size_t BlockSize>
-    inline void execute_runtime_block([[maybe_unused]] Func &func, [[maybe_unused]] T base, [[maybe_unused]] T step) {
+    inline void execute_runtime_block([[maybe_unused]] Func &func, [[maybe_unused]] T base, [[maybe_unused]] T stride) {
         if constexpr (BlockSize > 0) {
             // Create an invoker that captures the user function and the current base index.
-            dynamic_block_invoker<Func, T> invoker{ &func, base, step };
+            dynamic_block_invoker<Func, T> invoker{ &func, base, stride };
 
             // Use static_for to generate exactly 'BlockSize' compile-time calls.
             // We pass BlockSize as the unrolling factor to ensure a single unrolled block is emitted.
@@ -74,12 +75,12 @@ namespace detail {
     /// compile-time block size.
     template<typename Callable, typename T> struct tail_caller_for_dynamic_for {
         Callable *callable;
-        T step;
+        T stride;
 
         template<int Tail> void operator()(T base) const {
             // This function is instantiated by the dispatcher for a specific 'Tail' value.
             // We call execute_runtime_block with 'Tail' as the compile-time block size.
-            execute_runtime_block<Callable, T, static_cast<std::size_t>(Tail)>(*callable, base, step);
+            execute_runtime_block<Callable, T, static_cast<std::size_t>(Tail)>(*callable, base, stride);
         }
     };
 
@@ -88,52 +89,65 @@ namespace detail {
     /// Calculates the total number of iterations required based on proper signed
     /// arithmetic and executes the loop in chunks of `Unroll`. Any remaining
     /// iterations are handled by `poet::dispatch`.
+    ///
+    /// \param begin Inclusive start of the iteration range.
+    /// \param end Exclusive end of the iteration range.
+    /// \param stride Step/increment value (can be negative for backward iteration).
+    /// \param callable User-provided function to invoke for each index.
     template<typename T, typename Callable, std::size_t Unroll>
-    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-    inline void dynamic_for_impl(T start_val, T end_val, T step, Callable &callable) {
-        if (step == 0) { return; }
+    inline void dynamic_for_impl(T begin, T end, T stride, Callable &callable) {
+        if (stride == 0) { return; }
 
         // Calculate iteration count.
-        // We determine the number of steps to go from `start_val` to `end_val` exclusively.
+        // We determine the number of steps to go from `begin` to `end` exclusively.
         std::size_t count = 0;
 
-        if (step > 0) {
-            // Forward iteration
-            if (start_val >= end_val) {
+        // For unsigned types, detect wrapped negative values (e.g., unsigned(-1) = UINT_MAX)
+        // by checking if stride is in the upper half of the type's range
+        constexpr bool is_unsigned = !std::is_signed_v<T>;
+        constexpr T half_max = std::numeric_limits<T>::max() / 2;
+        const bool is_wrapped_negative = is_unsigned && (stride > half_max);
+
+        if (stride < 0 || is_wrapped_negative) {
+            // Backward iteration (negative stride or wrapped unsigned)
+            if (begin <= end) {
                 count = 0;
             } else {
-                // Logic for positive step:
-                // dist = end - start
-                // count = ceil(dist / step) = (dist + step - 1) / step
-                auto dist = static_cast<std::size_t>(end_val - start_val);
-                auto ustep = static_cast<std::size_t>(step);
-                count = (dist + ustep - 1) / ustep;
+                // Compute absolute stride value
+                T abs_stride;
+                if constexpr (std::is_signed_v<T>) {
+                    abs_stride = static_cast<T>(-stride);  // Safe for signed types
+                } else {
+                    // For unsigned wrapped values: unsigned(-1) → abs is 1
+                    abs_stride = static_cast<T>(0) - stride;  // Wrapping subtraction
+                }
+                auto dist = static_cast<std::size_t>(begin - end);
+                auto ustride = static_cast<std::size_t>(abs_stride);
+                count = (dist + ustride - 1) / ustride;
             }
         } else {
-            // Backward iteration (step < 0)
-            if constexpr (std::is_signed_v<T>) {
-                if (start_val <= end_val) {
-                    count = 0;
-                } else {
-                    // Logic for negative step:
-                    // dist = start - end
-                    // count = ceil(dist / abs(step))
-                    auto dist = static_cast<std::size_t>(start_val - end_val);
-                    auto ustep = static_cast<std::size_t>(-step);// Safe absolute value
-                    count = (dist + ustep - 1) / ustep;
-                }
+            // Forward iteration (stride > 0 and not wrapped)
+            if (begin >= end) {
+                count = 0;
+            } else {
+                // Logic for positive stride:
+                // dist = end - begin
+                // count = ceil(dist / stride) = (dist + stride - 1) / stride
+                auto dist = static_cast<std::size_t>(end - begin);
+                auto ustride = static_cast<std::size_t>(stride);
+                count = (dist + ustride - 1) / ustride;
             }
         }
 
-        T index = start_val;
+        T index = begin;
         std::size_t remaining = count;
 
         // Execute full blocks of size 'Unroll'.
         // We use a runtime while loop here, but the body (execute_runtime_block)
         // is fully unrolled at compile-time for 'Unroll' iterations.
         while (remaining >= Unroll) {
-            detail::execute_runtime_block<Callable, T, Unroll>(callable, index, step);
-            index += static_cast<T>(Unroll) * step;
+            detail::execute_runtime_block<Callable, T, Unroll>(callable, index, stride);
+            index += static_cast<T>(Unroll) * stride;
             remaining -= Unroll;
         }
 
@@ -142,7 +156,7 @@ namespace detail {
             if (remaining > 0) {
                 // Dispatch the runtime 'remaining' count to a compile-time template instantiation.
                 // This ensures even the tail is unrolled, avoiding a runtime loop for the last few elements.
-                const detail::tail_caller_for_dynamic_for<Callable, T> tail_caller{ &callable, step };
+                const detail::tail_caller_for_dynamic_for<Callable, T> tail_caller{ &callable, stride };
                 // Define the allowed range of tail sizes: [0, Unroll - 1].
                 using TailRange = poet::make_range<0, (static_cast<int>(Unroll) - 1)>;
                 auto params = std::make_tuple(poet::DispatchParam<TailRange>{ static_cast<int>(remaining) });
