@@ -84,7 +84,7 @@ namespace detail {
     /// \brief Processes a chunk of loop blocks.
     ///
     /// Recursively invokes `static_loop_impl_block` for a subset of the total blocks.
-    /// used to decompose very large loops into smaller compilation units.
+    /// Used to decompose very large loops into smaller compilation units.
     template<typename Func,
       std::intmax_t Begin,
       std::intmax_t Step,

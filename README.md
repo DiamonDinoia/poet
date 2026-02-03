@@ -111,7 +111,7 @@ int main() {
 }
 ```
 
-throwing dispatch 
+Throwing dispatch 
 ---------------------------
 Some overloads of `dispatch` accept the tag `poet::throw_t` (alias of `throw_on_no_match_t`) as the first argument and will throw `std::runtime_error` when no compile-time match exists. This is useful when a missing specialization is a fatal configuration error.
 
@@ -137,12 +137,10 @@ int main() {
 }
 ```
 
-Uninstall / Integrate
+Install / Integrate
 ---------------------
 
 (Installation instructions moved below the basic examples for readers who first want to see usage.)
-
-Install / Integrate
 1. Clone
 ```bash
 git clone https://github.com/DiamonDinoia/poet.git

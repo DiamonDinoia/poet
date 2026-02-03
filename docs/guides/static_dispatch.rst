@@ -101,7 +101,7 @@ If you only allow specific combinations (e.g., square matrices of size 2x2, 4x4,
 Error Handling
 --------------
 
-By default, if the runtime values do not match any compile-time candidate, ``dispatch`` does nothing (returns void or default value).
+By default, if the runtime values do not match any compile-time candidate, ``dispatch`` returns without invoking the functor (for void return types) or returns a default-constructed result value (for non-void return types).
 
 You can force a check by passing ``poet::throw_t`` as the first argument:
 

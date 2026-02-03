@@ -146,7 +146,7 @@ A step other than 1 can be specified to skip values.
 
 What if the range exceeds kMaxStaticLoopBlock?
 ----------------------------------------------
-- The default BlockSize is clamped to `poet::kMaxStaticLoopBlock` (256 on non-MSVC).
+- The default BlockSize is computed as the minimum of the total iteration count and `poet::kMaxStaticLoopBlock` (256 on most compilers, 128 on MSVC).
 - static_for still emits all iterations at compile time. There is no outer
   runtime loop. The implementation divides the total iterations into blocks and
   then emits those blocks in compile-time "chunks" to reduce template recursion

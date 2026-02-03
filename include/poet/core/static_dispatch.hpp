@@ -79,7 +79,7 @@ namespace detail {
             result_holder<ResultType> res;
             if constexpr (sizeof...(V) == 0) {
                 // Case: The compile-time integer_sequence is empty.
-                // This typically means the user is dispatching to a function with no template parameteres,
+                // This typically means the user is dispatching to a function with no template parameters,
                 // or an empty parameter list. We only match if the runtime tuple provided is also empty.
                 if constexpr (sizeof...(Idx) == 0) {
                     // Invoke the functor directly without template arguments.
@@ -349,7 +349,7 @@ namespace detail {
         return true;
     }
 
-    /// \brief Attempts to Map a runtime value to a compile-time sequence variant.
+    /// \brief Attempts to map a runtime value to a compile-time sequence variant.
     ///
     /// - For contiguous sequences: Uses O(1) arithmetic offset.
     /// - For non-contiguous sequences: Uses O(N) linear scan.
@@ -691,7 +691,6 @@ auto dispatch(throw_on_no_match_t /*tag*/, Functor functor, const DispatchSet<Tu
 /// \brief Overload that accepts `throw_t` as a first argument.
 ///
 /// When no match exists, this function throws `std::runtime_error`.
-/// When no match exists the function throws `std::runtime_error`.
 template<typename Functor,
   typename ParamTuple,
   typename... Args,

@@ -37,19 +37,19 @@ CMake can download specific versions using ``FetchContent``:
 .. code-block:: cmake
 
    include(FetchContent)
-   
+
    FetchContent_Declare(
      poet
      GIT_REPOSITORY https://github.com/DiamonDinoia/poet.git
      GIT_TAG        main  # or a specific commit/tag
    )
-   
+
    FetchContent_MakeAvailable(poet)
-   
+
    add_executable(my_app main.cpp)
    target_link_libraries(my_app PRIVATE poet::poet)
 
-Option 4: CPM.cmake
+Option 3: CPM.cmake
 ~~~~~~~~~~~~~~~~~~~
 
 If `CPM.cmake <https://github.com/cpm-cmake/CPM.cmake>`_ is already used, POET can be fetched with:
@@ -65,7 +65,7 @@ If `CPM.cmake <https://github.com/cpm-cmake/CPM.cmake>`_ is already used, POET c
    add_executable(my_app main.cpp)
    target_link_libraries(my_app PRIVATE poet::poet)
 
-Option 3: System Install
+Option 4: System Install
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 POET can be installed to the system and used via ``find_package``:

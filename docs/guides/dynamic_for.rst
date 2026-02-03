@@ -71,7 +71,7 @@ It is possible to combine a negative step with a custom unroll factor:
 Explicit Step
 ~~~~~~~~~~~~~
 
-An arbitrary step can be provided as a third argument. The `step` parameter is the per-element stride: successive indices differ by `step`. The unroll factor (`Unroll`) controls how many consecutive elements are emitted in each compile-time unrolled block. After emitting a block of `Unroll` elements, the next block starts at `current_index + Unroll * step`.
+An arbitrary step can be provided as a third argument. The `step` parameter determines the increment between successive loop indices: each iteration's index differs from the previous by `step`. The unroll factor (`Unroll`) controls how many loop iterations are emitted in each compile-time unrolled block. After processing a block of `Unroll` iterations, the next block starts at index `current_index + Unroll * step`.
 
 For example, with Unroll=4 and step=2 starting at 0:
 
@@ -118,8 +118,10 @@ Example (tail not divisible by unroll)
        // i runs 0..9; the last 1 iteration is dispatched to a specialized unrolled block
    });
 
-Use with C++ ranges and piping
------------------------------
+Use with C++ ranges and piping (C++20)
+---------------------------------------
+
+.. note:: This feature requires C++20 or later for ranges and pipe operator support.
 
 POET's loop utilities operate on indices and invoke user callables. You can combine them with C++20 ranges and the pipe (`|`) syntax using the piping adaptor embedded in the header to get concise examples. The adaptor is an eager sink: it computes the range length (single-pass for non-sized ranges) and calls ``poet::dynamic_for``.
 
