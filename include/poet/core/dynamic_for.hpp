@@ -102,8 +102,24 @@ namespace detail {
         // We determine the number of steps to go from `begin` to `end` exclusively.
         std::size_t count = 0;
 
-        // For unsigned types, detect wrapped negative values (e.g., unsigned(-1) = UINT_MAX)
-        // by checking if stride is in the upper half of the type's range
+        // For unsigned types, detect wrapped negative values caused by implicit conversion.
+        // When users pass negative literals (e.g., -1, -5) to unsigned parameters, C++ performs
+        // implicit conversion via unsigned wrapping, resulting in very large positive values:
+        //   - For uint32_t: -1 → 4294967295 (UINT_MAX), -2 → 4294967294, etc.
+        //   - For uint64_t: -1 → 18446744073709551615 (ULLONG_MAX), -2 → 18446744073709551614, etc.
+        //
+        // Detection heuristic: Values > (max/2) are likely wrapped negatives.
+        // This works because:
+        //   1. Negative values -1 to -N map to [max, max-N+1] (all > max/2)
+        //   2. Normal positive strides are typically small (< max/2)
+        //   3. Edge case: Very large positive strides (> max/2) would be misidentified,
+        //      but such strides are impractical (would cause integer overflow in loops)
+        //
+        // Examples for uint32_t (max = 4294967295, half_max = 2147483647):
+        //   - stride = static_cast<uint32_t>(-1)  → 4294967295 > 2147483647 → detected as wrapped negative ✓
+        //   - stride = static_cast<uint32_t>(-5)  → 4294967291 > 2147483647 → detected as wrapped negative ✓
+        //   - stride = 100                        → 100 < 2147483647          → normal positive stride ✓
+        //   - stride = 1000000                    → 1000000 < 2147483647      → normal positive stride ✓
         constexpr bool is_unsigned = !std::is_signed_v<T>;
         constexpr T half_max = std::numeric_limits<T>::max() / 2;
         const bool is_wrapped_negative = is_unsigned && (stride > half_max);

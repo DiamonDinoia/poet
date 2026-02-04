@@ -483,6 +483,53 @@ namespace detail {
 struct throw_on_no_match_t {};
 inline constexpr throw_on_no_match_t throw_t{};
 
+namespace detail {
+    /// \brief Internal implementation for dispatch with compile-time error handling policy.
+    template<bool ThrowOnNoMatch, typename Functor, typename ParamTuple, typename... Args>
+    auto dispatch_impl(Functor functor, ParamTuple const &params, Args... args) -> decltype(auto) {
+        // 1. Convert the dispatch params (ranges) into sequences.
+        auto sequences = extract_sequences(params);
+
+        // 2. Package arguments and compute the return type of the functor when dispatched.
+        using argument_tuple_type = std::tuple<std::decay_t<Args>...>;
+        argument_tuple_type argument_tuple(std::move(args)...);
+        using result_type = dispatch_result_t<Functor, argument_tuple_type, decltype(sequences)>;
+
+        // 3. For each dispatch parameter, attempt to convert the runtime value into a
+        // `std::variant<std::integral_constant<...>>`.
+        //    Each variant contains the compile-time constant corresponding to the runtime value, or empty if out of range.
+        constexpr std::size_t TupleSize = std::tuple_size_v<std::remove_reference_t<ParamTuple>>;
+        auto variants = make_variants(params, std::make_index_sequence<TupleSize>{});
+
+        // 4. Check if all parameters were successfully mapped to a valid compile-time value.
+        const bool success =
+          std::apply([](auto const &...variant_opt) -> auto { return (variant_opt.has_value() && ...); }, variants);
+
+        if (success) {
+            // 5. Invoke std::visit with our custom VisitCaller.
+            //    VisitCaller unwraps the integral_constants from the variants and calls the user functor:
+            //    `functor.operator()<Values...>(args...)`
+            using FunctorT = std::decay_t<Functor>;
+            FunctorT functor_copy(std::forward<Functor>(functor));
+            VisitCaller<FunctorT, decltype(argument_tuple)> caller{ &functor_copy, std::move(argument_tuple) };
+
+            if constexpr (std::is_void_v<result_type>) {
+                std::apply([&](auto &...variant_opt) -> auto { std::visit(caller, *variant_opt...); }, variants);
+            } else {
+                return std::apply(
+                  [&](auto &...variant_opt) -> auto { return std::visit(caller, *variant_opt...); }, variants);
+            }
+        } else {
+            if constexpr (ThrowOnNoMatch) {
+                throw std::runtime_error("poet::dispatch: no matching compile-time combination for runtime inputs");
+            } else {
+                // Fail gracefully: return default value if none matched.
+                if constexpr (!std::is_void_v<result_type>) { return result_type{}; }
+            }
+        }
+    }
+}// namespace detail
+
 /// \brief Dispatches runtime integers to compile-time template parameters with O(1) lookup.
 ///
 /// The functor is invoked with the template parameter combination whose
@@ -510,43 +557,7 @@ template<typename Functor,
                      && !std::is_same_v<std::decay_t<Functor>, throw_on_no_match_t>,
     int> = 0>
 auto dispatch(Functor functor, ParamTuple const &params, Args... args) -> decltype(auto) {
-
-    // 1. Convert the dispatch params (ranges) into sequences.
-    auto sequences = detail::extract_sequences(params);
-
-    // 2. Package arguments and compute the return type of the functor when dispatched.
-    using argument_tuple_type = std::tuple<std::decay_t<Args>...>;
-    argument_tuple_type argument_tuple(std::move(args)...);
-    using result_type = detail::dispatch_result_t<Functor, argument_tuple_type, decltype(sequences)>;
-
-    // 3. For each dispatch parameter, attempt to convert the runtime value into a
-    // `std::variant<std::integral_constant<...>>`.
-    //    Each variant contains the compile-time constant corresponding to the runtime value, or empty if out of range.
-    constexpr std::size_t TupleSize = std::tuple_size_v<std::remove_reference_t<ParamTuple>>;
-    auto variants = detail::make_variants(params, std::make_index_sequence<TupleSize>{});
-
-    // 4. Check if all parameters were successfully mapped to a valid compile-time value.
-    const bool success =
-      std::apply([](auto const &...variant_opt) -> auto { return (variant_opt.has_value() && ...); }, variants);
-
-    if (success) {
-        // 5. Invoke std::visit with our custom VisitCaller.
-        //    VisitCaller unwraps the integral_constants from the variants and calls the user functor:
-        //    `functor.operator()<Values...>(args...)`
-        using FunctorT = std::decay_t<Functor>;
-        FunctorT functor_copy(std::forward<Functor>(functor));
-        detail::VisitCaller<FunctorT, decltype(argument_tuple)> caller{ &functor_copy, std::move(argument_tuple) };
-
-        if constexpr (std::is_void_v<result_type>) {
-            std::apply([&](auto &...variant_opt) -> auto { std::visit(caller, *variant_opt...); }, variants);
-        } else {
-            return std::apply(
-              [&](auto &...variant_opt) -> auto { return std::visit(caller, *variant_opt...); }, variants);
-        }
-    } else {
-        // Fail gracefully: return default value if none matched.
-        if constexpr (!std::is_void_v<result_type>) { return result_type{}; }
-    }
+    return detail::dispatch_impl<false>(std::forward<Functor>(functor), params, std::move(args)...);
 }
 
 /// \brief Dispatch to an explicit compile-time list of tuples.
@@ -568,109 +579,87 @@ auto dispatch(Functor functor, ParamTuple const &params, Args... args) -> declty
 /// requests that the function throw an exception if no matching compile-time tuple
 /// is found for the runtime inputs.
 
+namespace detail {
+    /// \brief Internal implementation for dispatch_tuples with compile-time error handling policy.
+    template<bool ThrowOnNoMatch, typename Functor, typename TupleList, typename RuntimeTuple, typename... Args>
+    auto dispatch_tuples_impl(Functor functor, TupleList const & /*unused*/, const RuntimeTuple &runtime_tuple, Args... args)
+      -> decltype(auto) {
+        using TL = std::decay_t<TupleList>;
+        static_assert(std::tuple_size_v<TL> >= 1, "tuple list must contain at least one allowed tuple");
+
+        using first_seq = std::tuple_element_t<0, TL>;
+        using result_type =
+          typename result_of_seq_call<first_seq, std::decay_t<Functor>, std::decay_t<Args>...>::type;
+
+        bool matched = false;
+        result_holder<result_type> out;
+
+        using FunctorT = std::decay_t<Functor>;
+        FunctorT functor_copy(std::forward<Functor>(functor));
+
+        // Expand over all allowed tuple sequences in the TupleList
+        std::apply(
+          [&](auto... seqs) -> auto {
+              // We use a fold-like construct with std::initializer_list to iterate over each allowed sequence `seq`.
+              // This ensures sequential evaluation order.
+              [[maybe_unused]] auto unused_init = std::initializer_list<int>{ (
+                [&](auto &seq) -> auto {
+                    // Short-circuit: if we already found a match, stop trying others.
+                    if (matched) { return 0; }
+
+                    using SeqType = std::decay_t<decltype(seq)>;
+                    // Try to match the current runtime tuple against the compile-time sequence `seq`.
+                    // helper::match_and_call will iterate the elements and compare runtime vs compile-time.
+                    auto result =
+                      seq_matcher_helper<SeqType, result_type, RuntimeTuple, FunctorT, Args...>::match_and_call(
+                        runtime_tuple, functor_copy, std::move(args)...);
+
+                    // If match succeeded, store the result and mark matched = true.
+                    if (result.has_value()) {
+                        matched = true;
+                        out = std::move(result);
+                    }
+                    return 0;
+                }(seqs),
+                0)... };
+          },
+          TL{});
+
+        if (matched) {
+            if constexpr (std::is_void_v<result_type>) {
+                return;
+            } else {
+                return out.get();
+            }
+        } else {
+            if constexpr (ThrowOnNoMatch) {
+                throw std::runtime_error("poet::dispatch_tuples: no matching compile-time tuple for runtime inputs");
+            } else {
+                if constexpr (!std::is_void_v<result_type>) { return result_type{}; }
+            }
+        }
+    }
+}// namespace detail
+
 template<typename Functor,
   typename TupleList,
   typename RuntimeTuple,
   typename... Args,
   std::enable_if_t<!std::is_same_v<std::decay_t<Functor>, throw_on_no_match_t>, int> = 0>
-auto dispatch_tuples(Functor functor, TupleList const & /*unused*/, const RuntimeTuple &runtime_tuple, Args... args)
+auto dispatch_tuples(Functor functor, TupleList const &tuple_list, const RuntimeTuple &runtime_tuple, Args... args)
   -> decltype(auto) {
-    using TL = std::decay_t<TupleList>;
-    static_assert(std::tuple_size_v<TL> >= 1, "tuple list must contain at least one allowed tuple");
-
-    using first_seq = std::tuple_element_t<0, TL>;
-    using result_type =
-      typename detail::result_of_seq_call<first_seq, std::decay_t<Functor>, std::decay_t<Args>...>::type;
-
-    bool matched = false;
-    detail::result_holder<result_type> out;
-
-    using FunctorT = std::decay_t<Functor>;
-    FunctorT functor_copy(std::forward<Functor>(functor));
-
-    // Expand over all allowed tuple sequences in the TupleList
-    std::apply(
-      [&](auto... seqs) -> auto {
-          // We use a fold-like construct with std::initializer_list to iterate over each allowed sequence `seq`.
-          // This ensures sequential evaluation order.
-          [[maybe_unused]] auto unused_init = std::initializer_list<int>{ (
-            [&](auto &seq) -> auto {
-                // Short-circuit: if we already found a match, stop trying others.
-                if (matched) { return 0; }
-
-                using SeqType = std::decay_t<decltype(seq)>;
-                // Try to match the current runtime tuple against the compile-time sequence `seq`.
-                // helper::match_and_call will iterate the elements and compare runtime vs compile-time.
-                auto result =
-                  detail::seq_matcher_helper<SeqType, result_type, RuntimeTuple, FunctorT, Args...>::match_and_call(
-                    runtime_tuple, functor_copy, std::move(args)...);
-
-                // If match succeeded, store the result and mark matched = true.
-                if (result.has_value()) {
-                    matched = true;
-                    out = std::move(result);
-                }
-                return 0;
-            }(seqs),
-            0)... };
-      },
-      TL{});
-
-    if (matched) {
-        if constexpr (std::is_void_v<result_type>) {
-            return;
-        } else {
-            return out.get();
-        }
-    } else {
-        if constexpr (!std::is_void_v<result_type>) { return result_type{}; }
-    }
+    return detail::dispatch_tuples_impl<false>(
+      std::forward<Functor>(functor), tuple_list, runtime_tuple, std::move(args)...);
 }
 
 template<typename Functor, typename TupleList, typename RuntimeTuple, typename... Args>
 auto dispatch_tuples(throw_on_no_match_t /*tag*/,
   Functor functor,
-  TupleList const & /*unused*/,
+  TupleList const &tuple_list,
   const RuntimeTuple &runtime_tuple,
   Args... args) -> decltype(auto) {
-    using TL = std::decay_t<TupleList>;
-    static_assert(std::tuple_size_v<TL> >= 1, "tuple list must contain at least one allowed tuple");
-
-    using first_seq = std::tuple_element_t<0, TL>;
-    using result_type =
-      typename detail::result_of_seq_call<first_seq, std::decay_t<Functor>, std::decay_t<Args>...>::type;
-
-    bool matched = false;
-    detail::result_holder<result_type> out;
-
-    std::apply(
-      [&](auto... seqs) -> auto {
-          [[maybe_unused]] auto unused_init2 = std::initializer_list<int>{ (
-            [&](auto &seq) -> auto {
-                if (matched) { return 0; }
-                using SeqType = std::decay_t<decltype(seq)>;
-                auto result =
-                  detail::seq_matcher_helper<SeqType, result_type, RuntimeTuple, std::decay_t<Functor>, Args...>::
-                    match_and_call(runtime_tuple, std::forward<Functor>(functor), std::move(args)...);
-                if (result.has_value()) {
-                    matched = true;
-                    out = std::move(result);
-                }
-                return 0;
-            }(seqs),
-            0)... };
-      },
-      TL{});
-
-    if (matched) {
-        if constexpr (std::is_void_v<result_type>) {
-            return;
-        } else {
-            return out.get();
-        }
-    } else {
-        throw std::runtime_error("poet::dispatch_tuples: no matching compile-time tuple for runtime inputs");
-    }
+    return detail::dispatch_tuples_impl<true>(
+      std::forward<Functor>(functor), tuple_list, runtime_tuple, std::move(args)...);
 }
 
 /// \brief Dispatches using a specific `DispatchSet`.
@@ -705,32 +694,7 @@ template<typename Functor,
   typename... Args,
   std::enable_if_t<!detail::is_dispatch_set<std::decay_t<ParamTuple>>::value, int> = 0>
 auto dispatch(throw_on_no_match_t /*tag*/, Functor functor, ParamTuple const &params, Args... args) -> decltype(auto) {
-    auto sequences = detail::extract_sequences(params);
-    using argument_tuple_type = std::tuple<std::decay_t<Args>...>;
-    argument_tuple_type argument_tuple(std::move(args)...);
-    using result_type = detail::dispatch_result_t<Functor, argument_tuple_type, decltype(sequences)>;
-
-    // Build variants for each runtime value
-    constexpr std::size_t TupleSize = std::tuple_size_v<std::remove_reference_t<ParamTuple>>;
-    auto variants = detail::make_variants(params, std::make_index_sequence<TupleSize>{});
-
-    // ensure all mapped successfully at runtime
-    const bool success =
-      std::apply([](auto const &...variant_opt) -> auto { return (variant_opt.has_value() && ...); }, variants);
-
-    if (success) {
-        using FunctorT = std::decay_t<Functor>;
-        FunctorT functor_copy(std::forward<Functor>(functor));
-        detail::VisitCaller<FunctorT, decltype(argument_tuple)> caller{ &functor_copy, std::move(argument_tuple) };
-        if constexpr (std::is_void_v<result_type>) {
-            std::apply([&](auto &...variant_opt) -> auto { std::visit(caller, *variant_opt...); }, variants);
-        } else {
-            return std::apply(
-              [&](auto &...variant_opt) -> auto { return std::visit(caller, *variant_opt...); }, variants);
-        }
-    } else {
-        throw std::runtime_error("poet::dispatch: no matching compile-time combination for runtime inputs");
-    }
+    return detail::dispatch_impl<true>(std::forward<Functor>(functor), params, std::move(args)...);
 }
 
 }// namespace poet
