@@ -324,3 +324,101 @@ TEST_CASE("dynamic_for with transformed ranges (C++20)", "[dynamic_for][ranges][
     REQUIRE(via_tuple == via_dynamic);
 }
 #endif // __cplusplus >= 202002L
+
+TEST_CASE("dynamic_for with Unroll=1 comprehensive", "[dynamic_for][unroll-1]") {
+    std::vector<int> visited;
+    // Unroll=1 should still work correctly
+    poet::dynamic_for<1>(0, 10, [&visited](int i) { visited.push_back(i); });
+
+    std::vector<int> expected(10);
+    std::iota(expected.begin(), expected.end(), 0);
+    REQUIRE(visited == expected);
+}
+
+TEST_CASE("dynamic_for with Unroll=1 and step > 1", "[dynamic_for][unroll-1]") {
+    std::vector<int> visited;
+    poet::dynamic_for<1>(0, 20, 3, [&visited](int i) { visited.push_back(i); });
+
+    std::vector<int> expected = { 0, 3, 6, 9, 12, 15, 18 };
+    REQUIRE(visited == expected);
+}
+
+TEST_CASE("dynamic_for tail dispatch completeness", "[dynamic_for][tail]") {
+    // Test all possible remainders for Unroll=8
+    constexpr std::size_t kUnroll = 8;
+    for (std::size_t remainder = 0; remainder < kUnroll; ++remainder) {
+        std::vector<std::size_t> visited;
+        // Create a range that produces exactly 'remainder' tail iterations
+        std::size_t total = kUnroll * 2 + remainder;  // 2 full blocks + remainder
+        poet::dynamic_for<kUnroll>(0U, total, [&visited](std::size_t i) { visited.push_back(i); });
+
+        REQUIRE(visited.size() == total);
+        for (std::size_t i = 0; i < total; ++i) {
+            REQUIRE(visited[i] == i);
+        }
+    }
+}
+
+TEST_CASE("dynamic_for nested loops", "[dynamic_for][nested]") {
+    std::vector<std::pair<int, int>> pairs;
+    poet::dynamic_for<4>(0, 5, [&pairs](int i) {
+        poet::dynamic_for<4>(0, 5, [&pairs, i](int j) {
+            pairs.push_back({ i, j });
+        });
+    });
+
+    REQUIRE(pairs.size() == 25);
+    REQUIRE(pairs[0] == std::make_pair(0, 0));
+    REQUIRE(pairs[12] == std::make_pair(2, 2));
+    REQUIRE(pairs[24] == std::make_pair(4, 4));
+}
+
+TEST_CASE("dynamic_for with stateful functor", "[dynamic_for][stateful]") {
+    struct accumulator {
+        int sum = 0;
+        void operator()(int i) { sum += i; }
+    };
+
+    accumulator acc;
+    poet::dynamic_for<4>(0, 10, std::ref(acc));
+
+    // Sum of 0..9 = 45
+    REQUIRE(acc.sum == 45);
+}
+
+TEST_CASE("dynamic_for exception safety", "[dynamic_for][exception]") {
+    int count = 0;
+    auto throwing_func = [&count](int i) {
+        count++;
+        if (i == 5) { throw std::runtime_error("test exception"); }
+    };
+
+    REQUIRE_THROWS_AS(poet::dynamic_for<4>(0, 10, throwing_func), std::runtime_error);
+    // Should have executed iterations 0-5 before throwing
+    REQUIRE(count == 6);
+}
+
+TEST_CASE("dynamic_for with maximum safe unroll factor", "[dynamic_for][limits]") {
+    std::size_t count = 0;
+    // Test at the maximum allowed unroll factor
+    constexpr std::size_t kMaxUnroll = poet::detail::kMaxStaticLoopBlock;
+    poet::dynamic_for<kMaxUnroll>(0U, kMaxUnroll * 2, [&count](std::size_t) { ++count; });
+
+    REQUIRE(count == kMaxUnroll * 2);
+}
+
+TEST_CASE("dynamic_for auto-detects forward direction", "[dynamic_for][auto-step]") {
+    std::vector<int> visited;
+    // When begin < end, step should be +1
+    poet::dynamic_for<4>(5, 10, [&visited](int i) { visited.push_back(i); });
+
+    REQUIRE(visited == std::vector<int>{ 5, 6, 7, 8, 9 });
+}
+
+TEST_CASE("dynamic_for auto-detects backward direction", "[dynamic_for][auto-step]") {
+    std::vector<int> visited;
+    // When begin > end, step should be -1
+    poet::dynamic_for<4>(10, 5, [&visited](int i) { visited.push_back(i); });
+
+    REQUIRE(visited == std::vector<int>{ 10, 9, 8, 7, 6 });
+}

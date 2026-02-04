@@ -77,6 +77,27 @@ struct array_setter {
     template<int I> void operator()() const { arr[I] = I; }
 };
 
+struct throwing_dispatcher {
+    int* counter;
+    template<int X>
+    void operator()(int threshold) const {
+        (*counter)++;
+        if (X >= threshold) { throw std::runtime_error("dispatch exception"); }
+    }
+};
+
+struct triple_dispatcher {
+    template<int X, int Y, int Z>
+    int operator()(int base) const { return base + X * 100 + Y * 10 + Z; }
+};
+
+struct value_arg_functor {
+    template<int X, int Y>
+    int operator()(std::integral_constant<int, X>, std::integral_constant<int, Y>, int base) const {
+        return base + X * 10 + Y;
+    }
+};
+
 TEST_CASE("dispatch routes to the matching template instantiation", "[static_dispatch]") {
     std::vector<int> values;
     auto params = std::make_tuple(DispatchParam<make_range<0, 3>>{ 2 }, DispatchParam<make_range<-2, 1>>{ -1 });
@@ -672,4 +693,68 @@ TEST_CASE("dispatch ND lambda returns pointer (lvalue)", "[static_dispatch][retu
             REQUIRE(arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] == i * 100 + j);
         }
     }
+}
+
+TEST_CASE("dispatch with single-value repeated sequence", "[static_dispatch][edge_case]") {
+    // All values are the same - should still work deterministically
+    using RepeatedSeq = std::integer_sequence<int, 5, 5, 5, 5>;
+    bool invoked = false;
+
+    auto params = std::make_tuple(DispatchParam<RepeatedSeq>{ 5 });
+    const auto result = dispatch(guard_dispatcher{ &invoked }, params, 10);
+
+    REQUIRE(result == 15);
+    REQUIRE(invoked);
+}
+
+TEST_CASE("dispatch with value-argument form (integral_constant parameters)", "[static_dispatch][value-args]") {
+    // Test functor that accepts integral_constant values as parameters
+    auto params = std::make_tuple(DispatchParam<make_range<0, 3>>{ 2 }, DispatchParam<make_range<0, 3>>{ 1 });
+    const auto result = dispatch(::value_arg_functor{}, params, 5);
+
+    REQUIRE(result == 26);  // 5 + 2*10 + 1
+}
+
+TEST_CASE("dispatch 3D (triple dispatch)", "[static_dispatch][3d]") {
+    // Small ranges to avoid template explosion
+    auto params = std::make_tuple(
+        DispatchParam<make_range<0, 2>>{ 1 },
+        DispatchParam<make_range<0, 2>>{ 2 },
+        DispatchParam<make_range<0, 2>>{ 0 }
+    );
+
+    const auto result = dispatch(::triple_dispatcher{}, params, 5);
+    REQUIRE(result == 125);  // 5 + 1*100 + 2*10 + 0
+}
+
+TEST_CASE("dispatch exception safety", "[static_dispatch][exception]") {
+    int count = 0;
+    auto params = std::make_tuple(DispatchParam<make_range<0, 5>>{ 3 });
+
+    try {
+        dispatch(::throwing_dispatcher{ &count }, params, 2);
+        FAIL("Expected exception was not thrown");
+    } catch (const std::runtime_error&) {
+        // Expected
+        REQUIRE(count == 1);  // Should have executed once before throwing
+    }
+}
+
+TEST_CASE("dispatch with single-element non-contiguous sequence", "[static_dispatch][edge_case]") {
+    using SingleSeq = std::integer_sequence<int, 42>;
+    bool invoked = false;
+
+    auto params = std::make_tuple(DispatchParam<SingleSeq>{ 42 });
+    const auto result = dispatch(guard_dispatcher{ &invoked }, params, 100);
+
+    REQUIRE(result == 142);
+    REQUIRE(invoked);
+
+    // Test non-matching value
+    invoked = false;
+    auto params2 = std::make_tuple(DispatchParam<SingleSeq>{ 41 });
+    const auto result2 = dispatch(guard_dispatcher{ &invoked }, params2, 100);
+
+    REQUIRE(result2 == 0);
+    REQUIRE_FALSE(invoked);
 }

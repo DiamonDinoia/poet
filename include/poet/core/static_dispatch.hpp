@@ -162,12 +162,18 @@ namespace detail {
     template<int First, int... Rest>
     struct sequence_min<std::integer_sequence<int, First, Rest...>> : std::integral_constant<int, First> {};
 
+    // Note: Empty sequence (std::integer_sequence<int>) is intentionally not specialized.
+    // Attempting to use it will result in a compile-time "incomplete type" error.
+
     // Helper to extract the maximum value from a sequence (uses fold expression to avoid O(N) recursion depth)
     template<typename Sequence> struct sequence_max;
 
     template<int First, int... Rest>
     struct sequence_max<std::integer_sequence<int, First, Rest...>>
       : std::integral_constant<int, std::max({ First, Rest... })> {};
+
+    // Note: Empty sequence (std::integer_sequence<int>) is intentionally not specialized.
+    // Attempting to use it will result in a compile-time "incomplete type" error.
 
     // Helper to compute the size of a sequence
     template<typename Sequence> struct sequence_size;
@@ -235,6 +241,9 @@ namespace detail {
 
     template<int First, int... Rest>
     struct sequence_first<std::integer_sequence<int, First, Rest...>> : std::integral_constant<int, First> {};
+
+    // Note: Empty sequence (std::integer_sequence<int>) is intentionally not specialized.
+    // Attempting to use it will result in a compile-time "incomplete type" error.
 
     // Helper: compare two integer_sequences for element-wise equality
     template<typename A, typename B> struct seq_equal;
