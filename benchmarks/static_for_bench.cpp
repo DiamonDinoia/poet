@@ -13,11 +13,12 @@
 
 namespace {
 
-#ifdef _WIN32
-constexpr std::intmax_t large_iterations = 128;
-#else
-constexpr std::intmax_t large_iterations = 512;
-#endif
+// Iteration counts chosen to test different cache/unrolling characteristics:
+// Testing small iteration counts where static_for should perform best
+constexpr std::intmax_t tiny_iterations = 8;
+constexpr std::intmax_t small_iterations = 16;
+constexpr std::intmax_t medium_iterations = 32;
+constexpr std::intmax_t large_iterations = 64;
 constexpr std::size_t kLanes4 = 4;
 constexpr std::size_t kLanes8 = 8;
 constexpr std::size_t kLanes16 = 16;
@@ -35,12 +36,14 @@ static inline std::uint64_t splitmix64(std::uint64_t x) noexcept {
 struct fp_accumulator_4way {
     double &out;
     std::array<double, kLanes4> lanes;
+    std::uint64_t runtime_seed;
 
-    explicit fp_accumulator_4way(double &o) : out(o) { lanes.fill(0.0); }
+    explicit fp_accumulator_4way(double &o, std::uint64_t seed = 0) : out(o), runtime_seed(seed) { lanes.fill(0.0); }
 
     template<auto I> void operator()() {
-        // generate deterministic 64-bit value from I
-        const std::uint64_t r = splitmix64(static_cast<std::uint64_t>(I));
+        // generate deterministic 64-bit value from I + runtime_seed
+        // runtime_seed prevents compile-time constant folding when used with doNotOptimizeAway
+        const std::uint64_t r = splitmix64(static_cast<std::uint64_t>(I) + runtime_seed);
         // map to double in [0,1)
         double x = static_cast<double>(r) * 5.42101086242752217e-20;// 1/2^64
         // do a small chain of FMA ops to consume CPU cycles and be vectorizable
@@ -61,11 +64,12 @@ struct fp_accumulator_4way {
 struct fp_accumulator_8way {
     double &out;
     std::array<double, kLanes8> lanes;
+    std::uint64_t runtime_seed;
 
-    explicit fp_accumulator_8way(double &o) : out(o) { lanes.fill(0.0); }
+    explicit fp_accumulator_8way(double &o, std::uint64_t seed = 0) : out(o), runtime_seed(seed) { lanes.fill(0.0); }
 
     template<auto I> void operator()() {
-        const std::uint64_t r = splitmix64(static_cast<std::uint64_t>(I));
+        const std::uint64_t r = splitmix64(static_cast<std::uint64_t>(I) + runtime_seed);
         double x = static_cast<double>(r) * 5.42101086242752217e-20;
         x = std::fma(x, 1.0000001192092896, 0.3333333333333333);
         x = std::fma(x, 0.9999998807907104, 0.14285714285714285);
@@ -87,11 +91,12 @@ struct fp_accumulator_8way {
 struct fp_accumulator_16way {
     double &out;
     std::array<double, kLanes16> lanes;
+    std::uint64_t runtime_seed;
 
-    explicit fp_accumulator_16way(double &o) : out(o) { lanes.fill(0.0); }
+    explicit fp_accumulator_16way(double &o, std::uint64_t seed = 0) : out(o), runtime_seed(seed) { lanes.fill(0.0); }
 
     template<auto I> void operator()() {
-        const std::uint64_t r = splitmix64(static_cast<std::uint64_t>(I));
+        const std::uint64_t r = splitmix64(static_cast<std::uint64_t>(I) + runtime_seed);
         double x = static_cast<double>(r) * 5.42101086242752217e-20;
         x = std::fma(x, 1.0000001192092896, 0.3333333333333333);
         x = std::fma(x, 0.9999998807907104, 0.14285714285714285);
@@ -130,9 +135,9 @@ double runtime_fp_sum(std::intmax_t begin, std::intmax_t end) {
 
 // Helper to run static_for with fp accumulator and call finalize.
 template<typename Acc, std::intmax_t Begin, std::intmax_t End, std::intmax_t Step = 1, std::size_t BlockSize = 8>
-double static_for_sum_fp() {
+double static_for_sum_fp(std::uint64_t seed = 0) {
     double result = 0.0;
-    Acc acc{ result };
+    Acc acc{ result, seed };
     poet::static_for<Begin, End, Step, BlockSize>(acc);
     acc.finalize();
     return result;
@@ -165,9 +170,9 @@ template<typename Acc,
   std::intmax_t End,
   std::intmax_t Step = 1,
   std::size_t BlockSize = 8>
-void get_static_lanes(std::array<double, Lanes> &out_lanes) {
+void get_static_lanes(std::array<double, Lanes> &out_lanes, std::uint64_t seed = 0) {
     double result = 0.0;
-    Acc acc{ result };
+    Acc acc{ result, seed };
     poet::static_for<Begin, End, Step, BlockSize>(acc);
     // copy lanes from acc to out_lanes
     for (std::size_t i = 0; i < Lanes; ++i) out_lanes[i] = acc.lanes[i];
@@ -191,9 +196,11 @@ void get_runtime_lanes(std::intmax_t begin, std::intmax_t end, std::array<double
 
 // Modify verify_blocksize_with_eps to show per-lane diagnostics on mismatch
 template<std::size_t BS> bool verify_blocksize_with_eps(double eps) {
+    constexpr std::uint64_t test_seed = 0;  // Use same seed as benchmarks for verification
+
     // 4-way
     {
-        const double s_static = static_for_sum_fp<fp_accumulator_4way, 0, large_iterations, 1, BS>();
+        const double s_static = static_for_sum_fp<fp_accumulator_4way, 0, large_iterations, 1, BS>(test_seed);
         const double s_runtime = runtime_fp_sum_lanes<kLanes4>(0, large_iterations);
         const double diff = std::abs(s_static - s_runtime);
         bool ok = false;
@@ -208,7 +215,7 @@ template<std::size_t BS> bool verify_blocksize_with_eps(double eps) {
                       << " runtime=" << s_runtime << " absdiff=" << diff << " eps=" << eps << "\n";
             std::array<double, kLanes4> static_lanes{};
             std::array<double, kLanes4> runtime_lanes{};
-            get_static_lanes<fp_accumulator_4way, kLanes4, 0, large_iterations, 1, BS>(static_lanes);
+            get_static_lanes<fp_accumulator_4way, kLanes4, 0, large_iterations, 1, BS>(static_lanes, test_seed);
             get_runtime_lanes<kLanes4>(0, large_iterations, runtime_lanes);
             std::cerr << "static lanes:\n";
             for (std::size_t i = 0; i < kLanes4; ++i) std::cerr << "  [" << i << "] " << static_lanes[i] << "\n";
@@ -220,7 +227,7 @@ template<std::size_t BS> bool verify_blocksize_with_eps(double eps) {
 
     // 8-way
     {
-        const double s_static = static_for_sum_fp<fp_accumulator_8way, 0, large_iterations, 1, BS>();
+        const double s_static = static_for_sum_fp<fp_accumulator_8way, 0, large_iterations, 1, BS>(test_seed);
         const double s_runtime = runtime_fp_sum_lanes<kLanes8>(0, large_iterations);
         const double diff = std::abs(s_static - s_runtime);
         bool ok = false;
@@ -235,7 +242,7 @@ template<std::size_t BS> bool verify_blocksize_with_eps(double eps) {
                       << " runtime=" << s_runtime << " absdiff=" << diff << " eps=" << eps << "\n";
             std::array<double, kLanes8> static_lanes{};
             std::array<double, kLanes8> runtime_lanes{};
-            get_static_lanes<fp_accumulator_8way, kLanes8, 0, large_iterations, 1, BS>(static_lanes);
+            get_static_lanes<fp_accumulator_8way, kLanes8, 0, large_iterations, 1, BS>(static_lanes, test_seed);
             get_runtime_lanes<kLanes8>(0, large_iterations, runtime_lanes);
             std::cerr << "static lanes:\n";
             for (std::size_t i = 0; i < kLanes8; ++i) std::cerr << "  [" << i << "] " << static_lanes[i] << "\n";
@@ -247,7 +254,7 @@ template<std::size_t BS> bool verify_blocksize_with_eps(double eps) {
 
     // 16-way
     {
-        const double s_static = static_for_sum_fp<fp_accumulator_16way, 0, large_iterations, 1, BS>();
+        const double s_static = static_for_sum_fp<fp_accumulator_16way, 0, large_iterations, 1, BS>(test_seed);
         const double s_runtime = runtime_fp_sum_lanes<kLanes16>(0, large_iterations);
         const double diff = std::abs(s_static - s_runtime);
         bool ok = false;
@@ -262,7 +269,7 @@ template<std::size_t BS> bool verify_blocksize_with_eps(double eps) {
                       << " runtime=" << s_runtime << " absdiff=" << diff << " eps=" << eps << "\n";
             std::array<double, kLanes16> static_lanes{};
             std::array<double, kLanes16> runtime_lanes{};
-            get_static_lanes<fp_accumulator_16way, kLanes16, 0, large_iterations, 1, BS>(static_lanes);
+            get_static_lanes<fp_accumulator_16way, kLanes16, 0, large_iterations, 1, BS>(static_lanes, test_seed);
             get_runtime_lanes<kLanes16>(0, large_iterations, runtime_lanes);
             std::cerr << "static lanes:\n";
             for (std::size_t i = 0; i < kLanes16; ++i) std::cerr << "  [" << i << "] " << static_lanes[i] << "\n";
@@ -302,62 +309,62 @@ void run_static_for_benchmarks() {
     bench.title("static_for FP vs runtime");
     bench.minEpochTime(10ms);
 
-    // BlockSize sweep for 4-way
-    bench.run("static_for large (FP 4-way, block 1)", []() -> void {
-        const auto result = static_for_sum_fp<fp_accumulator_4way, 0, large_iterations, 1, 1>();
+    // 8 iterations - tiny loops
+    bench.run("static_for 8 iters (FP 4-way)", [&]() -> void {
+        std::uint64_t seed = 0;
+        ankerl::nanobench::doNotOptimizeAway(seed);
+        const auto result = static_for_sum_fp<fp_accumulator_4way, 0, tiny_iterations, 1, 8>(seed);
         ankerl::nanobench::doNotOptimizeAway(result);
     });
-    bench.run("static_for large (FP 4-way, block 4)", []() -> void {
-        const auto result = static_for_sum_fp<fp_accumulator_4way, 0, large_iterations, 1, 4>();
-        ankerl::nanobench::doNotOptimizeAway(result);
-    });
-    bench.run("static_for large (FP 4-way, block 8)", []() -> void {
-        const auto result = static_for_sum_fp<fp_accumulator_4way, 0, large_iterations, 1, 8>();
-        ankerl::nanobench::doNotOptimizeAway(result);
-    });
-    bench.run("static_for large (FP 4-way, block 32)", []() -> void {
-        const auto result = static_for_sum_fp<fp_accumulator_4way, 0, large_iterations, 1, 32>();
+    bench.run("runtime 8 iters (FP)", [&]() -> void {
+        const auto result = runtime_fp_sum(0, tiny_iterations);
         ankerl::nanobench::doNotOptimizeAway(result);
     });
 
-    // BlockSize sweep for 8-way
-    bench.run("static_for large (FP 8-way, block 1)", []() -> void {
-        const auto result = static_for_sum_fp<fp_accumulator_8way, 0, large_iterations, 1, 1>();
+    // 16 iterations
+    bench.run("static_for 16 iters (FP 4-way)", [&]() -> void {
+        std::uint64_t seed = 0;
+        ankerl::nanobench::doNotOptimizeAway(seed);
+        const auto result = static_for_sum_fp<fp_accumulator_4way, 0, small_iterations, 1, 8>(seed);
         ankerl::nanobench::doNotOptimizeAway(result);
     });
-    bench.run("static_for large (FP 8-way, block 4)", []() -> void {
-        const auto result = static_for_sum_fp<fp_accumulator_8way, 0, large_iterations, 1, 4>();
-        ankerl::nanobench::doNotOptimizeAway(result);
-    });
-    bench.run("static_for large (FP 8-way, block 8)", []() -> void {
-        const auto result = static_for_sum_fp<fp_accumulator_8way, 0, large_iterations, 1, 8>();
-        ankerl::nanobench::doNotOptimizeAway(result);
-    });
-    bench.run("static_for large (FP 8-way, block 32)", []() -> void {
-        const auto result = static_for_sum_fp<fp_accumulator_8way, 0, large_iterations, 1, 32>();
+    bench.run("runtime 16 iters (FP)", [&]() -> void {
+        const auto result = runtime_fp_sum(0, small_iterations);
         ankerl::nanobench::doNotOptimizeAway(result);
     });
 
-    // BlockSize sweep for 16-way
-    bench.run("static_for large (FP 16-way, block 1)", []() -> void {
-        const auto result = static_for_sum_fp<fp_accumulator_16way, 0, large_iterations, 1, 1>();
+    // 32 iterations
+    bench.run("static_for 32 iters (FP 4-way)", [&]() -> void {
+        std::uint64_t seed = 0;
+        ankerl::nanobench::doNotOptimizeAway(seed);
+        const auto result = static_for_sum_fp<fp_accumulator_4way, 0, medium_iterations, 1, 8>(seed);
         ankerl::nanobench::doNotOptimizeAway(result);
     });
-    bench.run("static_for large (FP 16-way, block 4)", []() -> void {
-        const auto result = static_for_sum_fp<fp_accumulator_16way, 0, large_iterations, 1, 4>();
-        ankerl::nanobench::doNotOptimizeAway(result);
-    });
-    bench.run("static_for large (FP 16-way, block 8)", []() -> void {
-        const auto result = static_for_sum_fp<fp_accumulator_16way, 0, large_iterations, 1, 8>();
-        ankerl::nanobench::doNotOptimizeAway(result);
-    });
-    bench.run("static_for large (FP 16-way, block 32)", []() -> void {
-        const auto result = static_for_sum_fp<fp_accumulator_16way, 0, large_iterations, 1, 32>();
+    bench.run("runtime 32 iters (FP)", [&]() -> void {
+        const auto result = runtime_fp_sum(0, medium_iterations);
         ankerl::nanobench::doNotOptimizeAway(result);
     });
 
-    // runtime reference
-    bench.run("runtime for large (FP)", []() -> void {
+    // 64 iterations - testing different block sizes
+    bench.run("static_for 64 iters (FP 4-way, block 8)", []() -> void {
+        std::uint64_t seed = 0;
+        ankerl::nanobench::doNotOptimizeAway(seed);
+        const auto result = static_for_sum_fp<fp_accumulator_4way, 0, large_iterations, 1, 8>(seed);
+        ankerl::nanobench::doNotOptimizeAway(result);
+    });
+    bench.run("static_for 64 iters (FP 8-way, block 8)", []() -> void {
+        std::uint64_t seed = 0;
+        ankerl::nanobench::doNotOptimizeAway(seed);
+        const auto result = static_for_sum_fp<fp_accumulator_8way, 0, large_iterations, 1, 8>(seed);
+        ankerl::nanobench::doNotOptimizeAway(result);
+    });
+    bench.run("static_for 64 iters (FP 16-way, block 8)", []() -> void {
+        std::uint64_t seed = 0;
+        ankerl::nanobench::doNotOptimizeAway(seed);
+        const auto result = static_for_sum_fp<fp_accumulator_16way, 0, large_iterations, 1, 8>(seed);
+        ankerl::nanobench::doNotOptimizeAway(result);
+    });
+    bench.run("runtime 64 iters (FP)", []() -> void {
         const auto result = runtime_fp_sum(0, large_iterations);
         ankerl::nanobench::doNotOptimizeAway(result);
     });
