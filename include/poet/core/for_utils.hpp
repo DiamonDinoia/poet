@@ -16,6 +16,8 @@
 #include <type_traits>
 #include <utility>
 
+#include <poet/core/macros.hpp>
+
 namespace poet {
 
 namespace detail {
@@ -55,6 +57,8 @@ namespace detail {
             const auto magnitude = -Step;
             return static_cast<std::size_t>((distance + magnitude - 1) / magnitude);
         }
+        // Unreachable: all cases covered by if constexpr branches above
+        POET_UNREACHABLE();
     }
 
     /// \brief Executes a single block of unrolled loop iterations.
@@ -69,7 +73,7 @@ namespace detail {
     /// \tparam StartIndex The flat index offset for this block.
     /// \tparam Is Index sequence for unrolling (0, 1, ..., BlockSize-1).
     template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t StartIndex, std::size_t... Is>
-    constexpr void static_loop_impl_block(Func &func, std::index_sequence<Is...> /*indices*/) {
+    POET_FORCEINLINE constexpr void static_loop_impl_block(Func &func, std::index_sequence<Is...> /*indices*/) {
         // Fold expression over the index sequence Is...
         // For each compile-time index 'i' in Is:
         // 1. Compute the absolute iteration index: `StartIndex + i`
@@ -77,8 +81,9 @@ namespace detail {
         // 3. Construct an `std::integral_constant` for that value.
         // 4. Invoke `func` with that constant.
         // 5. The comma operator ... ensures sequential execution.
-        (func(std::integral_constant<std::intmax_t, Begin + (Step * static_cast<std::intmax_t>(StartIndex + Is))>{}),
-          ...);
+        // Optimization: Precompute Base = Begin + Step*StartIndex to reduce arithmetic per iteration.
+        constexpr std::intmax_t Base = Begin + (Step * static_cast<std::intmax_t>(StartIndex));
+        (func(std::integral_constant<std::intmax_t, Base + (Step * static_cast<std::intmax_t>(Is))>{}), ...);
     }
 
     /// \brief Processes a chunk of loop blocks.
@@ -92,7 +97,7 @@ namespace detail {
       std::size_t Offset,
       typename Tuple,
       std::size_t... Is>
-    constexpr void emit_block_chunk(Func &func, const Tuple & /*tuple*/, std::index_sequence<Is...> /*indices*/) {
+    POET_FORCEINLINE constexpr void emit_block_chunk(Func &func, const Tuple & /*tuple*/, std::index_sequence<Is...> /*indices*/) {
         // This function processes a "chunk" of blocks to limit recursion depth.
         // It iterates over `Is...` (0 to ChunkSize-1).
         // For each `i` in `Is`:
@@ -112,7 +117,7 @@ namespace detail {
       typename Tuple,
       std::size_t Offset,
       std::size_t Remaining>
-    constexpr void emit_all_blocks_from_tuple(Func &func, const Tuple &tuple) {
+    POET_FORCEINLINE constexpr void emit_all_blocks_from_tuple(Func &func, const Tuple &tuple) {
         // Recursive function used to iterate over the tuple of block indices.
         // It consumes 'chunk_size' blocks at a time, where 'chunk_size' is capped
         // by kMaxStaticLoopBlock. This prevents generating a single massive fold
@@ -137,7 +142,7 @@ namespace detail {
     }
 
     template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t BlockSize, typename Tuple>
-    constexpr void emit_all_blocks(Func &func, const Tuple &tuple) {
+    POET_FORCEINLINE constexpr void emit_all_blocks(Func &func, const Tuple &tuple) {
         constexpr auto total_blocks = std::tuple_size_v<Tuple>;
         if constexpr (total_blocks > 0) {
             emit_all_blocks_from_tuple<Func, Begin, Step, BlockSize, Tuple, 0, total_blocks>(func, tuple);
@@ -153,7 +158,7 @@ namespace detail {
         // Receives an std::integral_constant<int, Value> from implementation internals.
         // Unpacks 'Value' and calls the user's template operator<Value>().
         template<std::intmax_t Value>
-        constexpr void operator()(std::integral_constant<std::intmax_t, Value> /*integral_constant*/) const {
+        POET_FORCEINLINE constexpr void operator()(std::integral_constant<std::intmax_t, Value> /*integral_constant*/) const {
             (*functor).template operator()<Value>();
         }
     };

@@ -24,6 +24,8 @@
 #include <utility>
 #include <variant>
 
+#include <poet/core/macros.hpp>
+
 namespace poet {
 
 /// \brief Helper for concise tuple syntax in DispatchSet
@@ -369,9 +371,17 @@ namespace detail {
             constexpr std::size_t len = sequence_size<Seq>::value;
             const int idx = val - first;
 
-            // Bounds check: explicitly handle negative indices and out-of-range positive indices
-            if (idx < 0 || static_cast<std::size_t>(idx) >= len) { return std::nullopt; }
-            return variant_from_seq<Seq>::maker::make_by_index(static_cast<std::size_t>(idx));
+            // Branchless bounds check optimization:
+            // Single unsigned comparison handles both negative and out-of-range positive indices.
+            // - When idx < 0: Casting to std::size_t wraps around (two's complement) to a
+            //   very large positive value (> len), so the check fails as desired.
+            // - When idx >= len: The check naturally fails.
+            // - When 0 <= idx < len: The check passes.
+            // This reduces branch mispredictions and improves pipeline efficiency.
+            if (static_cast<std::size_t>(idx) < len) {
+                return variant_from_seq<Seq>::maker::make_by_index(static_cast<std::size_t>(idx));
+            }
+            return std::nullopt;
         } else {
             // Fallback for non-contiguous sequences.
             auto idx = sequence_runtime_index<Seq>::find(val);
@@ -403,17 +413,68 @@ namespace detail {
 
       public:
         VisitCaller(Functor *functor, ArgumentTuple &&arguments) : func(functor), args(std::move(arguments)) {}
-        template<typename... IC> auto operator()(IC... /*unused_args*/) -> decltype(auto) {
-            // move the stored argument tuple into the call so move-only arguments are forwarded
-            return std::apply(
-              [this](auto &&...arg) -> decltype(auto) {
-                  if constexpr (has_value_call<Functor, ArgumentTuple, IC...>::value) {
-                      return (*this->func)(IC{}..., std::forward<decltype(arg)>(arg)...);
-                  } else {
-                      return this->func->template operator()<IC::value...>(std::forward<decltype(arg)>(arg)...);
-                  }
-              },
-              std::move(args));
+
+        /// \brief Invokes the stored functor with compile-time dispatch parameters.
+        ///
+        /// This operator is the core of the dispatch mechanism. It receives compile-time
+        /// integral_constant values (IC...) from std::visit and forwards them along with
+        /// the stored runtime arguments to the user's functor.
+        ///
+        /// **Performance optimization**: For common argument counts (0-2), we provide
+        /// specialized fast paths that avoid std::apply overhead. This eliminates tuple
+        /// indexing and lambda call overhead, improving inlining and reducing instruction
+        /// count in hot dispatch paths.
+        ///
+        /// The optimization is most significant for:
+        /// - Zero arguments: Pure template dispatching (e.g., matrix kernels)
+        /// - One argument: Single runtime parameter (e.g., stride selection)
+        /// - Two arguments: Common case for 2D operations
+        ///
+        /// For 3+ arguments, we fall back to std::apply which is still efficient but
+        /// adds some indirection.
+        ///
+        /// \tparam IC... Pack of std::integral_constant types from std::visit
+        /// \return Result of invoking the user's functor
+        template<typename... IC>
+        POET_HOT_LOOP auto operator()(IC... /*unused_args*/) -> decltype(auto) {
+            constexpr std::size_t arg_count = std::tuple_size_v<std::remove_reference_t<ArgumentTuple>>;
+
+            // Fast path specializations for common argument counts
+            if constexpr (arg_count == 0) {
+                // Zero arguments: Direct call without tuple overhead
+                if constexpr (has_value_call<Functor, ArgumentTuple, IC...>::value) {
+                    return (*this->func)(IC{}...);
+                } else {
+                    return this->func->template operator()<IC::value...>();
+                }
+            } else if constexpr (arg_count == 1) {
+                // One argument: Direct extraction without std::apply
+                if constexpr (has_value_call<Functor, ArgumentTuple, IC...>::value) {
+                    return (*this->func)(IC{}..., std::move(std::get<0>(args)));
+                } else {
+                    return this->func->template operator()<IC::value...>(std::move(std::get<0>(args)));
+                }
+            } else if constexpr (arg_count == 2) {
+                // Two arguments: Direct extraction without std::apply
+                if constexpr (has_value_call<Functor, ArgumentTuple, IC...>::value) {
+                    return (*this->func)(IC{}..., std::move(std::get<0>(args)), std::move(std::get<1>(args)));
+                } else {
+                    return this->func->template operator()<IC::value...>(
+                      std::move(std::get<0>(args)), std::move(std::get<1>(args)));
+                }
+            } else {
+                // General case (3+ arguments): Use std::apply for flexibility
+                // The stored argument tuple is moved into the call to support move-only types
+                return std::apply(
+                  [this](auto &&...arg) -> decltype(auto) {
+                      if constexpr (has_value_call<Functor, ArgumentTuple, IC...>::value) {
+                          return (*this->func)(IC{}..., std::forward<decltype(arg)>(arg)...);
+                      } else {
+                          return this->func->template operator()<IC::value...>(std::forward<decltype(arg)>(arg)...);
+                      }
+                  },
+                  std::move(args));
+            }
         }
     };
 
@@ -505,7 +566,7 @@ namespace detail {
         const bool success =
           std::apply([](auto const &...variant_opt) -> auto { return (variant_opt.has_value() && ...); }, variants);
 
-        if (success) {
+        if (POET_LIKELY(success)) {
             // 5. Invoke std::visit with our custom VisitCaller.
             //    VisitCaller unwraps the integral_constants from the variants and calls the user functor:
             //    `functor.operator()<Values...>(args...)`

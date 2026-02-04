@@ -8,8 +8,12 @@
 /// include/poet/ so that downstream projects can simply include <poet/poet.hpp>
 /// to access the stable API surface.
 
+// clang-format off
+// IMPORTANT: Include order matters! macros.hpp must come first, undef_macros.hpp must come last
+#include <poet/core/macros.hpp>
 #include <poet/core/dynamic_for.hpp>
 #include <poet/core/static_dispatch.hpp>
 #include <poet/core/static_for.hpp>
-
+#include <poet/core/undef_macros.hpp>
+// clang-format on
 #endif// POET_POET_HPP

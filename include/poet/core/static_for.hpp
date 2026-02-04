@@ -33,7 +33,7 @@ namespace detail {
     /// \tparam BlockSize Number of iterations per block.
     /// \tparam BlockIndices Indices for the blocks (0, 1, ...).
     template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t BlockSize, std::size_t... BlockIndices>
-    constexpr void static_loop_emit_all_blocks(Func &func, std::index_sequence<BlockIndices...> /*blocks*/) {
+    POET_FORCEINLINE constexpr void static_loop_emit_all_blocks(Func &func, std::index_sequence<BlockIndices...> /*blocks*/) {
         // Wrap block indices into integral_constants in a tuple.
         // This tuple is then processed recursively by emit_all_blocks to avoid excessive
         // instantiation depth that a single fold expression over all blocks might cause.
@@ -76,7 +76,7 @@ namespace detail {
       std::intmax_t Step = 1,
       std::size_t BlockSize = compute_default_static_loop_block_size<Begin, End, Step>(),
       typename Func>
-    constexpr void static_loop(Func &&func) {
+    POET_FORCEINLINE constexpr void static_loop(Func &&func) {
         static_assert(BlockSize > 0, "static_loop requires BlockSize > 0");
         using Callable = std::remove_reference_t<Func>;
         // Create a local copy of the callable to ensure state persistence across block calls
@@ -143,7 +143,7 @@ template<std::intmax_t Begin,
   std::intmax_t Step = 1,
   std::size_t BlockSize = detail::compute_default_static_loop_block_size<Begin, End, Step>(),
   typename Func>
-constexpr void static_for(Func &&func) {
+POET_FORCEINLINE constexpr void static_for(Func &&func) {
     // Check if the user functor accepts an integral_constant index directly.
     if constexpr (std::is_invocable_v<Func, std::integral_constant<std::intmax_t, Begin>>) {
         // Direct invocation mode: simply forward to static_loop.
@@ -176,7 +176,7 @@ constexpr void static_for(Func &&func) {
 ///
 /// \tparam End Exclusive upper bound of the range.
 /// \param func Callable instance invoked once per iteration.
-template<std::intmax_t End, typename Func> constexpr void static_for(Func &&func) {
+template<std::intmax_t End, typename Func> POET_FORCEINLINE constexpr void static_for(Func &&func) {
     static_for<0, End>(std::forward<Func>(func));
 }
 
