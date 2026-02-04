@@ -96,7 +96,7 @@
 /// }
 /// ```
 
-#if defined(_MSC_VER)
+#ifdef _MSC_VER
     // MSVC: __forceinline
     #define POET_FORCEINLINE __forceinline
 
@@ -223,6 +223,7 @@ constexpr auto poet_count_trailing_zeros(unsigned long value) noexcept -> unsign
     return static_cast<unsigned int>(__builtin_ctzl(value));
 }
 
+// NOLINTNEXTLINE(google-runtime-int)
 constexpr auto poet_count_trailing_zeros(unsigned long long value) noexcept -> unsigned int {
     return static_cast<unsigned int>(__builtin_ctzll(value));
 }
@@ -428,7 +429,7 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 /// POET_POP_OPTIMIZE
 /// ```
 
-#if defined(__clang__)
+#ifdef __clang__
     // Clang: No-op (Clang's pragma can only DISABLE optimizations, not enable them)
     // #pragma clang optimize on/off can only disable optimizations, not enable them beyond
     // command-line flags. According to LLVM docs: "A stray #pragma clang optimize on does
@@ -495,7 +496,7 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 /// }
 /// ```
 
-#if defined(__clang__)
+#ifdef __clang__
     // Clang: Use #pragma clang loop unroll_count(N)
     // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
     #define POET_UNROLL_LOOP(N) _Pragma("clang loop unroll_count(" #N ")")
