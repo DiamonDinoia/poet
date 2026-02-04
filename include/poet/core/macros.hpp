@@ -41,6 +41,7 @@
 #if defined(__GNUC__) || defined(__clang__)
     // GCC and Clang: Use __builtin_unreachable()
     // Available since GCC 4.5 and Clang 3.0
+    // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
     #define POET_UNREACHABLE() __builtin_unreachable()
 
 #elif defined(_MSC_VER)
@@ -133,7 +134,9 @@
     // Returns x, but tells the compiler that x is likely/unlikely to be true
     // Note: We don't use C++20 [[likely]]/[[unlikely]] attributes here because
     // they cannot be portably wrapped in macros that work with if statements.
+    // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
     #define POET_LIKELY(x) __builtin_expect(!!(x), 1)
+    // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
     #define POET_UNLIKELY(x) __builtin_expect(!!(x), 0)
 
 #else
@@ -168,23 +171,42 @@
 /// \return Number of trailing zero bits
 ///
 /// Implementation notes:
+/// - C++20: Uses std::countr_zero from <bit> header (standardized)
 /// - GCC/Clang: Uses __builtin_ctz() (single instruction: BSF on x86, CLZ on ARM)
 /// - MSVC: Uses _BitScanForward() intrinsic (BSF instruction on x86)
 /// - Fallback: Software implementation for other compilers
 
-#if defined(__GNUC__) || defined(__clang__)
+#if __cplusplus >= 202002L
+// C++20: Use std::countr_zero from <bit> header (standardized implementation)
+#include <bit>
+
+constexpr auto poet_count_trailing_zeros(unsigned int value) noexcept -> unsigned int {
+    return static_cast<unsigned int>(std::countr_zero(value));
+}
+
+// NOLINTNEXTLINE(google-runtime-int)
+constexpr auto poet_count_trailing_zeros(unsigned long value) noexcept -> unsigned int {
+    return static_cast<unsigned int>(std::countr_zero(value));
+}
+
+constexpr auto poet_count_trailing_zeros(unsigned long long value) noexcept -> unsigned int {
+    return static_cast<unsigned int>(std::countr_zero(value));
+}
+
+#elif defined(__GNUC__) || defined(__clang__)
 
 // GCC/Clang: Use __builtin_ctz family
 // These map to single instructions on most architectures (BSF, CLZ, etc.)
-inline constexpr unsigned int poet_count_trailing_zeros(unsigned int value) noexcept {
+constexpr auto poet_count_trailing_zeros(unsigned int value) noexcept -> unsigned int {
     return static_cast<unsigned int>(__builtin_ctz(value));
 }
 
-inline constexpr unsigned int poet_count_trailing_zeros(unsigned long value) noexcept {
+// NOLINTNEXTLINE(google-runtime-int)
+constexpr auto poet_count_trailing_zeros(unsigned long value) noexcept -> unsigned int {
     return static_cast<unsigned int>(__builtin_ctzl(value));
 }
 
-inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value) noexcept {
+constexpr auto poet_count_trailing_zeros(unsigned long long value) noexcept -> unsigned int {
     return static_cast<unsigned int>(__builtin_ctzll(value));
 }
 
@@ -259,11 +281,14 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 #if defined(__OPTIMIZE__) && !defined(__OPTIMIZE_SIZE__)
     // GCC/Clang: __OPTIMIZE__ is defined for -O1/-O2/-O3, but not for -Os
     // We assume -O2 or higher (can't distinguish -O2 from -O3 reliably)
+    // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
     #define POET_HIGH_OPTIMIZATION 1
 #elif defined(_MSC_VER) && !defined(_DEBUG) && defined(NDEBUG)
     // MSVC: Release mode with NDEBUG defined
+    // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
     #define POET_HIGH_OPTIMIZATION 1
 #else
+    // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
     #define POET_HIGH_OPTIMIZATION 0
 #endif
 
@@ -455,22 +480,31 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 
 #if defined(__clang__)
     // Clang: Use #pragma clang loop unroll_count(N)
+    // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
     #define POET_UNROLL_LOOP(N) _Pragma("clang loop unroll_count(" #N ")")
+    // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
     #define POET_UNROLL_LOOP_FULL _Pragma("clang loop unroll(full)")
+    // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
     #define POET_UNROLL_LOOP_DISABLE _Pragma("clang loop unroll(disable)")
 
 #elif defined(__GNUC__)
     // GCC: Use #pragma GCC unroll N
     // Note: Available since GCC 8
     #if __GNUC__ >= 8
+        // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
         #define POET_UNROLL_LOOP(N) _Pragma("GCC unroll " #N)
         // GCC doesn't have "full unroll" pragma, use large number
+        // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
         #define POET_UNROLL_LOOP_FULL _Pragma("GCC unroll 32767")
+        // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
         #define POET_UNROLL_LOOP_DISABLE _Pragma("GCC unroll 1")
     #else
         // GCC < 8: No support
+        // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
         #define POET_UNROLL_LOOP(N)
+        // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
         #define POET_UNROLL_LOOP_FULL
+        // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
         #define POET_UNROLL_LOOP_DISABLE
     #endif
 
@@ -480,14 +514,20 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
     // #pragma loop only controls parallelization/vectorization, not unrolling
     // Loop unrolling happens automatically at /O2 based on compiler heuristics
     // These macros are no-ops on MSVC
+    // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
     #define POET_UNROLL_LOOP(N)
+    // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
     #define POET_UNROLL_LOOP_FULL
+    // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
     #define POET_UNROLL_LOOP_DISABLE
 
 #else
     // Fallback: No-op
+    // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
     #define POET_UNROLL_LOOP(N)
+    // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
     #define POET_UNROLL_LOOP_FULL
+    // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
     #define POET_UNROLL_LOOP_DISABLE
 
 #endif

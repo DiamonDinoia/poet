@@ -1,5 +1,7 @@
+// NOLINTBEGIN(llvm-header-guard)
 #ifndef POET_UNDEF_MACROS_HPP
 #define POET_UNDEF_MACROS_HPP
+// NOLINTEND(llvm-header-guard)
 
 /// \file undef_macros.hpp
 /// \brief Undefines all POET macros to prevent namespace pollution.
