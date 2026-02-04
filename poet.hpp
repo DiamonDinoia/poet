@@ -12,6 +12,9 @@
 /// include/poet/ so that downstream projects can simply include <poet/poet.hpp>
 /// to access the stable API surface.
 
+// clang-format off
+// IMPORTANT: Include order matters! macros.hpp must come first, undef_macros.hpp must come last
+#include <poet/core/macros.hpp>
 /* Begin inline (angle): include/poet/core/dynamic_for.hpp */
 // BEGIN_FILE: include/poet/core/dynamic_for.hpp
 
@@ -30,6 +33,7 @@
 #include <type_traits>
 #include <utility>
 
+#include <poet/core/macros.hpp>
 /* Begin inline (angle): include/poet/core/static_dispatch.hpp */
 // BEGIN_FILE: include/poet/core/static_dispatch.hpp
 
@@ -55,6 +59,8 @@
 #include <type_traits>
 #include <utility>
 #include <variant>
+
+#include <poet/core/macros.hpp>
 
 namespace poet {
 
@@ -401,9 +407,17 @@ namespace detail {
             constexpr std::size_t len = sequence_size<Seq>::value;
             const int idx = val - first;
 
-            // Bounds check: explicitly handle negative indices and out-of-range positive indices
-            if (idx < 0 || static_cast<std::size_t>(idx) >= len) { return std::nullopt; }
-            return variant_from_seq<Seq>::maker::make_by_index(static_cast<std::size_t>(idx));
+            // Branchless bounds check optimization:
+            // Single unsigned comparison handles both negative and out-of-range positive indices.
+            // - When idx < 0: Casting to std::size_t wraps around (two's complement) to a
+            //   very large positive value (> len), so the check fails as desired.
+            // - When idx >= len: The check naturally fails.
+            // - When 0 <= idx < len: The check passes.
+            // This reduces branch mispredictions and improves pipeline efficiency.
+            if (static_cast<std::size_t>(idx) < len) {
+                return variant_from_seq<Seq>::maker::make_by_index(static_cast<std::size_t>(idx));
+            }
+            return std::nullopt;
         } else {
             // Fallback for non-contiguous sequences.
             auto idx = sequence_runtime_index<Seq>::find(val);
@@ -435,17 +449,68 @@ namespace detail {
 
       public:
         VisitCaller(Functor *functor, ArgumentTuple &&arguments) : func(functor), args(std::move(arguments)) {}
-        template<typename... IC> auto operator()(IC... /*unused_args*/) -> decltype(auto) {
-            // move the stored argument tuple into the call so move-only arguments are forwarded
-            return std::apply(
-              [this](auto &&...arg) -> decltype(auto) {
-                  if constexpr (has_value_call<Functor, ArgumentTuple, IC...>::value) {
-                      return (*this->func)(IC{}..., std::forward<decltype(arg)>(arg)...);
-                  } else {
-                      return this->func->template operator()<IC::value...>(std::forward<decltype(arg)>(arg)...);
-                  }
-              },
-              std::move(args));
+
+        /// \brief Invokes the stored functor with compile-time dispatch parameters.
+        ///
+        /// This operator is the core of the dispatch mechanism. It receives compile-time
+        /// integral_constant values (IC...) from std::visit and forwards them along with
+        /// the stored runtime arguments to the user's functor.
+        ///
+        /// **Performance optimization**: For common argument counts (0-2), we provide
+        /// specialized fast paths that avoid std::apply overhead. This eliminates tuple
+        /// indexing and lambda call overhead, improving inlining and reducing instruction
+        /// count in hot dispatch paths.
+        ///
+        /// The optimization is most significant for:
+        /// - Zero arguments: Pure template dispatching (e.g., matrix kernels)
+        /// - One argument: Single runtime parameter (e.g., stride selection)
+        /// - Two arguments: Common case for 2D operations
+        ///
+        /// For 3+ arguments, we fall back to std::apply which is still efficient but
+        /// adds some indirection.
+        ///
+        /// \tparam IC... Pack of std::integral_constant types from std::visit
+        /// \return Result of invoking the user's functor
+        template<typename... IC>
+        POET_HOT_LOOP auto operator()(IC... /*unused_args*/) -> decltype(auto) {
+            constexpr std::size_t arg_count = std::tuple_size_v<std::remove_reference_t<ArgumentTuple>>;
+
+            // Fast path specializations for common argument counts
+            if constexpr (arg_count == 0) {
+                // Zero arguments: Direct call without tuple overhead
+                if constexpr (has_value_call<Functor, ArgumentTuple, IC...>::value) {
+                    return (*this->func)(IC{}...);
+                } else {
+                    return this->func->template operator()<IC::value...>();
+                }
+            } else if constexpr (arg_count == 1) {
+                // One argument: Direct extraction without std::apply
+                if constexpr (has_value_call<Functor, ArgumentTuple, IC...>::value) {
+                    return (*this->func)(IC{}..., std::move(std::get<0>(args)));
+                } else {
+                    return this->func->template operator()<IC::value...>(std::move(std::get<0>(args)));
+                }
+            } else if constexpr (arg_count == 2) {
+                // Two arguments: Direct extraction without std::apply
+                if constexpr (has_value_call<Functor, ArgumentTuple, IC...>::value) {
+                    return (*this->func)(IC{}..., std::move(std::get<0>(args)), std::move(std::get<1>(args)));
+                } else {
+                    return this->func->template operator()<IC::value...>(
+                      std::move(std::get<0>(args)), std::move(std::get<1>(args)));
+                }
+            } else {
+                // General case (3+ arguments): Use std::apply for flexibility
+                // The stored argument tuple is moved into the call to support move-only types
+                return std::apply(
+                  [this](auto &&...arg) -> decltype(auto) {
+                      if constexpr (has_value_call<Functor, ArgumentTuple, IC...>::value) {
+                          return (*this->func)(IC{}..., std::forward<decltype(arg)>(arg)...);
+                      } else {
+                          return this->func->template operator()<IC::value...>(std::forward<decltype(arg)>(arg)...);
+                      }
+                  },
+                  std::move(args));
+            }
         }
     };
 
@@ -537,7 +602,7 @@ namespace detail {
         const bool success =
           std::apply([](auto const &...variant_opt) -> auto { return (variant_opt.has_value() && ...); }, variants);
 
-        if (success) {
+        if (POET_LIKELY(success)) {
             // 5. Invoke std::visit with our custom VisitCaller.
             //    VisitCaller unwraps the integral_constants from the variants and calls the user functor:
             //    `functor.operator()<Values...>(args...)`
@@ -768,6 +833,8 @@ auto dispatch(throw_on_no_match_t /*tag*/, Functor functor, ParamTuple const &pa
 #include <type_traits>
 #include <utility>
 
+#include <poet/core/macros.hpp>
+
 namespace poet {
 
 namespace detail {
@@ -807,6 +874,8 @@ namespace detail {
             const auto magnitude = -Step;
             return static_cast<std::size_t>((distance + magnitude - 1) / magnitude);
         }
+        // Unreachable: all cases covered by if constexpr branches above
+        POET_UNREACHABLE();
     }
 
     /// \brief Executes a single block of unrolled loop iterations.
@@ -821,7 +890,7 @@ namespace detail {
     /// \tparam StartIndex The flat index offset for this block.
     /// \tparam Is Index sequence for unrolling (0, 1, ..., BlockSize-1).
     template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t StartIndex, std::size_t... Is>
-    constexpr void static_loop_impl_block(Func &func, std::index_sequence<Is...> /*indices*/) {
+    POET_FORCEINLINE constexpr void static_loop_impl_block(Func &func, std::index_sequence<Is...> /*indices*/) {
         // Fold expression over the index sequence Is...
         // For each compile-time index 'i' in Is:
         // 1. Compute the absolute iteration index: `StartIndex + i`
@@ -829,8 +898,9 @@ namespace detail {
         // 3. Construct an `std::integral_constant` for that value.
         // 4. Invoke `func` with that constant.
         // 5. The comma operator ... ensures sequential execution.
-        (func(std::integral_constant<std::intmax_t, Begin + (Step * static_cast<std::intmax_t>(StartIndex + Is))>{}),
-          ...);
+        // Optimization: Precompute Base = Begin + Step*StartIndex to reduce arithmetic per iteration.
+        constexpr std::intmax_t Base = Begin + (Step * static_cast<std::intmax_t>(StartIndex));
+        (func(std::integral_constant<std::intmax_t, Base + (Step * static_cast<std::intmax_t>(Is))>{}), ...);
     }
 
     /// \brief Processes a chunk of loop blocks.
@@ -844,7 +914,7 @@ namespace detail {
       std::size_t Offset,
       typename Tuple,
       std::size_t... Is>
-    constexpr void emit_block_chunk(Func &func, const Tuple & /*tuple*/, std::index_sequence<Is...> /*indices*/) {
+    POET_FORCEINLINE constexpr void emit_block_chunk(Func &func, const Tuple & /*tuple*/, std::index_sequence<Is...> /*indices*/) {
         // This function processes a "chunk" of blocks to limit recursion depth.
         // It iterates over `Is...` (0 to ChunkSize-1).
         // For each `i` in `Is`:
@@ -864,7 +934,7 @@ namespace detail {
       typename Tuple,
       std::size_t Offset,
       std::size_t Remaining>
-    constexpr void emit_all_blocks_from_tuple(Func &func, const Tuple &tuple) {
+    POET_FORCEINLINE constexpr void emit_all_blocks_from_tuple(Func &func, const Tuple &tuple) {
         // Recursive function used to iterate over the tuple of block indices.
         // It consumes 'chunk_size' blocks at a time, where 'chunk_size' is capped
         // by kMaxStaticLoopBlock. This prevents generating a single massive fold
@@ -889,7 +959,7 @@ namespace detail {
     }
 
     template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t BlockSize, typename Tuple>
-    constexpr void emit_all_blocks(Func &func, const Tuple &tuple) {
+    POET_FORCEINLINE constexpr void emit_all_blocks(Func &func, const Tuple &tuple) {
         constexpr auto total_blocks = std::tuple_size_v<Tuple>;
         if constexpr (total_blocks > 0) {
             emit_all_blocks_from_tuple<Func, Begin, Step, BlockSize, Tuple, 0, total_blocks>(func, tuple);
@@ -905,7 +975,7 @@ namespace detail {
         // Receives an std::integral_constant<int, Value> from implementation internals.
         // Unpacks 'Value' and calls the user's template operator<Value>().
         template<std::intmax_t Value>
-        constexpr void operator()(std::integral_constant<std::intmax_t, Value> /*integral_constant*/) const {
+        POET_FORCEINLINE constexpr void operator()(std::integral_constant<std::intmax_t, Value> /*integral_constant*/) const {
             (*functor).template operator()<Value>();
         }
     };
@@ -942,7 +1012,7 @@ namespace detail {
     /// \tparam BlockSize Number of iterations per block.
     /// \tparam BlockIndices Indices for the blocks (0, 1, ...).
     template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t BlockSize, std::size_t... BlockIndices>
-    constexpr void static_loop_emit_all_blocks(Func &func, std::index_sequence<BlockIndices...> /*blocks*/) {
+    POET_FORCEINLINE constexpr void static_loop_emit_all_blocks(Func &func, std::index_sequence<BlockIndices...> /*blocks*/) {
         // Wrap block indices into integral_constants in a tuple.
         // This tuple is then processed recursively by emit_all_blocks to avoid excessive
         // instantiation depth that a single fold expression over all blocks might cause.
@@ -985,7 +1055,7 @@ namespace detail {
       std::intmax_t Step = 1,
       std::size_t BlockSize = compute_default_static_loop_block_size<Begin, End, Step>(),
       typename Func>
-    constexpr void static_loop(Func &&func) {
+    POET_FORCEINLINE constexpr void static_loop(Func &&func) {
         static_assert(BlockSize > 0, "static_loop requires BlockSize > 0");
         using Callable = std::remove_reference_t<Func>;
         // Create a local copy of the callable to ensure state persistence across block calls
@@ -1052,7 +1122,7 @@ template<std::intmax_t Begin,
   std::intmax_t Step = 1,
   std::size_t BlockSize = detail::compute_default_static_loop_block_size<Begin, End, Step>(),
   typename Func>
-constexpr void static_for(Func &&func) {
+POET_FORCEINLINE constexpr void static_for(Func &&func) {
     // Check if the user functor accepts an integral_constant index directly.
     if constexpr (std::is_invocable_v<Func, std::integral_constant<std::intmax_t, Begin>>) {
         // Direct invocation mode: simply forward to static_loop.
@@ -1085,7 +1155,7 @@ constexpr void static_for(Func &&func) {
 ///
 /// \tparam End Exclusive upper bound of the range.
 /// \param func Callable instance invoked once per iteration.
-template<std::intmax_t End, typename Func> constexpr void static_for(Func &&func) {
+template<std::intmax_t End, typename Func> POET_FORCEINLINE constexpr void static_for(Func &&func) {
     static_for<0, End>(std::forward<Func>(func));
 }
 
@@ -1129,7 +1199,7 @@ namespace detail {
     /// \tparam T Loop counter type.
     /// \tparam BlockSize Number of iterations to unroll in this block.
     template<typename Func, typename T, std::size_t BlockSize>
-    inline void execute_runtime_block([[maybe_unused]] Func &func, [[maybe_unused]] T base, [[maybe_unused]] T stride) {
+    POET_HOT_LOOP void execute_runtime_block([[maybe_unused]] Func &func, [[maybe_unused]] T base, [[maybe_unused]] T stride) {
         if constexpr (BlockSize > 0) {
             // Create an invoker that captures the user function and the current base index.
             dynamic_block_invoker<Func, T> invoker{ &func, base, stride };
@@ -1170,8 +1240,8 @@ namespace detail {
     /// \param stride Step/increment value (can be negative for backward iteration).
     /// \param callable User-provided function to invoke for each index.
     template<typename T, typename Callable, std::size_t Unroll>
-    inline void dynamic_for_impl(T begin, T end, T stride, Callable &callable) {
-        if (stride == 0) { return; }
+    POET_HOT_LOOP void dynamic_for_impl(T begin, T end, T stride, Callable &callable) {
+        if (POET_UNLIKELY(stride == 0)) { return; }
 
         // Calculate iteration count.
         // We determine the number of steps to go from `begin` to `end` exclusively.
@@ -1199,9 +1269,9 @@ namespace detail {
         constexpr T half_max = std::numeric_limits<T>::max() / 2;
         const bool is_wrapped_negative = is_unsigned && (stride > half_max);
 
-        if (stride < 0 || is_wrapped_negative) {
+        if (POET_UNLIKELY(stride < 0 || is_wrapped_negative)) {
             // Backward iteration (negative stride or wrapped unsigned)
-            if (begin <= end) {
+            if (POET_UNLIKELY(begin <= end)) {
                 count = 0;
             } else {
                 // Compute absolute stride value
@@ -1217,16 +1287,32 @@ namespace detail {
                 count = (dist + ustride - 1) / ustride;
             }
         } else {
-            // Forward iteration (stride > 0 and not wrapped)
-            if (begin >= end) {
+            // Forward iteration (stride > 0 and not wrapped) - COMMON CASE
+            if (POET_UNLIKELY(begin >= end)) {
                 count = 0;
             } else {
                 // Logic for positive stride:
                 // dist = end - begin
                 // count = ceil(dist / stride) = (dist + stride - 1) / stride
+                //
+                // Optimization: For power-of-2 strides, replace expensive division with bit shift.
+                // This is a common case (strides of 1, 2, 4, 8, 16 are typical in DSP/linear algebra).
                 auto dist = static_cast<std::size_t>(end - begin);
                 auto ustride = static_cast<std::size_t>(stride);
-                count = (dist + ustride - 1) / ustride;
+
+                // Check if stride is a power of 2: (x & (x-1)) == 0 for powers of 2.
+                // Note: 0 is not a power of 2, but we already checked stride == 0 at the top.
+                const bool is_power_of_2 = (ustride & (ustride - 1)) == 0;
+
+                if (POET_LIKELY(is_power_of_2)) {
+                    // Fast path: Use bit shift for power-of-2 division.
+                    // count = ceil(dist / stride) = (dist + stride - 1) >> log2(stride)
+                    const unsigned int shift = poet_count_trailing_zeros(ustride);
+                    count = (dist + ustride - 1) >> shift;
+                } else {
+                    // General path: Use division for non-power-of-2 strides.
+                    count = (dist + ustride - 1) / ustride;
+                }
             }
         }
 
@@ -1236,15 +1322,17 @@ namespace detail {
         // Execute full blocks of size 'Unroll'.
         // We use a runtime while loop here, but the body (execute_runtime_block)
         // is fully unrolled at compile-time for 'Unroll' iterations.
+        // Optimization: Hoist loop-invariant multiplication out of the loop.
+        const T stride_times_unroll = static_cast<T>(Unroll) * stride;
         while (remaining >= Unroll) {
             detail::execute_runtime_block<Callable, T, Unroll>(callable, index, stride);
-            index += static_cast<T>(Unroll) * stride;
+            index += stride_times_unroll;
             remaining -= Unroll;
         }
 
         // Handle remaining iterations (tail).
         if constexpr (Unroll > 1) {
-            if (remaining > 0) {
+            if (POET_UNLIKELY(remaining > 0)) {
                 // Dispatch the runtime 'remaining' count to a compile-time template instantiation.
                 // This ensures even the tail is unrolled, avoiding a runtime loop for the last few elements.
                 const detail::tail_caller_for_dynamic_for<Callable, T> tail_caller{ &callable, stride };
@@ -1376,7 +1464,8 @@ dynamic_for_adaptor<std::decay_t<F>, U> make_dynamic_for(F &&f) {
 /* Begin inline (angle): include/poet/core/static_for.hpp */
 /* Skipped already inlined: include/poet/core/static_for.hpp */
 /* End inline (angle): include/poet/core/static_for.hpp */
-
+#include <poet/core/undef_macros.hpp>
+// clang-format on
 // END_FILE: include/poet/poet.hpp
 
 #endif // POET_SINGLE_HEADER_GOLDBOT_HPP
