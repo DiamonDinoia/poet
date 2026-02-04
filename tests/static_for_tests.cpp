@@ -198,7 +198,7 @@ struct throwing_functor {
     int* counter;
     template<auto I> void operator()() {
         (*counter)++;
-        if (I == 2) { throw std::runtime_error("test exception"); }
+        if constexpr (I == 2) { throw std::runtime_error("test exception"); }
     }
 };
 
