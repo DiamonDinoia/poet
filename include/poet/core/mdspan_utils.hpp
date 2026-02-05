@@ -13,8 +13,8 @@
 
 #include <array>
 #include <cstddef>
-#include <type_traits>
 #include <poet/core/macros.hpp>
+#include <type_traits>
 
 namespace poet::detail {
 
@@ -42,7 +42,7 @@ namespace poet::detail {
     /// For dimensions [D0, D1, D2], strides are [D1*D2, D2, 1].
     /// This allows flattening: flat_idx = i0*stride[0] + i1*stride[1] + i2*stride[2]
     template<std::size_t N>
-    POET_FORCEINLINE constexpr auto compute_strides(const std::array<std::size_t, N>& dims) -> std::array<std::size_t, N> {
+    POET_FLATTEN POET_FORCEINLINE constexpr auto compute_strides(const std::array<std::size_t, N>& dims) -> std::array<std::size_t, N> {
         std::array<std::size_t, N> strides{};
         if constexpr (N > 0) {
             strides[N - 1] = 1;
@@ -58,7 +58,7 @@ namespace poet::detail {
     /// Given indices (i0, i1, ..., in) and strides, computes:
     /// flat_index = i0*stride[0] + i1*stride[1] + ... + in*stride[n]
     template<std::size_t N>
-    POET_FORCEINLINE constexpr auto flatten_indices(const std::array<int, N>& indices,
+    POET_FLATTEN POET_FORCEINLINE constexpr auto flatten_indices(const std::array<int, N>& indices,
                                    const std::array<std::size_t, N>& strides) -> std::size_t {
         std::size_t flat = 0;
         for (std::size_t i = 0; i < N; ++i) {
@@ -83,7 +83,7 @@ namespace poet::detail {
 
     /// \brief Adjust indices by subtracting offsets.
     template<std::size_t N>
-    POET_FORCEINLINE constexpr auto adjust_indices(const std::array<int, N>& indices,
+    POET_FLATTEN POET_FORCEINLINE constexpr auto adjust_indices(const std::array<int, N>& indices,
                                  const std::array<int, N>& offsets) -> std::array<int, N> {
         std::array<int, N> adjusted{};
         for (std::size_t i = 0; i < N; ++i) {

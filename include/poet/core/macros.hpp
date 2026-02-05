@@ -108,12 +108,30 @@
 #endif
 
 // ============================================================================
+// POET_RESTRICT: portable no-alias hint
+// ============================================================================
+/// rief Compiler-portable `restrict` hint for pointer/reference parameters.
+///
+/// Use `POET_RESTRICT` on pointer or reference declarations where you can
+/// guarantee there is no aliasing with other visible pointers. This enables
+/// more aggressive optimization and better register allocation on supported
+/// compilers.
+//
+#ifdef _MSC_VER
+    #define POET_RESTRICT __restrict
+#elif defined(__GNUC__) || defined(__clang__)
+    #define POET_RESTRICT __restrict__
+#else
+    #define POET_RESTRICT
+#endif
+
+// ============================================================================
 // POET_NOINLINE: Prevent function inlining
 // ============================================================================
 /// \brief Prevent the compiler from inlining this function.
 /// Useful to move large template instantiations out-of-line to reduce caller
 /// code size and instruction-cache pressure.
-#if defined(_MSC_VER)
+#ifdef _MSC_VER
     #define POET_NOINLINE __declspec(noinline)
 #elif defined(__GNUC__) || defined(__clang__)
     #define POET_NOINLINE __attribute__((noinline))

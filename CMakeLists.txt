@@ -6,6 +6,27 @@ project(POET LANGUAGES CXX)
 
 include(CTest)
 
+# Option to enable faster local builds: unity build + reduced global debug flags.
+# Disabled by default to avoid changing CI/buildfarm behavior.
+option(POET_ENABLE_FAST_BUILD "Enable faster local builds (unity build, no -g)" OFF)
+if(POET_ENABLE_FAST_BUILD)
+  message(STATUS "POET: Fast-build mode enabled: enabling unity build and minimizing debug flags")
+  if(NOT DEFINED CMAKE_UNITY_BUILD)
+    set(CMAKE_UNITY_BUILD ON CACHE BOOL "Enable CMake unity build" FORCE)
+  else()
+    set(CMAKE_UNITY_BUILD ON)
+  endif()
+
+  # Remove -g from the global CXX flags to speed up compilation (keep Release flags explicit).
+  if(DEFINED CMAKE_CXX_FLAGS)
+    string(REPLACE "-g" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" CACHE STRING "Flags used by the CXX compiler during all build types." FORCE)
+  endif()
+  if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+  endif()
+endif()
+
 
 # Enable coverage instrumentation when requested. This only adds flags to
 # project/test targets (not dependencies) so we avoid instrumenting external

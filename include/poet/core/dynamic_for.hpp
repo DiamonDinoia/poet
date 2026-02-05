@@ -33,7 +33,7 @@ namespace detail {
     /// \tparam Func Type of the user-provided callable.
     /// \tparam T Type of the loop counter (e.g., int, size_t).
     template<typename Func, typename T> struct dynamic_block_invoker {
-        Func *func;
+        Func * POET_RESTRICT func;
         T base;
         T stride;
 
@@ -103,9 +103,9 @@ namespace detail {
     /// \tparam T Loop counter type.
     /// \tparam BlockSize Number of iterations to unroll in this block.
     template<typename Func, typename T, std::size_t BlockSize>
-    POET_HOT_LOOP void execute_runtime_block([[maybe_unused]] Func &func, [[maybe_unused]] T base, [[maybe_unused]] T stride) {
+    POET_HOT_LOOP void execute_runtime_block([[maybe_unused]] Func * POET_RESTRICT func, [[maybe_unused]] T base, [[maybe_unused]] T stride) {
         if constexpr (BlockSize > 0) {
-            dynamic_block_invoker<Func, T> invoker{ &func, base, stride };
+            dynamic_block_invoker<Func, T> invoker{ func, base, stride };
             static_for<0, static_cast<std::intmax_t>(BlockSize), 1, BlockSize>(invoker);
         }
     }
@@ -116,7 +116,7 @@ namespace detail {
             return;
         } else {
             if (remaining == N) {
-                execute_runtime_block<Callable, T, N>(callable, index, stride);
+                execute_runtime_block<Callable, T, N>(std::addressof(callable), index, stride);
                 return;
             }
             if constexpr (N > 1) {
@@ -173,7 +173,7 @@ namespace detail {
         // Optimization: Hoist loop-invariant multiplication out of the loop.
         const T stride_times_unroll = static_cast<T>(Unroll) * stride;
         while (remaining >= Unroll) {
-            detail::execute_runtime_block<Callable, T, Unroll>(callable, index, stride);
+            detail::execute_runtime_block<Callable, T, Unroll>(std::addressof(callable), index, stride);
             index += stride_times_unroll;
             remaining -= Unroll;
         }
@@ -203,7 +203,7 @@ namespace detail {
 constexpr std::size_t kDefaultUnroll = 4;
 
 template<std::size_t Unroll = kDefaultUnroll, typename T1, typename T2, typename T3, typename Func>
-inline void dynamic_for(T1 begin, T2 end, T3 step, Func &&func) {
+inline POET_FLATTEN void dynamic_for(T1 begin, T2 end, T3 step, Func &&func) {
     static_assert(Unroll > 0, "dynamic_for requires Unroll > 0");
     static_assert(
       Unroll <= detail::kMaxStaticLoopBlock, "dynamic_for supports unroll factors up to kMaxStaticLoopBlock");
@@ -228,7 +228,7 @@ inline void dynamic_for(T1 begin, T2 end, T3 step, Func &&func) {
 /// If `begin <= end`, step is +1.
 /// If `begin > end`, step is -1.
 template<std::size_t Unroll = kDefaultUnroll, typename T1, typename T2, typename Func>
-inline void dynamic_for(T1 begin, T2 end, Func &&func) {
+inline POET_FLATTEN void dynamic_for(T1 begin, T2 end, Func &&func) {
     using T = std::common_type_t<T1, T2>;
     T s_begin = static_cast<T>(begin);
     T s_end = static_cast<T>(end);

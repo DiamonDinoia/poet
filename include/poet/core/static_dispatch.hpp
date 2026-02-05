@@ -41,6 +41,18 @@ template<auto... Vs> struct T {};
 /// `std::integer_sequence` and composes the offset with the supplied range.
 namespace detail {
 
+    // Lightweight tuple access wrapper to centralize tuple element access in hot paths.
+    // This encourages the compiler to inline and avoids scattered `std::get` usages.
+    template<std::size_t I, typename Tuple>
+    POET_FORCEINLINE auto tuple_get(Tuple &tuple) noexcept(noexcept(std::get<I>(tuple))) -> decltype(auto) {
+        return std::get<I>(tuple);
+    }
+
+    template<std::size_t I, typename Tuple>
+    POET_FORCEINLINE auto tuple_get(Tuple &&tuple) noexcept(noexcept(std::get<I>(std::forward<Tuple>(tuple)))) -> decltype(auto) {
+        return std::get<I>(std::forward<Tuple>(tuple));
+    }
+
     template<typename T> struct result_holder {
       private:
         std::optional<T> val;
@@ -443,14 +455,14 @@ namespace detail {
         return { +[](Functor* func, ArgumentTuple&& args) -> void {
             constexpr bool use_value_form = can_use_value_form<Functor, ArgumentTuple, Values>::value;
 
-            if constexpr (use_value_form) {
+                if constexpr (use_value_form) {
                 if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 0) {
                     (*func)(std::integral_constant<int, Values>{});
                 } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 1) {
-                    (*func)(std::integral_constant<int, Values>{}, std::move(std::get<0>(args)));
+                    (*func)(std::integral_constant<int, Values>{}, std::move(tuple_get<0>(args)));
                 } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 2) {
                     (*func)(std::integral_constant<int, Values>{},
-                           std::move(std::get<0>(args)), std::move(std::get<1>(args)));
+                           std::move(tuple_get<0>(args)), std::move(tuple_get<1>(args)));
                 } else {
                     std::apply([func](auto&&... arg) -> void {
                         (*func)(std::integral_constant<int, Values>{}, std::forward<decltype(arg)>(arg)...);
@@ -488,14 +500,14 @@ namespace detail {
         return { +[](Functor* func, ArgumentTuple&& args) -> R {
             constexpr bool use_value_form = can_use_value_form<Functor, ArgumentTuple, Values>::value;
 
-            if constexpr (use_value_form) {
+                if constexpr (use_value_form) {
                 if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 0) {
                     return (*func)(std::integral_constant<int, Values>{});
                 } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 1) {
-                    return (*func)(std::integral_constant<int, Values>{}, std::move(std::get<0>(args)));
+                    return (*func)(std::integral_constant<int, Values>{}, std::move(tuple_get<0>(args)));
                 } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 2) {
                     return (*func)(std::integral_constant<int, Values>{},
-                      std::move(std::get<0>(args)), std::move(std::get<1>(args)));
+                      std::move(tuple_get<0>(args)), std::move(tuple_get<1>(args)));
                 } else {
                     return std::apply([func](auto&&... arg) -> R {
                         return (*func)(std::integral_constant<int, Values>{}, std::forward<decltype(arg)>(arg)...);
@@ -593,9 +605,21 @@ namespace detail {
         struct get_sequence_value;
 
         template<std::size_t I, int... Values>
-        struct get_sequence_value<I, std::integer_sequence<int, Values...>> {
-            static constexpr int value = std::array<int, sizeof...(Values)>{Values...}[I];
-        };
+            struct get_sequence_value<I, std::integer_sequence<int, Values...>> {
+                // Select the I-th value from the integer pack without creating a temporary
+                // std::array (which may emit calls in some libstdc++/libc++ builds).
+                template<std::size_t J, int First, int... Rest>
+                struct select_impl {
+                    static constexpr int value = select_impl<J - 1, Rest...>::value;
+                };
+
+                template<int First, int... Rest>
+                struct select_impl<0, First, Rest...> {
+                    static constexpr int value = First;
+                };
+
+                static constexpr int value = select_impl<I, Values...>::value;
+            };
 
         /// \brief Compute the index for a specific dimension from a flat index.
         template<std::size_t FlatIdx, std::size_t DimIdx, std::size_t... Dims>
@@ -850,17 +874,17 @@ namespace detail {
             } else if constexpr (arg_count == 1) {
                 // One argument: Direct extraction without std::apply
                 if constexpr (has_value_call<Functor, ArgumentTuple, IC...>::value) {
-                    return (*this->func)(IC{}..., std::move(std::get<0>(args)));
+                    return (*this->func)(IC{}..., std::move(tuple_get<0>(args)));
                 } else {
-                    return this->func->template operator()<IC::value...>(std::move(std::get<0>(args)));
+                    return this->func->template operator()<IC::value...>(std::move(tuple_get<0>(args)));
                 }
             } else if constexpr (arg_count == 2) {
                 // Two arguments: Direct extraction without std::apply
                 if constexpr (has_value_call<Functor, ArgumentTuple, IC...>::value) {
-                    return (*this->func)(IC{}..., std::move(std::get<0>(args)), std::move(std::get<1>(args)));
+                    return (*this->func)(IC{}..., std::move(tuple_get<0>(args)), std::move(tuple_get<1>(args)));
                 } else {
                     return this->func->template operator()<IC::value...>(
-                      std::move(std::get<0>(args)), std::move(std::get<1>(args)));
+                      std::move(tuple_get<0>(args)), std::move(tuple_get<1>(args)));
                 }
             } else {
                 // General case (3+ arguments): Use std::apply for flexibility
@@ -948,7 +972,7 @@ namespace detail {
     /// \brief Fast path for 1D contiguous void-returning dispatch using function pointer arrays.
     template<bool ThrowOnNoMatch, typename Functor, typename ParamTuple, typename... Args>
     POET_FLATTEN
-    auto dispatch_1d_contiguous_void(Functor &&functor, ParamTuple const &params, Args &&...args) -> void {
+    auto dispatch_1d_contiguous_void(Functor functor, ParamTuple const &params, Args &&...args) -> void {
         using FirstParam = std::tuple_element_t<0, std::remove_reference_t<ParamTuple>>;
         using Seq = typename FirstParam::seq_type;
 
@@ -969,10 +993,11 @@ namespace detail {
               std::decay_t<Functor>, argument_tuple_type>(Seq{});
 
             using FunctorT = std::decay_t<Functor>;
-            FunctorT functor_copy(std::forward<Functor>(functor));
+            // Avoid an extra per-dispatch copy: take address of the referenced functor
+            FunctorT *functor_ptr = std::addressof(static_cast<FunctorT&>(functor));
 
             // Direct O(1) array lookup and call
-            table[static_cast<std::size_t>(idx)](&functor_copy, std::move(argument_tuple));
+            table[static_cast<std::size_t>(idx)](functor_ptr, std::move(argument_tuple));
         } else {
             // Out of bounds - handle according to error policy
             if constexpr (ThrowOnNoMatch) {
@@ -984,7 +1009,7 @@ namespace detail {
     /// \brief Fast path for 1D contiguous dispatch using function pointer arrays (non-void return).
     template<bool ThrowOnNoMatch, typename R, typename Functor, typename ParamTuple, typename... Args>
     POET_FLATTEN
-    auto dispatch_1d_contiguous(Functor &&functor, ParamTuple const &params, Args &&...args) -> R {
+    auto dispatch_1d_contiguous(Functor functor, ParamTuple const &params, Args &&...args) -> R {
         using FirstParam = std::tuple_element_t<0, std::remove_reference_t<ParamTuple>>;
         using Seq = typename FirstParam::seq_type;
 
@@ -1002,8 +1027,8 @@ namespace detail {
               std::decay_t<Functor>, argument_tuple_type, R>(Seq{});
 
             using FunctorT = std::decay_t<Functor>;
-            FunctorT functor_copy(std::forward<Functor>(functor));
-            return table[static_cast<std::size_t>(idx)](&functor_copy, std::move(argument_tuple));
+            FunctorT *functor_ptr = std::addressof(static_cast<FunctorT&>(functor));
+            return table[static_cast<std::size_t>(idx)](functor_ptr, std::move(argument_tuple));
         }
 
         if constexpr (ThrowOnNoMatch) {
@@ -1015,7 +1040,7 @@ namespace detail {
     /// \brief Fast path for N-D contiguous void-returning dispatch using flattened function pointer array.
     template<bool ThrowOnNoMatch, typename Functor, typename ParamTuple, typename... Args>
     POET_FLATTEN
-    auto dispatch_nd_contiguous_void(Functor &&functor, ParamTuple const &params, Args &&...args) -> void {
+    auto dispatch_nd_contiguous_void(Functor functor, ParamTuple const &params, Args &&...args) -> void {
         // Extract compile-time dimensions and offsets
         constexpr auto dimensions = extract_dimensions<ParamTuple>();
         constexpr auto offsets = extract_offsets<ParamTuple>();
@@ -1042,10 +1067,10 @@ namespace detail {
                             std::decay_t<Functor>, argument_tuple_type>(sequences);
 
             using FunctorT = std::decay_t<Functor>;
-            FunctorT functor_copy(std::forward<Functor>(functor));
+            FunctorT *functor_ptr = std::addressof(static_cast<FunctorT&>(functor));
 
             // Direct O(1) array lookup and call
-            table[flat_idx](&functor_copy, std::move(argument_tuple));
+            table[flat_idx](functor_ptr, std::move(argument_tuple));
         } else {
             // Out of bounds - handle according to error policy
             if constexpr (ThrowOnNoMatch) {
@@ -1057,7 +1082,7 @@ namespace detail {
     /// \brief Fast path for N-D contiguous dispatch using flattened function pointer array (non-void return).
     template<bool ThrowOnNoMatch, typename R, typename Functor, typename ParamTuple, typename... Args>
     POET_FLATTEN
-    auto dispatch_nd_contiguous(Functor &&functor, ParamTuple const &params, Args &&...args) -> R {
+    auto dispatch_nd_contiguous(Functor functor, ParamTuple const &params, Args &&...args) -> R {
         constexpr auto dimensions = extract_dimensions<ParamTuple>();
         constexpr auto offsets = extract_offsets<ParamTuple>();
         constexpr auto strides = compute_strides(dimensions);
@@ -1078,9 +1103,9 @@ namespace detail {
                             std::decay_t<Functor>, argument_tuple_type, R>(sequences);
 
             using FunctorT = std::decay_t<Functor>;
-            FunctorT functor_copy(std::forward<Functor>(functor));
+            FunctorT *functor_ptr = std::addressof(static_cast<FunctorT&>(functor));
 
-            return table[flat_idx](&functor_copy, std::move(argument_tuple));
+            return table[flat_idx](functor_ptr, std::move(argument_tuple));
         }
 
         if constexpr (ThrowOnNoMatch) {
