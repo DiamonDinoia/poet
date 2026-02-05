@@ -178,7 +178,7 @@ POET_FORCEINLINE constexpr void static_for(Func &&func) {
 ///
 /// \tparam End Exclusive upper bound of the range.
 /// \param func Callable instance invoked once per iteration.
-template<std::intmax_t End, typename Func> POET_FORCEINLINE constexpr void static_for(Func &&func) {
+template<std::intmax_t End, typename Func> POET_FORCEINLINE POET_FLATTEN constexpr void static_for(Func &&func) {
     static_for<0, End>(std::forward<Func>(func));
 }
 
