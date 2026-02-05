@@ -71,12 +71,13 @@ namespace detail {
     /// \tparam BlockSize Number of iterations per block.
     /// \tparam Func Callable type.
     /// \param func Callable to invoke.
-    template<std::intmax_t Begin,
-      std::intmax_t End,
-      std::intmax_t Step = 1,
-      std::size_t BlockSize = compute_default_static_loop_block_size<Begin, End, Step>(),
-      typename Func>
-    POET_FORCEINLINE constexpr void static_loop(Func &&func) {
+        POET_PUSH_OPTIMIZE
+        template<std::intmax_t Begin,
+            std::intmax_t End,
+            std::intmax_t Step = 1,
+            std::size_t BlockSize = compute_default_static_loop_block_size<Begin, End, Step>(),
+            typename Func>
+        POET_FORCEINLINE POET_FLATTEN constexpr void static_loop(Func &&func) {
         static_assert(BlockSize > 0, "static_loop requires BlockSize > 0");
         using Callable = std::remove_reference_t<Func>;
         // Create a local copy of the callable to ensure state persistence across block calls
@@ -106,6 +107,7 @@ namespace detail {
               callable, std::make_index_sequence<remainder>{});
         }
     }
+    POET_POP_OPTIMIZE
 
 }// namespace detail
 

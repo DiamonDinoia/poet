@@ -1,11 +1,12 @@
 #include <array>
 #include <tuple>
 #include <utility>
-
+#include <chrono>
 #include <nanobench.h>
 
 #include <poet/core/static_dispatch.hpp>
 
+using namespace std::chrono_literals;
 namespace {
 
 using width_range = poet::make_range<1, 8>;
@@ -58,7 +59,7 @@ int run_dispatch(int width, int height, int scale) {
 void run_dispatch_benchmarks() {
     ankerl::nanobench::Bench bench;
     bench.title("static dispatch parameter search");
-    bench.minEpochIterations(10'000);
+    bench.minEpochTime(10ms);
 
     bench.run("dispatch hits", [] {
         int total = 0;

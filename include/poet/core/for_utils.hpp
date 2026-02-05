@@ -157,11 +157,25 @@ namespace detail {
         // Adapter operator:
         // Receives an std::integral_constant<int, Value> from implementation internals.
         // Unpacks 'Value' and calls the user's template operator<Value>().
+        // We call a small out-of-line helper to avoid forcing the caller to
+        // inline every `operator()<Value>` instantiation. This reduces the
+        // size of the unrolled caller bodies and improves instruction-cache
+        // behavior and register allocation for large unrolls. The helper is
+        // marked `POET_NOINLINE` so it is emitted as a separate function.
         template<std::intmax_t Value>
         POET_FORCEINLINE constexpr void operator()(std::integral_constant<std::intmax_t, Value> /*integral_constant*/) const {
-            (*functor).template operator()<Value>();
+            // Forward to a noinline helper; the template instantiation for
+            // `invoke_template_operator` still exists per Value, but it is
+            // emitted out-of-line, keeping the caller compact.
+            invoke_template_operator<Functor, Value>(functor);
         }
     };
+
+    // Out-of-line invocation helper.
+    template<typename Functor, std::intmax_t Value>
+    POET_NOINLINE void invoke_template_operator(Functor *functor) {
+        (*functor).template operator()<Value>();
+    }
 
 }// namespace detail
 
