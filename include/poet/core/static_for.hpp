@@ -141,11 +141,11 @@ namespace detail {
 /// \tparam Func Callable type.
 /// \param func Callable instance invoked once per iteration.
 template<std::intmax_t Begin,
-  std::intmax_t End,
-  std::intmax_t Step = 1,
-  std::size_t BlockSize = detail::compute_default_static_loop_block_size<Begin, End, Step>(),
-  typename Func>
-POET_FORCEINLINE constexpr void static_for(Func &&func) {
+    std::intmax_t End,
+    std::intmax_t Step = 1,
+    std::size_t BlockSize = detail::compute_default_static_loop_block_size<Begin, End, Step>(),
+    typename Func>
+POET_FORCEINLINE POET_FLATTEN constexpr void static_for(Func &&func) {
     // Check if the user functor accepts an integral_constant index directly.
     if constexpr (std::is_invocable_v<Func, std::integral_constant<std::intmax_t, Begin>>) {
         // Direct invocation mode: simply forward to static_loop.
