@@ -61,7 +61,7 @@
 // ============================================================================
 // POET_FLATTEN: Request flattening of callees into this function
 // ============================================================================
-/// rief Suggest the compiler inline callees into this function (GCC/Clang)
+/// \brief Suggest the compiler inline callees into this function (GCC/Clang)
 ///
 /// This helps the compiler see the full body and potentially reduce
 /// intermediate temporaries and register spills by allowing a single
@@ -110,7 +110,7 @@
 // ============================================================================
 // POET_NOINLINE: Prevent function inlining
 // ============================================================================
-/// rief Prevent the compiler from inlining this function.
+/// \brief Prevent the compiler from inlining this function.
 /// Useful to move large template instantiations out-of-line to reduce caller
 /// code size and instruction-cache pressure.
 #if defined(_MSC_VER)
@@ -453,24 +453,31 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
     #define POET_POP_OPTIMIZE
 
 #elif defined(__GNUC__)
-    // GCC: Use pragma GCC optimize with push/pop to preserve user's flags
-    // push_options saves current optimization state to a stack
-    // pop_options restores from stack (preserves user's global flags!)
-    #if POET_HIGH_OPTIMIZATION
-        // Building with -O3 already: prefer register allocation tuning and IRA
-        // pressure-aware options for hot paths. Emit one pragma per flag so
-        // compilers that reject combined-option strings handle them correctly.
-        #define POET_PUSH_OPTIMIZE _Pragma("GCC push_options") \
-                                   _Pragma("GCC optimize(\"-fira-hoist-pressure\")") \
-                                   _Pragma("GCC optimize(\"-fno-ira-share-spill-slots\")") \
-                                   _Pragma("GCC optimize(\"-frename-registers\")")
-        #define POET_POP_OPTIMIZE  _Pragma("GCC pop_options")
+    // GCC: Allow disabling scoped push optimizations for A/B testing by
+    // defining `POET_DISABLE_PUSH_OPTIMIZE` at compile time.
+    #if defined(POET_DISABLE_PUSH_OPTIMIZE)
+        #define POET_PUSH_OPTIMIZE
+        #define POET_POP_OPTIMIZE
     #else
-        // Building without -O3: Enable -O3 for this section only
-        // The push/pop ensures we don't affect code outside this block
-        #define POET_PUSH_OPTIMIZE _Pragma("GCC push_options") \
-                                   _Pragma("GCC optimize(\"-O3\")")
-        #define POET_POP_OPTIMIZE  _Pragma("GCC pop_options")
+        // Use pragma GCC optimize with push/pop to preserve user's flags
+        // push_options saves current optimization state to a stack
+        // pop_options restores from stack (preserves user's global flags!)
+        #if POET_HIGH_OPTIMIZATION
+            // Building with -O3 already: prefer register allocation tuning and IRA
+            // pressure-aware options for hot paths. Emit one pragma per flag so
+            // compilers that reject combined-option strings handle them correctly.
+            #define POET_PUSH_OPTIMIZE _Pragma("GCC push_options") \
+                                       _Pragma("GCC optimize(\"-fira-hoist-pressure\")") \
+                                       _Pragma("GCC optimize(\"-fno-ira-share-spill-slots\")") \
+                                       _Pragma("GCC optimize(\"-frename-registers\")")
+            #define POET_POP_OPTIMIZE  _Pragma("GCC pop_options")
+        #else
+            // Building without -O3: Enable -O3 for this section only
+            // The push/pop ensures we don't affect code outside this block
+            #define POET_PUSH_OPTIMIZE _Pragma("GCC push_options") \
+                                       _Pragma("GCC optimize(\"-O3\")")
+            #define POET_POP_OPTIMIZE  _Pragma("GCC pop_options")
+        #endif
     #endif
 
 #elif defined(_MSC_VER)
