@@ -6,11 +6,12 @@
 #include <iostream>
 #include <limits>
 #include <vector>
-
+#include <chrono>
 #include <nanobench.h>
 
 #include <poet/core/static_for.hpp>
 
+using namespace std::chrono_literals;
 namespace {
 
 // Iteration counts chosen to test different cache/unrolling characteristics:

@@ -59,6 +59,20 @@
 #endif
 
 // ============================================================================
+// POET_FLATTEN: Request flattening of callees into this function
+// ============================================================================
+/// rief Suggest the compiler inline callees into this function (GCC/Clang)
+///
+/// This helps the compiler see the full body and potentially reduce
+/// intermediate temporaries and register spills by allowing a single
+/// allocation across the combined body.
+#if defined(__GNUC__) || defined(__clang__)
+    #define POET_FLATTEN __attribute__((flatten))
+#else
+    #define POET_FLATTEN
+#endif
+
+// ============================================================================
 // POET_FORCEINLINE: Force function inlining across compilers
 // ============================================================================
 /// \def POET_FORCEINLINE
@@ -91,6 +105,20 @@
     // Fallback: standard inline (compiler may still ignore it)
     #define POET_FORCEINLINE inline
 
+#endif
+
+// ============================================================================
+// POET_NOINLINE: Prevent function inlining
+// ============================================================================
+/// rief Prevent the compiler from inlining this function.
+/// Useful to move large template instantiations out-of-line to reduce caller
+/// code size and instruction-cache pressure.
+#if defined(_MSC_VER)
+    #define POET_NOINLINE __declspec(noinline)
+#elif defined(__GNUC__) || defined(__clang__)
+    #define POET_NOINLINE __attribute__((noinline))
+#else
+    #define POET_NOINLINE
 #endif
 
 // ============================================================================
@@ -331,7 +359,10 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
         // With -O3: Add loop unrolling on top (not included in -O3 by default)
         // Note: -frename-registers and -fomit-frame-pointer are already in -O2+ by default
         // Note: -funroll-loops is NOT in -O3, so we add it for hot paths
-        #define POET_HOT_LOOP inline __attribute__((hot, always_inline, optimize("-funroll-loops")))
+        // Hot-loop attribute: keep as a hint but do NOT force optimize flags here.
+        // Use scoped `POET_PUSH_OPTIMIZE` / `POET_POP_OPTIMIZE` around hot helpers
+        // to apply IRA tuning where needed.
+        #define POET_HOT_LOOP inline __attribute__((hot, always_inline))
     #else
         // Without -O3: Just basic hot path hints
         #define POET_HOT_LOOP inline __attribute__((hot, always_inline))
@@ -426,12 +457,13 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
     // push_options saves current optimization state to a stack
     // pop_options restores from stack (preserves user's global flags!)
     #if POET_HIGH_OPTIMIZATION
-        // Building with -O3 already: Add loop unrolling on top
-        // Note: -frename-registers and -fomit-frame-pointer are already in -O2+ by default (GCC 7+)
-        // Note: -funroll-loops is NOT in -O3 by default, so we add it here
-        // The push/pop ensures we don't interfere with user's flags outside this block
+        // Building with -O3 already: prefer register allocation tuning and IRA
+        // pressure-aware options for hot paths. Emit one pragma per flag so
+        // compilers that reject combined-option strings handle them correctly.
         #define POET_PUSH_OPTIMIZE _Pragma("GCC push_options") \
-                                   _Pragma("GCC optimize(\"-funroll-loops\")")
+                                   _Pragma("GCC optimize(\"-fira-hoist-pressure\")") \
+                                   _Pragma("GCC optimize(\"-fno-ira-share-spill-slots\")") \
+                                   _Pragma("GCC optimize(\"-frename-registers\")")
         #define POET_POP_OPTIMIZE  _Pragma("GCC pop_options")
     #else
         // Building without -O3: Enable -O3 for this section only
@@ -531,6 +563,24 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
     // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
     #define POET_UNROLL_LOOP_DISABLE
 
+#endif
+
+// ============================================================================
+// C++20 Feature Detection
+// ============================================================================
+/// \def POET_CPP20_CONSTEVAL
+/// \brief Use consteval for C++20, fallback to constexpr for C++17
+///
+/// consteval forces compile-time evaluation, providing stronger guarantees
+/// than constexpr. In C++17, we fall back to constexpr which allows both
+/// compile-time and runtime evaluation.
+
+#if __cplusplus >= 202002L
+    #define POET_CPP20_CONSTEVAL consteval
+    #define POET_CPP20_CONSTEXPR constexpr
+#else
+    #define POET_CPP20_CONSTEVAL constexpr
+    #define POET_CPP20_CONSTEXPR constexpr
 #endif
 
 #endif// POET_CORE_MACROS_HPP
