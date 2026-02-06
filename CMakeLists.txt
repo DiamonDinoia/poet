@@ -27,7 +27,6 @@ if(POET_ENABLE_FAST_BUILD)
   endif()
 endif()
 
-
 # Enable coverage instrumentation when requested. This only adds flags to
 # project/test targets (not dependencies) so we avoid instrumenting external
 # libraries.
