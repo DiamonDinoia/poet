@@ -71,6 +71,23 @@ namespace detail {
     /// \tparam BlockSize Number of iterations per block.
     /// \tparam Func Callable type.
     /// \param func Callable to invoke.
+
+        // POET_PUSH_OPTIMIZE: Apply aggressive optimizations to static_loop only.
+        //
+        // Why only on static_loop (not static_for)?
+        // - static_loop is the implementation workhorse where actual code emission happens
+        // - static_for is a thin wrapper that just dispatches to static_loop
+        // - Optimizing static_loop is sufficient because POET_FORCEINLINE + POET_FLATTEN
+        //   on static_for cause it to inline completely into the caller
+        //
+        // Optimization propagation:
+        // - Caller → static_for (inlined via POET_FLATTEN)
+        // - static_for → static_loop (inlined via POET_FORCEINLINE)
+        // - Result: Optimizations applied to static_loop effectively apply to the
+        //   entire call chain through inlining
+        //
+        // This approach avoids redundant PUSH/POP pairs while ensuring the hot path
+        // (static_loop's code emission) gets full optimization.
         POET_PUSH_OPTIMIZE
         template<std::intmax_t Begin,
             std::intmax_t End,
@@ -145,6 +162,27 @@ template<std::intmax_t Begin,
     std::intmax_t Step = 1,
     std::size_t BlockSize = detail::compute_default_static_loop_block_size<Begin, End, Step>(),
     typename Func>
+// POET_FLATTEN on public API: Enables cross-translation-unit (cross-TU) inlining.
+//
+// Why it's critical for public APIs:
+// - Without POET_FLATTEN: Callers from other TUs see static_for as an opaque
+//   function call, even with inline keyword. Compiler can't see through the
+//   call boundary, losing optimization context.
+// - With POET_FLATTEN: Compiler inlines static_for AND all its callees
+//   (static_loop, helper functions) into the caller's TU, exposing the full
+//   unrolled loop to the optimizer.
+//
+// Public API vs internal functions:
+// - Public APIs (static_for, dynamic_for): MUST have POET_FLATTEN for cross-TU
+//   inlining. These are called from user code in different translation units.
+// - Internal functions (static_loop_impl_block): Don't need POET_FLATTEN
+//   because they're only called within the same TU where they're defined.
+//   Normal inlining suffices.
+//
+// Performance impact:
+// - With POET_FLATTEN: Full unrolling visible to caller's optimizer
+// - Without POET_FLATTEN: Opaque call, optimizer can't see loop structure,
+//   can't perform loop-specific optimizations (vectorization, constant folding)
 POET_FORCEINLINE POET_FLATTEN constexpr void static_for(Func &&func) {
     // Check if the user functor accepts an integral_constant index directly.
     if constexpr (std::is_invocable_v<Func, std::integral_constant<std::intmax_t, Begin>>) {

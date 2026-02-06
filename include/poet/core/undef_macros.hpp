@@ -12,11 +12,15 @@
 ///
 /// POET defines several utility macros for portability and optimization:
 /// - POET_UNREACHABLE: Marks unreachable code paths
+/// - POET_FLATTEN: Requests flattening of callees into function
 /// - POET_FORCEINLINE: Forces function inlining
+/// - POET_RESTRICT: Portable restrict keyword for pointers
+/// - POET_NOINLINE: Prevents function inlining
 /// - POET_HOT_LOOP: Hot path optimization with loop unrolling
 /// - POET_LIKELY / POET_UNLIKELY: Branch prediction hints
 /// - POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE: Scoped optimization control
 /// - POET_UNROLL_LOOP: Loop-specific unrolling hints
+/// - POET_CPP20_CONSTEVAL / POET_CPP20_CONSTEXPR: C++20 feature detection
 /// - POET_HIGH_OPTIMIZATION: Optimization level detection (internal)
 /// - poet_count_trailing_zeros: (function, not macro)
 ///
@@ -65,10 +69,31 @@
 #endif
 
 // ============================================================================
+// Undefine POET_FLATTEN
+// ============================================================================
+#ifdef POET_FLATTEN
+    #undef POET_FLATTEN
+#endif
+
+// ============================================================================
 // Undefine POET_FORCEINLINE
 // ============================================================================
 #ifdef POET_FORCEINLINE
     #undef POET_FORCEINLINE
+#endif
+
+// ============================================================================
+// Undefine POET_RESTRICT
+// ============================================================================
+#ifdef POET_RESTRICT
+    #undef POET_RESTRICT
+#endif
+
+// ============================================================================
+// Undefine POET_NOINLINE
+// ============================================================================
+#ifdef POET_NOINLINE
+    #undef POET_NOINLINE
 #endif
 
 // ============================================================================
@@ -123,15 +148,14 @@
 #endif
 
 // ============================================================================
-// Note: poet_count_trailing_zeros is NOT undefined
+// Undefine C++20 feature detection macros
 // ============================================================================
-// The poet_count_trailing_zeros function is NOT a macro - it's a regular
-// C++ function, so it cannot be undefined and remains in the poet:: namespace.
-// If you need to avoid name conflicts, use fully qualified names:
-//   ::poet_count_trailing_zeros(value)
-//
-// Or use namespace aliasing:
-//   namespace pt = poet;
-//   pt::poet_count_trailing_zeros(value)
+#ifdef POET_CPP20_CONSTEVAL
+    #undef POET_CPP20_CONSTEVAL
+#endif
+
+#ifdef POET_CPP20_CONSTEXPR
+    #undef POET_CPP20_CONSTEXPR
+#endif
 
 #endif// POET_UNDEF_MACROS_HPP

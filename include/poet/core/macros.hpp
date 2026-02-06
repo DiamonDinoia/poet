@@ -61,11 +61,52 @@
 // ============================================================================
 // POET_FLATTEN: Request flattening of callees into this function
 // ============================================================================
-/// \brief Suggest the compiler inline callees into this function (GCC/Clang)
+/// \def POET_FLATTEN
+/// \brief Request that all callees be inlined into this function (GCC/Clang).
 ///
-/// This helps the compiler see the full body and potentially reduce
-/// intermediate temporaries and register spills by allowing a single
-/// allocation across the combined body.
+/// **What is flattening?**
+/// Unlike `inline` (which asks to inline THIS function into callers), `flatten`
+/// asks to inline ALL callees INTO this function. This creates a single, large
+/// function body containing all sub-calls.
+///
+/// **Benefits:**
+/// - **Unified register allocation**: Compiler sees entire computation at once,
+///   enabling optimal register allocation across what would be multiple function calls
+/// - **Cross-function optimization**: Enables optimizations that span function boundaries
+///   (dead code elimination, constant propagation, common subexpression elimination)
+/// - **Reduced call overhead**: Eliminates function call instructions entirely
+/// - **Better loop optimization**: Inlined code can be analyzed for vectorization and unrolling
+///
+/// **Costs:**
+/// - **Code size**: Can significantly increase binary size if applied broadly
+/// - **Compile time**: Increases compilation time proportionally to inlined code size
+/// - **Instruction cache**: Larger functions may reduce I-cache effectiveness
+///
+/// **Use cases in POET:**
+/// - Public API entry points (`dynamic_for`, `static_for`) for cross-TU inlining
+/// - Hot loops with multiple helper functions (enables unified register allocation)
+/// - Template instantiation points to reduce bloat from deeply nested calls
+///
+/// **Example:**
+/// ```cpp
+/// // Without POET_FLATTEN: 3 function calls, register spills between calls
+/// inline void process(int* data, size_t n) {
+///     validate(data, n);  // Call 1
+///     transform(data, n); // Call 2
+///     finalize(data, n);  // Call 3
+/// }
+///
+/// // With POET_FLATTEN: All inlined, unified register allocation
+/// POET_FLATTEN
+/// inline void process(int* data, size_t n) {
+///     validate(data, n);  // Inlined
+///     transform(data, n); // Inlined
+///     finalize(data, n);  // Inlined
+///     // Compiler sees full picture, optimizes as single function
+/// }
+/// ```
+///
+/// **Note**: Only available on GCC/Clang. No-op on other compilers.
 #if defined(__GNUC__) || defined(__clang__)
     #define POET_FLATTEN __attribute__((flatten))
 #else
@@ -110,12 +151,54 @@
 // ============================================================================
 // POET_RESTRICT: portable no-alias hint
 // ============================================================================
-/// rief Compiler-portable `restrict` hint for pointer/reference parameters.
+/// \def POET_RESTRICT
+/// \brief Compiler-portable `restrict` keyword for pointer/reference parameters.
 ///
-/// Use `POET_RESTRICT` on pointer or reference declarations where you can
-/// guarantee there is no aliasing with other visible pointers. This enables
-/// more aggressive optimization and better register allocation on supported
-/// compilers.
+/// **What is restrict?**
+/// The `restrict` qualifier (from C99, adopted by C++ compilers as extensions)
+/// tells the compiler that a pointer is the ONLY way to access the underlying
+/// object during the pointer's lifetime. No other pointer aliases the same memory.
+///
+/// **Enabled optimizations:**
+/// - **Register allocation**: Values can be cached in registers without reload checks
+/// - **Reordering**: Memory operations can be reordered freely (no aliasing conflicts)
+/// - **Vectorization**: Loop vectorizer can assume no overlap between arrays
+/// - **Store forwarding**: Stores can be forwarded directly to subsequent loads
+///
+/// **Safety requirements (CRITICAL):**
+/// - Only use when you can GUARANTEE no aliasing exists
+/// - Violating this produces undefined behavior (silent data corruption)
+/// - Safe for: function-local arrays, distinct function parameters
+/// - Unsafe for: class members, returned pointers, overlapping buffers
+///
+/// **Example:**
+/// ```cpp
+/// // SAFE: Separate arrays, guaranteed non-overlapping
+/// void add_arrays(float* POET_RESTRICT dst,
+///                 const float* POET_RESTRICT src1,
+///                 const float* POET_RESTRICT src2, size_t n) {
+///     for (size_t i = 0; i < n; ++i) {
+///         dst[i] = src1[i] + src2[i];  // Vectorizes freely
+///     }
+/// }
+///
+/// // UNSAFE: dst might alias src (e.g., dst == src + 1)
+/// void shift_array(float* POET_RESTRICT dst,
+///                  const float* POET_RESTRICT src, size_t n) {
+///     for (size_t i = 0; i < n; ++i) {
+///         dst[i] = src[i];  // UB if dst and src overlap!
+///     }
+/// }
+/// ```
+///
+/// **POET usage:**
+/// Used on function pointers in `dynamic_for_impl` to enable better register
+/// allocation for the callable object, reducing register spills in hot loops.
+///
+/// **Portability:**
+/// - GCC/Clang: `__restrict__`
+/// - MSVC: `__restrict`
+/// - Other compilers: No-op (code still correct, just potentially slower)
 //
 #ifdef _MSC_VER
     #define POET_RESTRICT __restrict
@@ -128,9 +211,57 @@
 // ============================================================================
 // POET_NOINLINE: Prevent function inlining
 // ============================================================================
+/// \def POET_NOINLINE
 /// \brief Prevent the compiler from inlining this function.
-/// Useful to move large template instantiations out-of-line to reduce caller
-/// code size and instruction-cache pressure.
+///
+/// **Use cases:**
+/// 1. **Reduce code bloat**: Move large template instantiations out-of-line to
+///    avoid duplicating code at every call site
+/// 2. **Instruction cache pressure**: Keep hot paths compact by outlining cold
+///    paths (error handling, rarely-executed branches)
+/// 3. **Debugging**: Preserve call stack for better profiling/debugging
+/// 4. **Binary size**: Control binary size in size-sensitive applications
+///
+/// **POET usage:**
+/// Applied to helper functions that wrap template `operator()` calls in
+/// `static_for_impl`. This reduces caller bloat while still enabling the
+/// inner template operator to be fully inlined where it matters.
+///
+/// **Trade-offs:**
+/// - Benefits: Smaller binary, better I-cache utilization, faster compile times
+/// - Costs: Function call overhead (typically 1-3ns for simple functions)
+///
+/// **Example:**
+/// ```cpp
+/// // Without NOINLINE: This large function duplicated at every call site
+/// template<typename T>
+/// inline void complex_error_handler(T&& data) {
+///     // 200+ lines of error handling code...
+/// }
+///
+/// // With NOINLINE: Single copy in binary, called when needed
+/// template<typename T>
+/// POET_NOINLINE void complex_error_handler(T&& data) {
+///     // 200+ lines of error handling code...
+///     // Called rarely, so overhead acceptable
+/// }
+/// ```
+///
+/// **Pattern in POET:**
+/// ```cpp
+/// // Public API: inlined template with heavy instantiation
+/// template<typename Func>
+/// POET_FLATTEN inline void static_for(..., Func&& func) {
+///     // Lots of template code
+///     static_for_helper(std::forward<Func>(func));  // Call helper
+/// }
+///
+/// // Helper: noinline to avoid duplicating instantiation
+/// template<typename Func>
+/// POET_NOINLINE void static_for_helper(Func& func) {
+///     func.template operator()<N>();  // Actual work
+/// }
+/// ```
 #ifdef _MSC_VER
     #define POET_NOINLINE __declspec(noinline)
 #elif defined(__GNUC__) || defined(__clang__)
@@ -481,9 +612,34 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
         // push_options saves current optimization state to a stack
         // pop_options restores from stack (preserves user's global flags!)
         #if POET_HIGH_OPTIMIZATION
-            // Building with -O3 already: prefer register allocation tuning and IRA
-            // pressure-aware options for hot paths. Emit one pragma per flag so
-            // compilers that reject combined-option strings handle them correctly.
+            // Building with -O3 already: Apply register allocation tuning and IRA
+            // (Integrated Register Allocator) pressure-aware optimizations for hot paths.
+            //
+            // These flags are split into separate pragmas because some older GCC versions
+            // reject combined option strings. Each flag is independent and focuses on
+            // register allocation quality.
+            //
+            // Flag explanations:
+            // 1. -fira-hoist-pressure: Enable register-pressure-aware code hoisting
+            //    - Normally, GCC hoists loop-invariant code out of loops aggressively
+            //    - This flag makes hoisting aware of register pressure inside loops
+            //    - Prevents hoisting when it would cause register spills in hot loops
+            //    - Trade-off: Slight code duplication vs better register allocation
+            //
+            // 2. -fno-ira-share-spill-slots: Disable spill slot sharing
+            //    - By default, GCC reuses stack slots for different spilled values
+            //    - Disabling sharing uses more stack space but enables better ILP
+            //      (Instruction Level Parallelism) by reducing false dependencies
+            //    - Values can be reloaded in parallel without waiting for stores
+            //    - Trade-off: ~16-32 bytes more stack vs better pipeline utilization
+            //
+            // 3. -frename-registers: Break false register dependencies
+            //    - Renames registers in post-RA (Register Allocation) scheduling
+            //    - Eliminates false WAR (Write-After-Read) and WAW (Write-After-Write)
+            //      dependencies that aren't semantic but limit out-of-order execution
+            //    - Particularly effective on x86-64 with many available registers
+            //    - Note: This is already enabled by default in -O2+ on GCC 7+, but
+            //      we explicitly request it for older GCC versions and for clarity
             #define POET_PUSH_OPTIMIZE _Pragma("GCC push_options") \
                                        _Pragma("GCC optimize(\"-fira-hoist-pressure\")") \
                                        _Pragma("GCC optimize(\"-fno-ira-share-spill-slots\")") \
@@ -594,11 +750,45 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 // C++20 Feature Detection
 // ============================================================================
 /// \def POET_CPP20_CONSTEVAL
-/// \brief Use consteval for C++20, fallback to constexpr for C++17
+/// \brief Use `consteval` for C++20, fallback to `constexpr` for C++17.
 ///
-/// consteval forces compile-time evaluation, providing stronger guarantees
-/// than constexpr. In C++17, we fall back to constexpr which allows both
-/// compile-time and runtime evaluation.
+/// **Why consteval matters:**
+/// - **Guaranteed compile-time**: `consteval` functions MUST be evaluated at
+///   compile-time. Attempting runtime use is a compile error.
+/// - **Catches errors earlier**: If a function can't be compile-time evaluated,
+///   you get a compile error instead of silent runtime fallback
+/// - **Zero runtime cost**: Absolutely no runtime overhead possible
+///
+/// **C++17 fallback:**
+/// Uses `constexpr`, which allows both compile-time and runtime evaluation.
+/// The compiler decides which to use. Most uses in POET are in constexpr
+/// contexts anyway, so they're evaluated at compile-time in both modes.
+///
+/// **POET usage context:**
+/// Used for dispatch table generation functions in `static_dispatch.hpp`:
+/// - `make_dispatch_table()`: Generates function pointer arrays at compile-time
+/// - `sequence_value_at()`: Extracts values from integer sequences
+/// - Dispatch table builders: Create lookup tables during compilation
+///
+/// In these cases, we WANT compile-time evaluation (tables in `.rodata`),
+/// and C++20's `consteval` enforces this guarantee.
+///
+/// **Example showing compile-time enforcement:**
+/// ```cpp
+/// // C++20: consteval - MUST be compile-time
+/// POET_CPP20_CONSTEVAL int factorial(int n) {
+///     return n <= 1 ? 1 : n * factorial(n - 1);
+/// }
+///
+/// constexpr int x = factorial(5);  // OK: compile-time context
+/// int runtime_val = 5;
+/// int y = factorial(runtime_val);  // C++20: ERROR! Not compile-time
+///                                   // C++17: OK, evaluates at runtime
+/// ```
+///
+/// **Note**: POET functions marked with this are designed to be called in
+/// compile-time contexts (template parameters, constexpr variables), so the
+/// C++17 fallback still works correctly in practice.
 
 #if __cplusplus >= 202002L
     #define POET_CPP20_CONSTEVAL consteval

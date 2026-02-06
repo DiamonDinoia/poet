@@ -264,31 +264,31 @@ namespace detail {
     ///
     /// For a tuple of sequences like (make_range<0,3>, make_range<0,4>),
     /// extracts the dimensions [4, 5] (sizes of each sequence).
-        template<typename ParamTuple, std::size_t... Idx>
-        POET_FORCEINLINE constexpr auto extract_dimensions_impl(std::index_sequence<Idx...> /*idxs*/)
-            -> std::array<std::size_t, sizeof...(Idx)> {
+    template<typename ParamTuple, std::size_t... Idx>
+    POET_FORCEINLINE constexpr auto extract_dimensions_impl(std::index_sequence<Idx...> /*idxs*/)
+        -> std::array<std::size_t, sizeof...(Idx)> {
         using P = std::decay_t<ParamTuple>;
         return std::array<std::size_t, sizeof...(Idx)>{
           sequence_size<typename std::tuple_element_t<Idx, P>::seq_type>::value...
         };
     }
 
-        template<typename ParamTuple>
-        POET_FORCEINLINE constexpr auto extract_dimensions() -> std::array<std::size_t, std::tuple_size_v<std::decay_t<ParamTuple>>> {
+    template<typename ParamTuple>
+    POET_FORCEINLINE constexpr auto extract_dimensions() -> std::array<std::size_t, std::tuple_size_v<std::decay_t<ParamTuple>>> {
         return extract_dimensions_impl<ParamTuple>(
           std::make_index_sequence<std::tuple_size_v<std::decay_t<ParamTuple>>>{}
         );
     }
 
     /// \brief Extract runtime values from a tuple of DispatchParam.
-        template<typename ParamTuple, std::size_t... Idx>
+template<typename ParamTuple, std::size_t... Idx>
         POET_FORCEINLINE constexpr auto extract_runtime_values_impl(const ParamTuple& params,
                                                                                              std::index_sequence<Idx...> /*idxs*/)
             -> std::array<int, sizeof...(Idx)> {
                 return { std::get<Idx>(params).runtime_val... };
         }
 
-        template<typename ParamTuple>
+template<typename ParamTuple>
         POET_FORCEINLINE constexpr auto extract_runtime_values(const ParamTuple& params)
             -> std::array<int, std::tuple_size_v<std::decay_t<ParamTuple>>> {
                 return extract_runtime_values_impl(params,
@@ -297,7 +297,7 @@ namespace detail {
         }
 
     /// \brief Extract minimum values (offsets) from each sequence.
-        template<typename ParamTuple, std::size_t... Idx>
+template<typename ParamTuple, std::size_t... Idx>
         POET_FORCEINLINE constexpr auto extract_offsets_impl(std::index_sequence<Idx...> /*idxs*/)
             -> std::array<int, sizeof...(Idx)> {
                 using P = std::decay_t<ParamTuple>;
@@ -306,7 +306,7 @@ namespace detail {
                 };
         }
 
-        template<typename ParamTuple>
+template<typename ParamTuple>
         POET_FORCEINLINE constexpr auto extract_offsets() -> std::array<int, std::tuple_size_v<std::decay_t<ParamTuple>>> {
                 return extract_offsets_impl<ParamTuple>(
                     std::make_index_sequence<std::tuple_size_v<std::decay_t<ParamTuple>>>{}
