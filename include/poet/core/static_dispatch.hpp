@@ -1149,9 +1149,8 @@ namespace detail {
                       std::forward<Functor>(functor), params, std::forward<Args>(args)...);
                 }
             }
-        }
-
-        // General dispatch path (non-contiguous or non-void returns)
+        } else {
+            // General dispatch path (non-contiguous or non-void returns)
         // 1. The sequence tuple is determined entirely by the ParamTuple *type*.
         using sequences_t = decltype(extract_sequences(std::declval<ParamTuple>()));
 
@@ -1184,12 +1183,13 @@ namespace detail {
                 return std::apply(
                   [&](auto &...variant_opt) -> auto { return std::visit(caller, *variant_opt...); }, variants);
             }
-        } else {
-            if constexpr (ThrowOnNoMatch) {
-                throw std::runtime_error("poet::dispatch: no matching compile-time combination for runtime inputs");
             } else {
-                // Fail gracefully: return default value if none matched.
-                if constexpr (!std::is_void_v<result_type>) { return result_type{}; }
+                if constexpr (ThrowOnNoMatch) {
+                    throw std::runtime_error("poet::dispatch: no matching compile-time combination for runtime inputs");
+                } else {
+                    // Fail gracefully: return default value if none matched.
+                    if constexpr (!std::is_void_v<result_type>) { return result_type{}; }
+                }
             }
         }
     }

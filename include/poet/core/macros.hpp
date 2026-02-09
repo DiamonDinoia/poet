@@ -656,11 +656,11 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 
 #elif defined(_MSC_VER)
     // MSVC: Use #pragma optimize
-    // "gty" = (g)lobal optimizations + (t)ime optimization + frame pointer omission (y)
+    // "gt" = (g)lobal optimizations + (t)ime optimization
     // Note: MSVC automatically unrolls loops at /O2 - no separate flag like GCC's -funroll-loops
     // Note: /Oy (omit frame pointer) is included in /O2 by default
     // This is the most aggressive optimization MSVC allows at function scope
-    #define POET_PUSH_OPTIMIZE __pragma(optimize("gty", on))
+    #define POET_PUSH_OPTIMIZE __pragma(optimize("gt", on))
     #define POET_POP_OPTIMIZE  __pragma(optimize("", on))
 
 #else

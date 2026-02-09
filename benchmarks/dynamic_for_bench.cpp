@@ -13,7 +13,6 @@ constexpr std::size_t large_count = 4'096;
 constexpr std::size_t irregular_begin = 3;
 constexpr std::size_t irregular_end = 515;
 constexpr std::size_t default_unroll = 8;
-constexpr std::size_t min_epoch_iterations = 5'000;
 
 auto manual_sum(std::size_t begin, std::size_t end) -> int {
     int total = 0;
