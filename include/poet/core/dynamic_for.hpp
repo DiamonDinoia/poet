@@ -22,22 +22,15 @@
 /// - Better instruction-level parallelism (ILP) from unrolling
 /// - Compiler visibility for vectorization and optimization
 ///
-/// ### 2. Tail Dispatch (Compile-Time Pattern Matching)
+/// ### 2. Tail Dispatch (Compile-Time Dispatch Table)
 /// After the main loop, 0 to `Unroll-1` iterations may remain. Instead of a
-/// runtime loop, we use `match_and_execute_tail()` which generates a compile-time
-/// recursive matching chain:
-/// ```cpp
-/// if (remaining == 3) { execute_block<3>(); return; }
-/// if (remaining == 2) { execute_block<2>(); return; }
-/// if (remaining == 1) { execute_block<1>(); return; }
-/// ```
-/// The compiler typically optimizes this into a jump table or binary search,
-/// providing O(log N) or O(1) dispatch. This is ~28x faster than the previous
-/// `std::variant` + `std::visit` approach, which had significant vtable overhead.
+/// runtime loop, we use `poet::dispatch` over `DispatchParam<make_range<1, Unroll-1>>`
+/// to route directly to a compile-time `execute_runtime_block<N>()` specialization.
+/// This keeps tail handling branch-free at call sites and maps each tail size
+/// to a dedicated block implementation.
 ///
-/// **Performance benefit**: Function pointer arrays with direct indexing replace
-/// variant/visit dispatch. For small unroll factors (4-8), this eliminates
-/// unnecessary abstraction layers and reduces tail dispatch from ~200ns to ~7ns.
+/// **Performance benefit**: Function pointer dispatch replaces the previous
+/// `std::variant` + `std::visit` approach, eliminating high abstraction overhead.
 ///
 /// ### 3. Tiny Range Fast Path
 /// For ranges smaller than `Unroll`, we bypass all dispatch machinery and use
@@ -51,10 +44,17 @@
 ///
 /// ## Performance Characteristics
 ///
+/// ## Choosing the Unroll Factor
+///
+/// The unroll factor is a **required** template parameter that controls the
+/// compile-time/runtime trade-off. You must explicitly choose a value based on
+/// your specific use case.
+///
 /// **Code size vs unroll factor**:
-/// - Unroll=4: ~200 bytes per instantiation (recommended default)
-/// - Unroll=8: ~400 bytes per instantiation (previous default)
+/// - Unroll=4: ~200 bytes per instantiation
+/// - Unroll=8: ~400 bytes per instantiation
 /// - Each additional unroll roughly adds 50 bytes
+/// - Higher unroll = larger binary, more instruction cache pressure
 ///
 /// **Compile time vs unroll factor**:
 /// - Linear growth: 2x unroll ≈ 2x compile time
@@ -62,12 +62,23 @@
 ///
 /// **Runtime performance**:
 /// - Large ranges (>100): ~5-10% faster with higher unroll (8 vs 4)
-/// - Small ranges (<20): Unroll=4 matches or beats Unroll=8 due to I-cache
+/// - Small ranges (<20): Lower unroll often faster due to better I-cache
 /// - Tail dispatch: Constant time regardless of unroll factor
 ///
-/// **Default choice (Unroll=4)**:
-/// Changed from 8 to 4 in recent optimization pass for better code size and
-/// compile time, with negligible performance impact for typical workloads.
+/// **Register pressure**:
+/// - Higher unroll factors increase register pressure in the loop body
+/// - May cause register spills for complex loop bodies
+/// - Profile your code to find the optimal balance
+///
+/// **Recommended starting points**:
+/// - **Unroll=4**: Good default for most cases. Balances code size, compile time,
+///   and performance. Start here unless profiling shows otherwise.
+/// - **Unroll=2**: For large codebases where compile time matters, or complex
+///   loop bodies with high register pressure
+/// - **Unroll=8**: For hot loops with simple bodies (few instructions per iteration)
+///   and large iteration counts, when profiling confirms benefit
+/// - **Unroll=16+**: Rarely beneficial. Only use when profiling shows clear gains
+///   and you can afford the code size increase
 
 #include <cmath>
 #include <cstddef>
@@ -77,11 +88,15 @@
 #include <utility>
 
 #include <poet/core/macros.hpp>
+#include <poet/core/static_dispatch.hpp>
 #include <poet/core/static_for.hpp>
 
 namespace poet {
 
 namespace detail {
+
+    template<typename Func, typename T, std::size_t BlockSize>
+    POET_HOT_LOOP void execute_runtime_block(Func * POET_RESTRICT func, T base, T stride);
 
     /// \brief Helper functor that adapts a user lambda for use with static_for.
     ///
@@ -123,12 +138,9 @@ namespace detail {
         T base;                      ///< Base index for this block
         T stride;                    ///< Stride between iterations
 
-        // Direct compile-time integral_constant invocation used by `static_for`'s
-        // direct-invocation path. This avoids the extra `template_static_loop_
-        // invoker` adapter and lets the compiler call this functor directly
-        // with an `std::integral_constant` index.
         template<std::intmax_t Value>
         POET_FORCEINLINE constexpr void operator()(std::integral_constant<std::intmax_t, Value> /*ic*/) const {
+            POET_ASSUME_NOT_NULL(func);
             (*func)(base + (static_cast<T>(Value) * stride));
         }
 
@@ -136,7 +148,22 @@ namespace detail {
         // call sites that expect the template operator form.
         template<auto I>
         POET_FORCEINLINE constexpr void operator()() const {
+            POET_ASSUME_NOT_NULL(func);
             (*func)(base + (static_cast<T>(I) * stride));
+        }
+    };
+
+    template<typename Callable, typename T>
+    struct dynamic_tail_dispatch_functor {
+        Callable *callable;
+        T index;
+        T stride;
+
+        template<int N>
+        POET_FORCEINLINE void operator()() const {
+            if constexpr (N > 0) {
+                execute_runtime_block<Callable, T, static_cast<std::size_t>(N)>(std::addressof(*callable), index, stride);
+            }
         }
     };
 
@@ -240,82 +267,10 @@ namespace detail {
     /// \param stride Increment between consecutive iterations
     template<typename Func, typename T, std::size_t BlockSize>
     POET_HOT_LOOP void execute_runtime_block([[maybe_unused]] Func * POET_RESTRICT func, [[maybe_unused]] T base, [[maybe_unused]] T stride) {
+        POET_ASSUME_NOT_NULL(func);
         if constexpr (BlockSize > 0) {
             dynamic_block_invoker<Func, T> invoker{ func, base, stride };
             static_for<0, static_cast<std::intmax_t>(BlockSize), 1, BlockSize>(invoker);
-        }
-    }
-
-    /// \brief Dispatch tail iterations using compile-time recursive pattern matching.
-    ///
-    /// This function handles the remaining 0 to N iterations after the main unrolled
-    /// loop completes. Instead of a runtime loop or complex dispatch mechanism, it
-    /// generates a compile-time recursive matching chain that the compiler optimizes
-    /// into efficient branch code (typically a jump table or binary search tree).
-    ///
-    /// **Algorithm**:
-    /// ```cpp
-    /// // Example for N=3:
-    /// if (remaining == 3) { execute_block<3>(); return; }
-    /// if (remaining == 2) { execute_block<2>(); return; }
-    /// if (remaining == 1) { execute_block<1>(); return; }
-    /// // if remaining == 0, do nothing (base case)
-    /// ```
-    ///
-    /// **Why it's faster than variant/visit**:
-    /// Previous implementation used `std::variant<integral_constant<0>, ..., integral_constant<N>>`
-    /// with `std::visit` for dispatch. This had ~28x overhead due to:
-    /// - Vtable-like indirection through variant index
-    /// - Type erasure and restoration overhead
-    /// - Poor inlining across visit boundary
-    ///
-    /// Function pointer arrays (used by static_dispatch for larger N) or direct
-    /// if-chain (for small N like tail dispatch) are dramatically faster:
-    /// - Direct branch/jump table with no indirection
-    /// - All code visible to optimizer (full inlining)
-    /// - Predicted branches (tail size is often the same across loop iterations)
-    ///
-    /// **Compiler optimization**:
-    /// For small N (typical unroll factors 4-8), GCC/Clang generate:
-    /// - N <= 3: Direct if-chain (perfectly predicted branches)
-    /// - N = 4-8: Jump table indexed by (remaining - 1)
-    /// - N > 8: Binary search tree of comparisons
-    ///
-    /// All variants are O(1) or O(log N) with excellent constant factors.
-    ///
-    /// **Example for Unroll=4**:
-    /// After main loop processes blocks of 4, we might have 0-3 iterations left.
-    /// This function generates:
-    /// ```
-    /// match_and_execute_tail<3>(remaining, ...):
-    ///   if remaining == 3: execute_block<3>(); return;
-    ///   if remaining == 2: execute_block<2>(); return;
-    ///   if remaining == 1: execute_block<1>(); return;
-    ///   return; // remaining == 0
-    /// ```
-    ///
-    /// **Performance**: Typical dispatch time: 3-7ns (vs ~200ns for variant/visit).
-    ///
-    /// \tparam N Maximum number of iterations to handle (recursion parameter)
-    /// \tparam Callable Type of user callable
-    /// \tparam T Loop counter type
-    /// \param remaining Number of iterations left to execute (runtime value 0..N)
-    /// \param callable User function to invoke
-    /// \param index Current loop index
-    /// \param stride Increment between iterations
-    template<std::size_t N, typename Callable, typename T>
-    POET_FORCEINLINE void match_and_execute_tail(std::size_t remaining, Callable &callable, T index, T stride) {
-        if constexpr (N == 0) {
-            return;  // Base case: no iterations left to handle
-        } else {
-            if (remaining == N) {
-                execute_runtime_block<Callable, T, N>(std::addressof(callable), index, stride);
-                return;
-            }
-            if constexpr (N > 1) {
-                // Recursively check N-1, N-2, ..., 1
-                match_and_execute_tail<N - 1>(remaining, callable, index, stride);
-            }
         }
     }
 
@@ -399,10 +354,13 @@ namespace detail {
             remaining -= Unroll;
         }
 
-        // Handle remaining iterations (tail) using a fully inlined dispatch chain.
+        // Handle remaining iterations (tail) via poet::dispatch.
         if constexpr (Unroll > 1) {
             if (POET_UNLIKELY(remaining > 0)) {
-                detail::match_and_execute_tail<Unroll - 1>(remaining, callable, index, stride);
+                dynamic_tail_dispatch_functor<Callable, T> tail_functor{ std::addressof(callable), index, stride };
+                poet::dispatch(
+                  tail_functor,
+                  poet::DispatchParam<poet::make_range<1, static_cast<int>(Unroll - 1)>>{ static_cast<int>(remaining) });
             }
         }
     }
@@ -458,9 +416,7 @@ namespace detail {
 /// - Loop body is simple (few instructions per iteration)
 /// - Iteration count is consistently large (> 100)
 /// - Code size is not a concern
-constexpr std::size_t kDefaultUnroll = 4;
-
-template<std::size_t Unroll = kDefaultUnroll, typename T1, typename T2, typename T3, typename Func>
+template<std::size_t Unroll, typename T1, typename T2, typename T3, typename Func>
 // POET_FLATTEN on public API: Enables cross-translation-unit inlining of the
 // entire dynamic_for call chain into the caller. Without this, callers from
 // other TUs would see only a function call, losing optimization opportunities.
@@ -515,7 +471,7 @@ inline POET_FLATTEN void dynamic_for(T1 begin, T2 end, T3 step, Func &&func) {
 ///
 /// If `begin <= end`, step is +1.
 /// If `begin > end`, step is -1.
-template<std::size_t Unroll = kDefaultUnroll, typename T1, typename T2, typename Func>
+template<std::size_t Unroll, typename T1, typename T2, typename Func>
 // POET_FLATTEN: Same reasoning as above - enable cross-TU inlining for this
 // convenience overload that auto-detects step direction.
 inline POET_FLATTEN void dynamic_for(T1 begin, T2 end, Func &&func) {
@@ -531,7 +487,7 @@ inline POET_FLATTEN void dynamic_for(T1 begin, T2 end, Func &&func) {
 /// \brief Executes a runtime-sized loop from zero using compile-time unrolling.
 ///
 /// This overload iterates over the range `[0, count)`.
-template<std::size_t Unroll = kDefaultUnroll, typename Func> inline void dynamic_for(std::size_t count, Func &&func) {
+template<std::size_t Unroll, typename Func> inline void dynamic_for(std::size_t count, Func &&func) {
     dynamic_for<Unroll>(static_cast<std::size_t>(0), count, std::forward<Func>(func));
 }
 
@@ -548,11 +504,11 @@ template<std::size_t Unroll = kDefaultUnroll, typename Func> inline void dynamic
 namespace poet {
 
 // Adaptor holds the user callable.
-// Template ordering: Func first (deduced), Unroll second (optional).
-template<typename Func, std::size_t Unroll = poet::kDefaultUnroll>
+// Template ordering: Func first (deduced), Unroll second (required).
+template<typename Func, std::size_t Unroll>
 struct dynamic_for_adaptor {
   Func func;
-  dynamic_for_adaptor(Func f) : func(std::move(f)) {}
+  constexpr explicit dynamic_for_adaptor(Func f) : func(std::move(f)) {}
 };
 
 // Range overload: accept any std::ranges::range.
@@ -584,8 +540,8 @@ void operator|(std::tuple<B, E, S> const &t, dynamic_for_adaptor<Func, Unroll> c
 }
 
 // Helper to construct adaptor with type deduction
-template<std::size_t U = poet::kDefaultUnroll, typename F>
-dynamic_for_adaptor<std::decay_t<F>, U> make_dynamic_for(F &&f) {
+template<std::size_t U, typename F>
+constexpr auto make_dynamic_for(F &&f) -> dynamic_for_adaptor<std::decay_t<F>, U> {
   return dynamic_for_adaptor<std::decay_t<F>, U>(std::forward<F>(f));
 }
 
