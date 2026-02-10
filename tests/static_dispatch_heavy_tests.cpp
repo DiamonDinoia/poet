@@ -60,8 +60,7 @@ HEAVY_TEST_CASE("dispatch fills array using runtime index (lambda)", "[static_di
 
     for (int i = 0; i < N; ++i) {
         auto setter = [&arr](auto I) { arr[I] = I; };
-        auto params = std::make_tuple(DispatchParam<Seq>{ i });
-        dispatch(setter, params);
+        dispatch(setter, DispatchParam<Seq>{ i });
     }
 
     for (int i = 0; i < N; ++i) REQUIRE(arr[i] == i);
@@ -82,8 +81,7 @@ HEAVY_TEST_CASE("dispatch sets selected random indexes only", "[static_dispatch]
 
     for (int idx : picks) {
         auto setter = [&arr](auto I) { arr[I] = I; };
-        auto params = std::make_tuple(DispatchParam<Seq>{ idx });
-        dispatch(setter, params);
+        dispatch(setter, DispatchParam<Seq>{ idx });
     }
 
     for (int i = 0; i < N; ++i) {
@@ -104,8 +102,7 @@ HEAVY_TEST_CASE("dispatch loop over non-contiguous sequence", "[static_dispatch]
 
     for (int idx : indices) {
         auto setter = [&arr](auto I) { arr[I] = I; };
-        auto params = std::make_tuple(DispatchParam<Seq>{ idx });
-        dispatch(setter, params);
+        dispatch(setter, DispatchParam<Seq>{ idx });
     }
 
     for (int i = 0; i < N; ++i) {
@@ -126,8 +123,7 @@ HEAVY_TEST_CASE("dispatch non-contiguous subset set", "[static_dispatch][array][
 
     for (int idx : set_indices) {
         auto setter = [&arr](auto I) { arr[I] = I; };
-        auto params = std::make_tuple(DispatchParam<Seq>{ idx });
-        dispatch(setter, params);
+        dispatch(setter, DispatchParam<Seq>{ idx });
     }
 
     for (int i = 0; i < N; ++i) {
@@ -159,8 +155,7 @@ HEAVY_TEST_CASE("dispatch 2D sets selected random indexes only (lambda ND)", "[s
         auto setter = [&arr](auto I, auto J) {
             arr[static_cast<std::size_t>(I)][static_cast<std::size_t>(J)] = I * 100 + J;
         };
-        auto params = std::make_tuple(DispatchParam<Seq1>{ x }, DispatchParam<Seq2>{ y });
-        dispatch(setter, params);
+        dispatch(setter, DispatchParam<Seq1>{ x }, DispatchParam<Seq2>{ y });
     }
 
     for (int i = 0; i < N1; ++i) {
@@ -191,8 +186,7 @@ HEAVY_TEST_CASE("dispatch loop over non-contiguous sequences (lambda ND)", "[sta
             auto setter = [&arr](auto I, auto J) {
                 arr[static_cast<std::size_t>(I)][static_cast<std::size_t>(J)] = I * 10 + J;
             };
-            auto params = std::make_tuple(DispatchParam<Seq1>{ a }, DispatchParam<Seq2>{ b });
-            dispatch(setter, params);
+            dispatch(setter, DispatchParam<Seq1>{ a }, DispatchParam<Seq2>{ b });
         }
     }
 
@@ -222,8 +216,7 @@ HEAVY_TEST_CASE("dispatch non-contiguous subset set (lambda ND)", "[static_dispa
         auto setter = [&arr](auto I, auto J) {
             arr[static_cast<std::size_t>(I)][static_cast<std::size_t>(J)] = I * 10 + J;
         };
-        auto params = std::make_tuple(DispatchParam<Seq1>{ p.first }, DispatchParam<Seq2>{ p.second });
-        dispatch(setter, params);
+        dispatch(setter, DispatchParam<Seq1>{ p.first }, DispatchParam<Seq2>{ p.second });
     }
 
     for (int i = 0; i < N1; ++i) {
@@ -245,8 +238,7 @@ HEAVY_TEST_CASE("dispatch ND lambda returns std::vector", "[static_dispatch][ret
     for (int i = 0; i <= 2; ++i) {
         for (int j = 0; j <= 2; ++j) {
             auto setter = [](auto I, auto J) -> std::vector<int> { return std::vector<int>{ I, J }; };
-            auto params = std::make_tuple(DispatchParam<Seq1>{ i }, DispatchParam<Seq2>{ j });
-            auto vec = dispatch(setter, params);
+            auto vec = dispatch(setter, DispatchParam<Seq1>{ i }, DispatchParam<Seq2>{ j });
             REQUIRE(vec == std::vector<int>{ i, j });
         }
     }
@@ -273,8 +265,7 @@ HEAVY_TEST_CASE("dispatch ND lambda sets separate arrays and returns std::vector
             arrJ[static_cast<std::size_t>(I)][static_cast<std::size_t>(J)] = J;
             return std::vector<int>{ I, J };
         };
-        auto params = std::make_tuple(DispatchParam<Seq1>{ p.first }, DispatchParam<Seq2>{ p.second });
-        auto vec = dispatch(setter, params);
+        auto vec = dispatch(setter, DispatchParam<Seq1>{ p.first }, DispatchParam<Seq2>{ p.second });
         REQUIRE(vec == std::vector<int>{ p.first, p.second });
     }
 
@@ -310,8 +301,7 @@ HEAVY_TEST_CASE("dispatch ND lambda returns NonTrivial (non-trivially copyable)"
     for (int i = 0; i <= 2; ++i) {
         for (int j = 0; j <= 2; ++j) {
             auto setter = [](auto I, auto J) -> NonTrivial { return NonTrivial(I, J); };
-            auto params = std::make_tuple(DispatchParam<Seq1>{ i }, DispatchParam<Seq2>{ j });
-            auto nt = dispatch(setter, params);
+            auto nt = dispatch(setter, DispatchParam<Seq1>{ i }, DispatchParam<Seq2>{ j });
             REQUIRE(nt == NonTrivial(i, j));
         }
     }
@@ -329,8 +319,7 @@ HEAVY_TEST_CASE("dispatch ND lambda returns move-only unique_ptr<vector>", "[sta
             auto setter = [](auto I, auto J) -> std::unique_ptr<std::vector<int>> {
                 return std::make_unique<std::vector<int>>(std::initializer_list<int>{ I, J });
             };
-            auto params = std::make_tuple(DispatchParam<Seq1>{ i }, DispatchParam<Seq2>{ j });
-            auto p = dispatch(setter, params);
+            auto p = dispatch(setter, DispatchParam<Seq1>{ i }, DispatchParam<Seq2>{ j });
             REQUIRE(*p == std::vector<int>{ i, j });
         }
     }
@@ -357,8 +346,7 @@ HEAVY_TEST_CASE("dispatch ND lambda returns pointer (lvalue)", "[static_dispatch
             auto setter = [&arr](auto I, auto J) -> int* {
                 return &arr[static_cast<std::size_t>(I)][static_cast<std::size_t>(J)];
             };
-            auto params = std::make_tuple(DispatchParam<Seq1>{ i }, DispatchParam<Seq2>{ j });
-            int* p = dispatch(setter, params);
+            int* p = dispatch(setter, DispatchParam<Seq1>{ i }, DispatchParam<Seq2>{ j });
             *p = i * 100 + j;
             REQUIRE(arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] == i * 100 + j);
         }

@@ -15,12 +15,13 @@
 /// - POET_FLATTEN: Requests flattening of callees into function
 /// - POET_FORCEINLINE: Forces function inlining
 /// - POET_RESTRICT: Portable restrict keyword for pointers
+/// - POET_ASSUME: Generic assumption hint
 /// - POET_NOINLINE: Prevents function inlining
 /// - POET_HOT_LOOP: Hot path optimization with loop unrolling
 /// - POET_LIKELY / POET_UNLIKELY: Branch prediction hints
 /// - POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE: Scoped optimization control
-/// - POET_UNROLL_LOOP: Loop-specific unrolling hints
 /// - POET_CPP20_CONSTEVAL / POET_CPP20_CONSTEXPR: C++20 feature detection
+/// - POET_CPP23_CONSTEXPR: C++23 feature detection
 /// - POET_HIGH_OPTIMIZATION: Optimization level detection (internal)
 /// - poet_count_trailing_zeros: (function, not macro)
 ///
@@ -90,6 +91,13 @@
 #endif
 
 // ============================================================================
+// Undefine POET_ASSUME
+// ============================================================================
+#ifdef POET_ASSUME
+    #undef POET_ASSUME
+#endif
+
+// ============================================================================
 // Undefine POET_NOINLINE
 // ============================================================================
 #ifdef POET_NOINLINE
@@ -133,21 +141,6 @@
 #endif
 
 // ============================================================================
-// Undefine POET_UNROLL_LOOP variants
-// ============================================================================
-#ifdef POET_UNROLL_LOOP
-    #undef POET_UNROLL_LOOP
-#endif
-
-#ifdef POET_UNROLL_LOOP_FULL
-    #undef POET_UNROLL_LOOP_FULL
-#endif
-
-#ifdef POET_UNROLL_LOOP_DISABLE
-    #undef POET_UNROLL_LOOP_DISABLE
-#endif
-
-// ============================================================================
 // Undefine C++20 feature detection macros
 // ============================================================================
 #ifdef POET_CPP20_CONSTEVAL
@@ -156,6 +149,10 @@
 
 #ifdef POET_CPP20_CONSTEXPR
     #undef POET_CPP20_CONSTEXPR
+#endif
+
+#ifdef POET_CPP23_CONSTEXPR
+    #undef POET_CPP23_CONSTEXPR
 #endif
 
 #endif// POET_UNDEF_MACROS_HPP

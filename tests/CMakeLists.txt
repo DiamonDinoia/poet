@@ -42,6 +42,19 @@ set(HEAVY_TEST_SRCS
 set(POET_STATIC_DISPATCH_HEAVY_TEST_COUNT 12)
 option(POET_ENABLE_TEST_PCH "Enable precompiled headers for test targets" ON)
 
+# Build matrix policy for local vs CI:
+# - Local default: fastest turnaround (single standard, no heavy stress binaries)
+# - CI default: full coverage (all supported standards + heavy stress binaries)
+set(_poet_ci_default OFF)
+if(DEFINED ENV{CI} OR DEFINED ENV{GITHUB_ACTIONS})
+  set(_poet_ci_default ON)
+endif()
+
+option(POET_TEST_BUILD_ALL_STANDARDS "Build all supported std17/std20/std23 test suites" ${_poet_ci_default})
+option(POET_TEST_BUILD_HEAVY "Build static_dispatch heavy stress test executables" ${_poet_ci_default})
+message(STATUS "POET_TEST_BUILD_ALL_STANDARDS=${POET_TEST_BUILD_ALL_STANDARDS}")
+message(STATUS "POET_TEST_BUILD_HEAVY=${POET_TEST_BUILD_HEAVY}")
+
 # Internal macro: applies common configuration to all test targets
 macro(_configure_poet_test target_name cxx_feature)
   # Disable IPO for this target (already disabled globally for tests, but be explicit)
@@ -121,14 +134,16 @@ macro(add_poet_tests_suite suite_target cxx_feature)
   add_poet_test_exec(${suite_target}_static_for ${cxx_feature} ${STATIC_FOR_TEST_SRCS})
   add_poet_test_exec(${suite_target}_dispatch ${cxx_feature} ${DISPATCH_TEST_SRCS})
 
-  # Heavy tests: split each test case into its own executable to reduce peak memory usage.
-  # Each executable compiles static_dispatch_heavy_tests.cpp with POET_STATIC_DISPATCH_HEAVY_TEST_ID
-  # set to enable only one test case via preprocessor guards (see static_dispatch_heavy_tests.cpp).
-  foreach(_id RANGE 1 ${POET_STATIC_DISPATCH_HEAVY_TEST_COUNT})
-    set(_heavy_target ${suite_target}_heavy_${_id})
-    add_poet_test_exec(${_heavy_target} ${cxx_feature} HEAVY_TEST ${_id})
-    list(APPEND _suite_execs ${_heavy_target})
-  endforeach()
+  if(POET_TEST_BUILD_HEAVY)
+    # Heavy tests: split each test case into its own executable to reduce peak memory usage.
+    # Each executable compiles static_dispatch_heavy_tests.cpp with POET_STATIC_DISPATCH_HEAVY_TEST_ID
+    # set to enable only one test case via preprocessor guards (see static_dispatch_heavy_tests.cpp).
+    foreach(_id RANGE 1 ${POET_STATIC_DISPATCH_HEAVY_TEST_COUNT})
+      set(_heavy_target ${suite_target}_heavy_${_id})
+      add_poet_test_exec(${_heavy_target} ${cxx_feature} HEAVY_TEST ${_id})
+      list(APPEND _suite_execs ${_heavy_target})
+    endforeach()
+  endif()
 
   # Create umbrella target for building all tests in this suite
   add_custom_target(${suite_target} DEPENDS ${_suite_execs})
@@ -151,16 +166,24 @@ if(POET_CXX_STANDARD STREQUAL "DETECT")
   message(STATUS "Using C++${POET_CXX_STANDARD} for extra test targets")
 endif()
 
-set(POET_TEST_STANDARDS 23 20 17)
-foreach(POET_STD IN LISTS POET_TEST_STANDARDS)
-  if(POET_CXX_STANDARD GREATER_EQUAL ${POET_STD})
-    add_poet_tests_suite(poet_tests_std${POET_STD} cxx_std_${POET_STD})
-  endif()
-endforeach()
+if(POET_TEST_BUILD_ALL_STANDARDS)
+  set(POET_TEST_STANDARDS 23 20 17)
+  foreach(POET_STD IN LISTS POET_TEST_STANDARDS)
+    if(POET_CXX_STANDARD GREATER_EQUAL ${POET_STD})
+      add_poet_tests_suite(poet_tests_std${POET_STD} cxx_std_${POET_STD})
+    endif()
+  endforeach()
+else()
+  add_poet_tests_suite(poet_tests_std${POET_CXX_STANDARD} cxx_std_${POET_CXX_STANDARD})
+endif()
 
 # Compatibility aggregate target: avoid recompiling a duplicate std17 monolith.
-if(TARGET poet_tests_std17)
-  add_custom_target(poet_tests DEPENDS poet_tests_std17)
+if(POET_TEST_BUILD_ALL_STANDARDS)
+  if(TARGET poet_tests_std17)
+    add_custom_target(poet_tests DEPENDS poet_tests_std17)
+  endif()
+else()
+  add_custom_target(poet_tests DEPENDS poet_tests_std${POET_CXX_STANDARD})
 endif()
 
 add_executable(poet_header_analysis header_analysis.cpp)

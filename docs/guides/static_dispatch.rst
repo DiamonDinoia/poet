@@ -11,9 +11,9 @@ This allows you to write "runtime-polymorphic" code that is actually compiled as
 Features
 --------
 
-- **O(1) Dispatch**: Uses a table-based lookup (array of variants) to jump directly to the correct implementation.
+- **Fast Dispatch**: Uses compile-time generated function-pointer tables for direct specialization calls.
 - **Range Support**: Easily specify ranges of valid values (e.g., dispatch an integer from 0 to 10).
-- **Multiple Arguments**: Dispatch on tuples of values (e.g., dispatching based on *both* width and height).
+- **Multiple Arguments**: Dispatch on multiple runtime values (e.g., *both* width and height).
 - **Sparse Dispatch**: Use ``DispatchSet`` to list only specific valid combinations, avoiding combinatorial explosion.
 
 Usage
@@ -43,7 +43,7 @@ Basic Range Dispatch
 
    // Dispatch!
    // If n is in [1, 16], calls Kernel::operator()<n>(data)
-   poet::dispatch(Kernel{}, std::make_tuple(param), data_ptr);
+   poet::dispatch(Kernel{}, param, data_ptr);
 
 Cartesian product of ranges (multiple DispatchParam)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -62,11 +62,7 @@ Dispatch over two independent ranges without enumerating a set:
    using AR = poet::make_range<1, 4>;  // 1..4 (inclusive)
    using BR = poet::make_range<2, 3>;  // 2..3 (inclusive)
    int a = getA(); int b = getB();
-   auto params = std::make_tuple(
-       poet::DispatchParam<AR>{a},
-       poet::DispatchParam<BR>{b}
-   );
-   poet::dispatch(Kernel2D{}, params, data_ptr);
+   poet::dispatch(Kernel2D{}, poet::DispatchParam<AR>{a}, poet::DispatchParam<BR>{b}, data_ptr);
 
 Explicit Sets (Sparse Dispatch)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -107,7 +103,7 @@ You can force a check by passing ``poet::throw_t`` as the first argument:
 
 .. code-block:: cpp
 
-   poet::dispatch(poet::throw_t, Kernel{}, params, args...);
+   poet::dispatch(poet::throw_t, Kernel{}, poet::DispatchParam<Range>{n}, args...);
    // Throws std::runtime_error if no match found.
 
 The throwing overload with ``DispatchSet`` is also available:
@@ -121,7 +117,7 @@ The throwing overload with ``DispatchSet`` is also available:
 Implementation Details
 ----------------------
 
-Internally, ``dispatch`` constructs a table of ``std::variant`` types, where each variant holds a ``std::integral_constant``. It uses ``std::visit`` to invoke the callable. For ranges, it optimizes the mapping from integer to variant index to be O(1) (simple arithmetic offset). For sparse sets, it may use linear search or other strategies depending on the structure, but the ``DispatchSet`` interface is designed for efficient lookups where possible.
+Internally, ``dispatch`` uses compile-time generated function-pointer tables. For contiguous ranges, runtime values map to table indices in O(1) via arithmetic offsets. For sparse/non-contiguous ranges, it uses compact sorted key metadata with O(log N) binary search to map values to table indices before invoking the specialization.
 
 Advanced: ``poet::dispatch_tuples`` exposes the tuple-of-sequences form used under the hood for ``DispatchSet`` and cartesian ParamTuples. Most users should call ``poet::dispatch`` instead.
 

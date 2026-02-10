@@ -1,5 +1,4 @@
 #include <array>
-#include <tuple>
 #include <utility>
 #include <chrono>
 #include <nanobench.h>
@@ -49,9 +48,10 @@ int run_manual(int width, int height, int scale) {
 }
 
 int run_dispatch(int width, int height, int scale) {
-    auto params =
-      std::make_tuple(poet::DispatchParam<width_range>{ width }, poet::DispatchParam<height_range>{ height });
-    return poet::dispatch(matrix_kernel{}, params, scale);
+    return poet::dispatch(matrix_kernel{},
+      poet::DispatchParam<width_range>{ width },
+      poet::DispatchParam<height_range>{ height },
+      scale);
 }
 
 }// namespace
@@ -94,29 +94,29 @@ void run_dispatch_benchmarks() {
         using dim_seq_contig = poet::make_range<0, 3>;// 0,1,2,3
         using dim_seq_noncontig = std::integer_sequence<int, 0, 10, 20, 30>;
 
-        // build parameter tuple for 5 dimensions
-        auto params_contig = std::make_tuple(poet::DispatchParam<dim_seq_contig>{ 0 },
-          poet::DispatchParam<dim_seq_contig>{ 1 },
-          poet::DispatchParam<dim_seq_contig>{ 2 },
-          poet::DispatchParam<dim_seq_contig>{ 3 },
-          poet::DispatchParam<dim_seq_contig>{ 0 });
-
-        auto params_noncontig = std::make_tuple(poet::DispatchParam<dim_seq_noncontig>{ 0 },
-          poet::DispatchParam<dim_seq_noncontig>{ 10 },
-          poet::DispatchParam<dim_seq_noncontig>{ 20 },
-          poet::DispatchParam<dim_seq_noncontig>{ 30 },
-          poet::DispatchParam<dim_seq_noncontig>{ 0 });
-
-
         bench.run("big dispatch contiguous (5D x4)", [&] {
             int total = 0;
-            for (int i = 0; i < 1000; ++i) { total += poet::dispatch(big_kernel{}, params_contig, 3); }
+            for (int i = 0; i < 1000; ++i) {
+                total += poet::dispatch(big_kernel{},
+                  poet::DispatchParam<dim_seq_contig>{ 0 },
+                  poet::DispatchParam<dim_seq_contig>{ 1 },
+                  poet::DispatchParam<dim_seq_contig>{ 2 },
+                  poet::DispatchParam<dim_seq_contig>{ 3 },
+                  poet::DispatchParam<dim_seq_contig>{ 0 }, 3);
+            }
             ankerl::nanobench::doNotOptimizeAway(total);
         });
 
         bench.run("big dispatch non-contiguous (5D x4)", [&] {
             int total = 0;
-            for (int i = 0; i < 1000; ++i) { total += poet::dispatch(big_kernel{}, params_noncontig, 3); }
+            for (int i = 0; i < 1000; ++i) {
+                total += poet::dispatch(big_kernel{},
+                  poet::DispatchParam<dim_seq_noncontig>{ 0 },
+                  poet::DispatchParam<dim_seq_noncontig>{ 10 },
+                  poet::DispatchParam<dim_seq_noncontig>{ 20 },
+                  poet::DispatchParam<dim_seq_noncontig>{ 30 },
+                  poet::DispatchParam<dim_seq_noncontig>{ 0 }, 3);
+            }
             ankerl::nanobench::doNotOptimizeAway(total);
         });
     }

@@ -111,6 +111,35 @@
 #endif
 
 // ============================================================================
+// Static dispatch backend selection
+// ============================================================================
+/// Backend IDs for static_dispatch implementation.
+#define POET_STATIC_DISPATCH_BACKEND_FPTR 0
+#define POET_STATIC_DISPATCH_BACKEND_COMPUTED_GOTO 1
+
+/// Default backend is function pointer tables.
+#ifndef POET_STATIC_DISPATCH_BACKEND
+    #define POET_STATIC_DISPATCH_BACKEND POET_STATIC_DISPATCH_BACKEND_FPTR
+#endif
+
+/// GNU computed-goto availability.
+/// Disabled in strict ANSI mode to avoid pedantic extension errors.
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(__STRICT_ANSI__)
+    #define POET_HAS_COMPUTED_GOTO 1
+#else
+    #define POET_HAS_COMPUTED_GOTO 0
+#endif
+
+/// Max number of labels emitted for computed-goto 1D dispatch.
+#ifndef POET_COMPUTED_GOTO_MAX_LABELS
+    #define POET_COMPUTED_GOTO_MAX_LABELS 64
+#endif
+
+#if (POET_STATIC_DISPATCH_BACKEND == POET_STATIC_DISPATCH_BACKEND_COMPUTED_GOTO) && !POET_HAS_COMPUTED_GOTO
+    #error "POET_STATIC_DISPATCH_BACKEND_COMPUTED_GOTO requires GCC/Clang GNU extensions mode (e.g. -std=gnu++17)"
+#endif
+
+// ============================================================================
 // poet_count_trailing_zeros
 // ============================================================================
 /// Counts trailing zero bits. UB if value is 0.

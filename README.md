@@ -91,8 +91,8 @@ struct Impl {
 
 int main() {
   int runtime_choice = 2;
-  auto params = std::make_tuple(poet::DispatchParam<poet::make_range<0, 4>>{ runtime_choice });
-  poet::dispatch(Impl{}, params, 42); // calls Impl::operator()<2>(42) if in range
+  poet::dispatch(Impl{}, poet::DispatchParam<poet::make_range<0, 4>>{ runtime_choice }, 42);
+  // calls Impl::operator()<2>(42) if in range
 }
 ```
 
@@ -127,9 +127,9 @@ struct Impl3 {
 int main() {
   try {
     int runtime_choice = 10;
-    auto params = std::make_tuple(poet::DispatchParam<poet::make_range<0,4>>{ runtime_choice });
     // Throws std::runtime_error because 10 is not in [0..4]
-    int result = poet::dispatch(poet::throw_t, Impl3{}, params, 5);
+    int result = poet::dispatch(
+      poet::throw_t, Impl3{}, poet::DispatchParam<poet::make_range<0,4>>{ runtime_choice }, 5);
     std::cout << result << '\n';
   } catch (const std::runtime_error &e) {
     std::cerr << "dispatch failed: " << e.what() << '\n';

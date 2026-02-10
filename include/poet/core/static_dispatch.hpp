@@ -514,6 +514,183 @@ namespace detail {
         static constexpr bool value = compute();
     };
 
+    template<int Value, typename Functor, typename ArgumentTuple>
+    POET_FORCEINLINE auto invoke_1d_value_void(Functor* func, ArgumentTuple&& args) -> void {
+        POET_ASSUME_NOT_NULL(func);
+        constexpr bool use_value_form = can_use_value_form<Functor, ArgumentTuple, Value>::value;
+
+        if constexpr (use_value_form) {
+            if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 0) {
+                (*func)(std::integral_constant<int, Value>{});
+            } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 1) {
+                (*func)(std::integral_constant<int, Value>{}, std::move(std::get<0>(args)));
+            } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 2) {
+                (*func)(std::integral_constant<int, Value>{},
+                       std::move(std::get<0>(args)), std::move(std::get<1>(args)));
+            } else {
+                std::apply([func](auto&&... arg) -> void {
+                    (*func)(std::integral_constant<int, Value>{}, std::forward<decltype(arg)>(arg)...);
+                }, std::move(args));
+            }
+        } else {
+            if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 0) {
+                func->template operator()<Value>();
+            } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 1) {
+                func->template operator()<Value>(std::move(std::get<0>(args)));
+            } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 2) {
+                func->template operator()<Value>(std::move(std::get<0>(args)), std::move(std::get<1>(args)));
+            } else {
+                std::apply([func](auto&&... arg) -> void {
+                    func->template operator()<Value>(std::forward<decltype(arg)>(arg)...);
+                }, std::move(args));
+            }
+        }
+    }
+
+    template<typename R, int Value, typename Functor, typename ArgumentTuple>
+    POET_FORCEINLINE auto invoke_1d_value_return(Functor* func, ArgumentTuple&& args) -> R {
+        POET_ASSUME_NOT_NULL(func);
+        constexpr bool use_value_form = can_use_value_form<Functor, ArgumentTuple, Value>::value;
+
+        if constexpr (use_value_form) {
+            if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 0) {
+                return (*func)(std::integral_constant<int, Value>{});
+            } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 1) {
+                return (*func)(std::integral_constant<int, Value>{}, std::move(std::get<0>(args)));
+            } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 2) {
+                return (*func)(std::integral_constant<int, Value>{},
+                  std::move(std::get<0>(args)), std::move(std::get<1>(args)));
+            } else {
+                return std::apply([func](auto&&... arg) -> R {
+                    return (*func)(std::integral_constant<int, Value>{}, std::forward<decltype(arg)>(arg)...);
+                }, std::move(args));
+            }
+        } else {
+            if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 0) {
+                return func->template operator()<Value>();
+            } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 1) {
+                return func->template operator()<Value>(std::move(std::get<0>(args)));
+            } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 2) {
+                return func->template operator()<Value>(
+                  std::move(std::get<0>(args)), std::move(std::get<1>(args)));
+            } else {
+                return std::apply([func](auto&&... arg) -> R {
+                    return func->template operator()<Value>(std::forward<decltype(arg)>(arg)...);
+                }, std::move(args));
+            }
+        }
+    }
+
+    template<typename Seq, std::size_t Index> struct sequence_value_at;
+
+    template<int First, int... Rest>
+    struct sequence_value_at<std::integer_sequence<int, First, Rest...>, 0>
+      : std::integral_constant<int, First> {};
+
+    template<int First, int... Rest, std::size_t Index>
+    struct sequence_value_at<std::integer_sequence<int, First, Rest...>, Index>
+      : sequence_value_at<std::integer_sequence<int, Rest...>, Index - 1> {};
+
+    inline constexpr std::size_t k_computed_goto_chunk_size = 64;
+
+    template<typename Seq, typename R, typename Functor, typename ArgumentTuple>
+    POET_NOINLINE auto dispatch_1d_computed_goto(Functor* functor_ptr, std::size_t idx, ArgumentTuple&& argument_tuple) -> R;
+
+    template<typename R, typename Functor, typename ArgumentTuple, typename SequenceTuple>
+    struct nd_computed_goto_dispatcher;
+
+#if POET_HAS_COMPUTED_GOTO
+    inline constexpr std::size_t k_computed_goto_emitted_labels = 64;
+
+    template<std::size_t Base, typename Seq, typename R, typename Functor, typename ArgumentTuple>
+    POET_NOINLINE auto dispatch_1d_computed_goto_chunk(Functor* functor_ptr, std::size_t idx, ArgumentTuple&& argument_tuple) -> R {
+        constexpr std::size_t seq_size = sequence_size<Seq>::value;
+        constexpr std::size_t remaining = (Base < seq_size) ? (seq_size - Base) : 0;
+        constexpr std::size_t chunk_size = (remaining < k_computed_goto_chunk_size) ? remaining : k_computed_goto_chunk_size;
+
+        if constexpr (chunk_size == 0) {
+            POET_UNREACHABLE();
+            if constexpr (!std::is_void_v<R>) {
+                return R{};
+            }
+        } else {
+            POET_ASSUME_NOT_NULL(functor_ptr);
+
+            if (idx < (Base + chunk_size)) {
+                const std::size_t local_idx = idx - Base;
+
+                #define POET_GOTO_LABELS_64(M) \
+                    M(0) M(1) M(2) M(3) M(4) M(5) M(6) M(7) \
+                    M(8) M(9) M(10) M(11) M(12) M(13) M(14) M(15) \
+                    M(16) M(17) M(18) M(19) M(20) M(21) M(22) M(23) \
+                    M(24) M(25) M(26) M(27) M(28) M(29) M(30) M(31) \
+                    M(32) M(33) M(34) M(35) M(36) M(37) M(38) M(39) \
+                    M(40) M(41) M(42) M(43) M(44) M(45) M(46) M(47) \
+                    M(48) M(49) M(50) M(51) M(52) M(53) M(54) M(55) \
+                    M(56) M(57) M(58) M(59) M(60) M(61) M(62) M(63)
+
+                #define POET_GOTO_LABEL_REF(N) &&poet_dispatch_label_##N,
+                static void* const labels[k_computed_goto_emitted_labels] = { POET_GOTO_LABELS_64(POET_GOTO_LABEL_REF) };
+                #undef POET_GOTO_LABEL_REF
+
+                goto *labels[local_idx];
+
+                #define POET_GOTO_LABEL_CASE(N)                                                    \
+                    poet_dispatch_label_##N:                                                       \
+                    if constexpr ((N) < chunk_size) {                                              \
+                        constexpr int value = sequence_value_at<Seq, Base + (N)>::value;          \
+                        if constexpr (std::is_void_v<R>) {                                          \
+                            invoke_1d_value_void<value, Functor, ArgumentTuple>(                   \
+                              functor_ptr, std::move(argument_tuple));                             \
+                            return;                                                                 \
+                        } else {                                                                    \
+                            return invoke_1d_value_return<R, value, Functor, ArgumentTuple>(       \
+                              functor_ptr, std::move(argument_tuple));                             \
+                        }                                                                           \
+                    } else {                                                                        \
+                        POET_UNREACHABLE();                                                         \
+                    }
+                POET_GOTO_LABELS_64(POET_GOTO_LABEL_CASE)
+                #undef POET_GOTO_LABEL_CASE
+                #undef POET_GOTO_LABELS_64
+            } else {
+                if constexpr (std::is_void_v<R>) {
+                    dispatch_1d_computed_goto_chunk<Base + k_computed_goto_chunk_size, Seq, R, Functor, ArgumentTuple>(
+                      functor_ptr, idx, std::move(argument_tuple));
+                    return;
+                } else {
+                    return dispatch_1d_computed_goto_chunk<Base + k_computed_goto_chunk_size, Seq, R, Functor, ArgumentTuple>(
+                      functor_ptr, idx, std::move(argument_tuple));
+                }
+            }
+        }
+    }
+
+    template<typename Seq, typename R, typename Functor, typename ArgumentTuple>
+    POET_NOINLINE auto dispatch_1d_computed_goto(Functor* functor_ptr, std::size_t idx, ArgumentTuple&& argument_tuple) -> R {
+        return dispatch_1d_computed_goto_chunk<0, Seq, R, Functor, ArgumentTuple>(
+          functor_ptr, idx, std::move(argument_tuple));
+    }
+#else
+    template<typename Seq, typename R, typename Functor, typename ArgumentTuple>
+    POET_NOINLINE auto dispatch_1d_computed_goto(Functor* /*functor_ptr*/, std::size_t /*idx*/, ArgumentTuple&& /*argument_tuple*/) -> R {
+        POET_UNREACHABLE();
+        if constexpr (!std::is_void_v<R>) {
+            return R{};
+        }
+    }
+
+    template<typename R, typename Functor, typename ArgumentTuple, typename... Seqs>
+    struct nd_computed_goto_dispatcher<R, Functor, ArgumentTuple, std::tuple<Seqs...>> {
+        static auto run(Functor* /*functor_ptr*/, std::size_t /*flat_idx*/, ArgumentTuple&& /*argument_tuple*/) -> R {
+            POET_UNREACHABLE();
+            if constexpr (!std::is_void_v<R>) {
+                return R{};
+            }
+        }
+    };
+#endif
+
     /// \brief Generate function pointer table for contiguous 1D dispatch (void return).
     ///
     /// Creates a compile-time array of function pointers for O(1) dispatch.
@@ -525,38 +702,8 @@ namespace detail {
     template<typename Functor, typename ArgumentTuple, int... Values>
     POET_CPP20_CONSTEVAL auto make_dispatch_table_void(std::integer_sequence<int, Values...> /*seq*/)
       -> std::array<dispatch_function_ptr_void<Functor*, ArgumentTuple&&>, sizeof...(Values)> {
-        // Lambda that will be instantiated for each value
         return { +[](Functor* func, ArgumentTuple&& args) -> void {
-            POET_ASSUME_NOT_NULL(func);
-            constexpr bool use_value_form = can_use_value_form<Functor, ArgumentTuple, Values>::value;
-
-                if constexpr (use_value_form) {
-                if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 0) {
-                    (*func)(std::integral_constant<int, Values>{});
-                } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 1) {
-                    (*func)(std::integral_constant<int, Values>{}, std::move(std::get<0>(args)));
-                } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 2) {
-                    (*func)(std::integral_constant<int, Values>{},
-                           std::move(std::get<0>(args)), std::move(std::get<1>(args)));
-                } else {
-                    std::apply([func](auto&&... arg) -> void {
-                        (*func)(std::integral_constant<int, Values>{}, std::forward<decltype(arg)>(arg)...);
-                    }, std::move(args));
-                }
-            } else {
-                // Template-parameter form
-                if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 0) {
-                    func->template operator()<Values>();
-                } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 1) {
-                    func->template operator()<Values>(std::move(std::get<0>(args)));
-                } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 2) {
-                    func->template operator()<Values>(std::move(std::get<0>(args)), std::move(std::get<1>(args)));
-                } else {
-                    std::apply([func](auto&&... arg) -> void {
-                        func->template operator()<Values>(std::forward<decltype(arg)>(arg)...);
-                    }, std::move(args));
-                }
-            }
+            invoke_1d_value_void<Values, Functor, ArgumentTuple>(func, std::move(args));
         }... };
     }
 
@@ -573,36 +720,7 @@ namespace detail {
     POET_CPP20_CONSTEVAL auto make_dispatch_table(std::integer_sequence<int, Values...> /*seq*/)
       -> std::array<dispatch_function_ptr<R, Functor*, ArgumentTuple&&>, sizeof...(Values)> {
         return { +[](Functor* func, ArgumentTuple&& args) -> R {
-            POET_ASSUME_NOT_NULL(func);
-            constexpr bool use_value_form = can_use_value_form<Functor, ArgumentTuple, Values>::value;
-
-                if constexpr (use_value_form) {
-                if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 0) {
-                    return (*func)(std::integral_constant<int, Values>{});
-                } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 1) {
-                    return (*func)(std::integral_constant<int, Values>{}, std::move(std::get<0>(args)));
-                } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 2) {
-                    return (*func)(std::integral_constant<int, Values>{},
-                      std::move(std::get<0>(args)), std::move(std::get<1>(args)));
-                } else {
-                    return std::apply([func](auto&&... arg) -> R {
-                        return (*func)(std::integral_constant<int, Values>{}, std::forward<decltype(arg)>(arg)...);
-                    }, std::move(args));
-                }
-            } else {
-                if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 0) {
-                    return func->template operator()<Values>();
-                } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 1) {
-                    return func->template operator()<Values>(std::move(std::get<0>(args)));
-                } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 2) {
-                    return func->template operator()<Values>(
-                      std::move(std::get<0>(args)), std::move(std::get<1>(args)));
-                } else {
-                    return std::apply([func](auto&&... arg) -> R {
-                        return func->template operator()<Values>(std::forward<decltype(arg)>(arg)...);
-                    }, std::move(args));
-                }
-            }
+            return invoke_1d_value_return<R, Values, Functor, ArgumentTuple>(func, std::move(args));
         }... };
     }
 
@@ -798,6 +916,83 @@ namespace detail {
                                             std::make_index_sequence<total_size>>::template make_table<R>();
     }
 
+#if POET_HAS_COMPUTED_GOTO
+    template<typename R, typename Functor, typename ArgumentTuple, typename... Seqs>
+    struct nd_computed_goto_dispatcher<R, Functor, ArgumentTuple, std::tuple<Seqs...>> {
+        static constexpr std::size_t total_size = (sequence_size<Seqs>::value * ... * 1);
+        using helper_t = make_nd_dispatch_table_helper<Functor,
+          ArgumentTuple,
+          std::tuple<Seqs...>,
+          std::make_index_sequence<total_size>>;
+
+        template<std::size_t Base>
+        static POET_NOINLINE auto run_chunk(Functor* functor_ptr, std::size_t flat_idx, ArgumentTuple&& argument_tuple) -> R {
+            constexpr std::size_t remaining = (Base < total_size) ? (total_size - Base) : 0;
+            constexpr std::size_t chunk_size = (remaining < k_computed_goto_chunk_size) ? remaining : k_computed_goto_chunk_size;
+
+            if constexpr (chunk_size == 0) {
+                POET_UNREACHABLE();
+                if constexpr (!std::is_void_v<R>) {
+                    return R{};
+                }
+            } else {
+                POET_ASSUME_NOT_NULL(functor_ptr);
+
+                if (flat_idx < (Base + chunk_size)) {
+                    const std::size_t local_idx = flat_idx - Base;
+
+                    #define POET_GOTO_LABELS_64(M) \
+                        M(0) M(1) M(2) M(3) M(4) M(5) M(6) M(7) \
+                        M(8) M(9) M(10) M(11) M(12) M(13) M(14) M(15) \
+                        M(16) M(17) M(18) M(19) M(20) M(21) M(22) M(23) \
+                        M(24) M(25) M(26) M(27) M(28) M(29) M(30) M(31) \
+                        M(32) M(33) M(34) M(35) M(36) M(37) M(38) M(39) \
+                        M(40) M(41) M(42) M(43) M(44) M(45) M(46) M(47) \
+                        M(48) M(49) M(50) M(51) M(52) M(53) M(54) M(55) \
+                        M(56) M(57) M(58) M(59) M(60) M(61) M(62) M(63)
+
+                    #define POET_GOTO_LABEL_REF(N) &&poet_dispatch_nd_label_##N,
+                    static void* const labels[k_computed_goto_emitted_labels] = { POET_GOTO_LABELS_64(POET_GOTO_LABEL_REF) };
+                    #undef POET_GOTO_LABEL_REF
+
+                    goto *labels[local_idx];
+
+                    #define POET_GOTO_LABEL_CASE(N)                                                        \
+                        poet_dispatch_nd_label_##N:                                                        \
+                        if constexpr ((N) < chunk_size) {                                                  \
+                            if constexpr (std::is_void_v<R>) {                                             \
+                                helper_t::template nd_index_caller<Base + (N)>::template call<void>(      \
+                                  functor_ptr, std::move(argument_tuple));                                 \
+                                return;                                                                     \
+                            } else {                                                                        \
+                                return helper_t::template nd_index_caller<Base + (N)>::template call<R>(   \
+                                  functor_ptr, std::move(argument_tuple));                                 \
+                            }                                                                               \
+                        } else {                                                                            \
+                            POET_UNREACHABLE();                                                             \
+                        }
+                    POET_GOTO_LABELS_64(POET_GOTO_LABEL_CASE)
+                    #undef POET_GOTO_LABEL_CASE
+                    #undef POET_GOTO_LABELS_64
+                } else {
+                    if constexpr (std::is_void_v<R>) {
+                        run_chunk<Base + k_computed_goto_chunk_size>(
+                          functor_ptr, flat_idx, std::move(argument_tuple));
+                        return;
+                    } else {
+                        return run_chunk<Base + k_computed_goto_chunk_size>(
+                          functor_ptr, flat_idx, std::move(argument_tuple));
+                    }
+                }
+            }
+        }
+
+        static POET_NOINLINE auto run(Functor* functor_ptr, std::size_t flat_idx, ArgumentTuple&& argument_tuple) -> R {
+            return run_chunk<0>(functor_ptr, flat_idx, std::move(argument_tuple));
+        }
+    };
+#endif
+
 }// namespace detail
 
 /// \brief Represents a discrete set of allowed compile-time tuples.
@@ -883,13 +1078,25 @@ namespace detail {
             using argument_tuple_type = std::tuple<std::decay_t<Args>...>;
             argument_tuple_type argument_tuple(std::forward<Args>(args)...);
 
-            if constexpr (std::is_void_v<R>) {
-                static constexpr auto table = make_dispatch_table_void<FunctorT, argument_tuple_type>(Seq{});
-                table[*idx](functor_ptr, std::move(argument_tuple));
-                return;
+            if constexpr ((POET_STATIC_DISPATCH_BACKEND == POET_STATIC_DISPATCH_BACKEND_COMPUTED_GOTO)
+                          && POET_HAS_COMPUTED_GOTO) {
+                if constexpr (std::is_void_v<R>) {
+                    dispatch_1d_computed_goto<Seq, R, FunctorT, argument_tuple_type>(
+                      functor_ptr, *idx, std::move(argument_tuple));
+                    return;
+                } else {
+                    return dispatch_1d_computed_goto<Seq, R, FunctorT, argument_tuple_type>(
+                      functor_ptr, *idx, std::move(argument_tuple));
+                }
             } else {
-                static constexpr auto table = make_dispatch_table<FunctorT, argument_tuple_type, R>(Seq{});
-                return table[*idx](functor_ptr, std::move(argument_tuple));
+                if constexpr (std::is_void_v<R>) {
+                    static constexpr auto table = make_dispatch_table_void<FunctorT, argument_tuple_type>(Seq{});
+                    table[*idx](functor_ptr, std::move(argument_tuple));
+                    return;
+                } else {
+                    static constexpr auto table = make_dispatch_table<FunctorT, argument_tuple_type, R>(Seq{});
+                    return table[*idx](functor_ptr, std::move(argument_tuple));
+                }
             }
         } else {
             if constexpr (ThrowOnNoMatch) {
@@ -922,13 +1129,26 @@ namespace detail {
             using FunctorT = std::decay_t<Functor>;
             auto &&forwarded_functor = std::forward<Functor>(functor);
             FunctorT *functor_ptr = std::addressof(static_cast<FunctorT&>(forwarded_functor));
-            if constexpr (std::is_void_v<R>) {
-                static constexpr auto table = make_nd_dispatch_table_void<FunctorT, argument_tuple_type>(sequences);
-                table[flat_idx](functor_ptr, std::move(argument_tuple));
-                return;
+
+            if constexpr ((POET_STATIC_DISPATCH_BACKEND == POET_STATIC_DISPATCH_BACKEND_COMPUTED_GOTO)
+                          && POET_HAS_COMPUTED_GOTO) {
+                if constexpr (std::is_void_v<R>) {
+                    nd_computed_goto_dispatcher<R, FunctorT, argument_tuple_type, sequences_t>::run(
+                      functor_ptr, flat_idx, std::move(argument_tuple));
+                    return;
+                } else {
+                    return nd_computed_goto_dispatcher<R, FunctorT, argument_tuple_type, sequences_t>::run(
+                      functor_ptr, flat_idx, std::move(argument_tuple));
+                }
             } else {
-                static constexpr auto table = make_nd_dispatch_table<FunctorT, argument_tuple_type, R>(sequences);
-                return table[flat_idx](functor_ptr, std::move(argument_tuple));
+                if constexpr (std::is_void_v<R>) {
+                    static constexpr auto table = make_nd_dispatch_table_void<FunctorT, argument_tuple_type>(sequences);
+                    table[flat_idx](functor_ptr, std::move(argument_tuple));
+                    return;
+                } else {
+                    static constexpr auto table = make_nd_dispatch_table<FunctorT, argument_tuple_type, R>(sequences);
+                    return table[flat_idx](functor_ptr, std::move(argument_tuple));
+                }
             }
         } else {
             if constexpr (ThrowOnNoMatch) {
