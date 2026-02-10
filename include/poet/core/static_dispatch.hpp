@@ -519,30 +519,32 @@ namespace detail {
         POET_ASSUME_NOT_NULL(func);
         constexpr bool use_value_form = can_use_value_form<Functor, ArgumentTuple, Value>::value;
 
-        if constexpr (use_value_form) {
+            if constexpr (use_value_form) {
             if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 0) {
+                (void)args;  // Suppress unused parameter warning
                 (*func)(std::integral_constant<int, Value>{});
             } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 1) {
-                (*func)(std::integral_constant<int, Value>{}, std::move(std::get<0>(args)));
+                (*func)(std::integral_constant<int, Value>{}, std::get<0>(std::forward<ArgumentTuple>(args)));
             } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 2) {
                 (*func)(std::integral_constant<int, Value>{},
-                       std::move(std::get<0>(args)), std::move(std::get<1>(args)));
+                       std::get<0>(std::forward<ArgumentTuple>(args)), std::get<1>(std::forward<ArgumentTuple>(args)));
             } else {
                 std::apply([func](auto&&... arg) -> void {
                     (*func)(std::integral_constant<int, Value>{}, std::forward<decltype(arg)>(arg)...);
-                }, std::move(args));
+                }, std::forward<ArgumentTuple>(args));
             }
-        } else {
+            } else {
             if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 0) {
+                (void)args;  // Suppress unused parameter warning
                 func->template operator()<Value>();
             } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 1) {
-                func->template operator()<Value>(std::move(std::get<0>(args)));
+                func->template operator()<Value>(std::get<0>(std::forward<ArgumentTuple>(args)));
             } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 2) {
-                func->template operator()<Value>(std::move(std::get<0>(args)), std::move(std::get<1>(args)));
+                func->template operator()<Value>(std::get<0>(std::forward<ArgumentTuple>(args)), std::get<1>(std::forward<ArgumentTuple>(args)));
             } else {
                 std::apply([func](auto&&... arg) -> void {
                     func->template operator()<Value>(std::forward<decltype(arg)>(arg)...);
-                }, std::move(args));
+                }, std::forward<ArgumentTuple>(args));
             }
         }
     }
@@ -552,31 +554,33 @@ namespace detail {
         POET_ASSUME_NOT_NULL(func);
         constexpr bool use_value_form = can_use_value_form<Functor, ArgumentTuple, Value>::value;
 
-        if constexpr (use_value_form) {
+            if constexpr (use_value_form) {
             if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 0) {
+                (void)args;  // Suppress unused parameter warning
                 return (*func)(std::integral_constant<int, Value>{});
             } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 1) {
-                return (*func)(std::integral_constant<int, Value>{}, std::move(std::get<0>(args)));
+                return (*func)(std::integral_constant<int, Value>{}, std::get<0>(std::forward<ArgumentTuple>(args)));
             } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 2) {
                 return (*func)(std::integral_constant<int, Value>{},
-                  std::move(std::get<0>(args)), std::move(std::get<1>(args)));
+                  std::get<0>(std::forward<ArgumentTuple>(args)), std::get<1>(std::forward<ArgumentTuple>(args)));
             } else {
                 return std::apply([func](auto&&... arg) -> R {
                     return (*func)(std::integral_constant<int, Value>{}, std::forward<decltype(arg)>(arg)...);
-                }, std::move(args));
+                }, std::forward<ArgumentTuple>(args));
             }
-        } else {
+            } else {
             if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 0) {
+                (void)args;  // Suppress unused parameter warning
                 return func->template operator()<Value>();
             } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 1) {
-                return func->template operator()<Value>(std::move(std::get<0>(args)));
+                return func->template operator()<Value>(std::get<0>(std::forward<ArgumentTuple>(args)));
             } else if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 2) {
                 return func->template operator()<Value>(
-                  std::move(std::get<0>(args)), std::move(std::get<1>(args)));
+                  std::get<0>(std::forward<ArgumentTuple>(args)), std::get<1>(std::forward<ArgumentTuple>(args)));
             } else {
                 return std::apply([func](auto&&... arg) -> R {
                     return func->template operator()<Value>(std::forward<decltype(arg)>(arg)...);
-                }, std::move(args));
+                }, std::forward<ArgumentTuple>(args));
             }
         }
     }
@@ -639,13 +643,13 @@ namespace detail {
                     poet_dispatch_label_##N:                                                       \
                     if constexpr ((N) < chunk_size) {                                              \
                         constexpr int value = sequence_value_at<Seq, Base + (N)>::value;          \
-                        if constexpr (std::is_void_v<R>) {                                          \
-                            invoke_1d_value_void<value, Functor, ArgumentTuple>(                   \
-                              functor_ptr, std::move(argument_tuple));                             \
+                                                if constexpr (std::is_void_v<R>) {                                          \
+                                                        invoke_1d_value_void<value, Functor, ArgumentTuple>(                   \
+                                                            functor_ptr, std::forward<ArgumentTuple>(argument_tuple));     \
                             return;                                                                 \
                         } else {                                                                    \
-                            return invoke_1d_value_return<R, value, Functor, ArgumentTuple>(       \
-                              functor_ptr, std::move(argument_tuple));                             \
+                                                        return invoke_1d_value_return<R, value, Functor, ArgumentTuple>(       \
+                                                            functor_ptr, std::forward<ArgumentTuple>(argument_tuple));     \
                         }                                                                           \
                     } else {                                                                        \
                         POET_UNREACHABLE();                                                         \
@@ -655,12 +659,12 @@ namespace detail {
                 #undef POET_GOTO_LABELS_64
             } else {
                 if constexpr (std::is_void_v<R>) {
-                    dispatch_1d_computed_goto_chunk<Base + k_computed_goto_chunk_size, Seq, R, Functor, ArgumentTuple>(
-                      functor_ptr, idx, std::move(argument_tuple));
+                                        dispatch_1d_computed_goto_chunk<Base + k_computed_goto_chunk_size, Seq, R, Functor, ArgumentTuple>(
+                                            functor_ptr, idx, std::forward<ArgumentTuple>(argument_tuple));
                     return;
                 } else {
-                    return dispatch_1d_computed_goto_chunk<Base + k_computed_goto_chunk_size, Seq, R, Functor, ArgumentTuple>(
-                      functor_ptr, idx, std::move(argument_tuple));
+                                        return dispatch_1d_computed_goto_chunk<Base + k_computed_goto_chunk_size, Seq, R, Functor, ArgumentTuple>(
+                                            functor_ptr, idx, std::forward<ArgumentTuple>(argument_tuple));
                 }
             }
         }
@@ -668,12 +672,12 @@ namespace detail {
 
     template<typename Seq, typename R, typename Functor, typename ArgumentTuple>
     POET_NOINLINE auto dispatch_1d_computed_goto(Functor* functor_ptr, std::size_t idx, ArgumentTuple&& argument_tuple) -> R {
-        return dispatch_1d_computed_goto_chunk<0, Seq, R, Functor, ArgumentTuple>(
-          functor_ptr, idx, std::move(argument_tuple));
+                return dispatch_1d_computed_goto_chunk<0, Seq, R, Functor, ArgumentTuple>(
+                    functor_ptr, idx, std::forward<ArgumentTuple>(argument_tuple));
     }
 #else
     template<typename Seq, typename R, typename Functor, typename ArgumentTuple>
-    POET_NOINLINE auto dispatch_1d_computed_goto(Functor* /*functor_ptr*/, std::size_t /*idx*/, ArgumentTuple&& /*argument_tuple*/) -> R {
+    POET_NOINLINE auto dispatch_1d_computed_goto(Functor* /*functor_ptr*/, std::size_t /*idx*/, ArgumentTuple&& /*argument_tuple*/) -> R { // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
         POET_UNREACHABLE();
         if constexpr (!std::is_void_v<R>) {
             return R{};
@@ -682,7 +686,7 @@ namespace detail {
 
     template<typename R, typename Functor, typename ArgumentTuple, typename... Seqs>
     struct nd_computed_goto_dispatcher<R, Functor, ArgumentTuple, std::tuple<Seqs...>> {
-        static auto run(Functor* /*functor_ptr*/, std::size_t /*flat_idx*/, ArgumentTuple&& /*argument_tuple*/) -> R {
+        static auto run(Functor* /*functor_ptr*/, std::size_t /*flat_idx*/, ArgumentTuple&& /*argument_tuple*/) -> R { // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
             POET_UNREACHABLE();
             if constexpr (!std::is_void_v<R>) {
                 return R{};
@@ -805,6 +809,7 @@ namespace detail {
             template<typename R, typename VE, std::size_t... SeqIdx>
             static auto call_value_form(Functor* func, ArgumentTuple&& args, [[maybe_unused]] std::index_sequence<SeqIdx...> idxs) -> R {
                 POET_ASSUME_NOT_NULL(func);
+                ArgumentTuple local_args = std::move(args);
                 if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 0) {
                     if constexpr (std::is_void_v<R>) {
                         (*func)(typename VE::template ic<SeqIdx>{}...);
@@ -816,12 +821,12 @@ namespace detail {
                     if constexpr (std::is_void_v<R>) {
                         std::apply([func](auto&&... arg) -> void {
                             (*func)(typename VE::template ic<SeqIdx>{}..., std::forward<decltype(arg)>(arg)...);
-                        }, std::move(args));
+                        }, std::move(local_args));
                         return;
                     } else {
                         return std::apply([func](auto&&... arg) -> R {
                             return (*func)(typename VE::template ic<SeqIdx>{}..., std::forward<decltype(arg)>(arg)...);
-                        }, std::move(args));
+                        }, std::move(local_args));
                     }
                 }
             }
@@ -829,6 +834,7 @@ namespace detail {
             template<typename R, typename VE, std::size_t... SeqIdx>
             static auto call_template_form(Functor* func, ArgumentTuple&& args, [[maybe_unused]] std::index_sequence<SeqIdx...> idxs) -> R {
                 POET_ASSUME_NOT_NULL(func);
+                ArgumentTuple local_args = std::move(args);
                 if constexpr (std::tuple_size_v<std::remove_reference_t<ArgumentTuple>> == 0) {
                     if constexpr (std::is_void_v<R>) {
                         func->template operator()<VE::template ic<SeqIdx>::value...>();
@@ -840,12 +846,12 @@ namespace detail {
                     if constexpr (std::is_void_v<R>) {
                         std::apply([func](auto&&... arg) -> void {
                             func->template operator()<VE::template ic<SeqIdx>::value...>(std::forward<decltype(arg)>(arg)...);
-                        }, std::move(args));
+                        }, std::move(local_args));
                         return;
                     } else {
                         return std::apply([func](auto&&... arg) -> R {
                             return func->template operator()<VE::template ic<SeqIdx>::value...>(std::forward<decltype(arg)>(arg)...);
-                        }, std::move(args));
+                        }, std::move(local_args));
                     }
                 }
             }
@@ -853,6 +859,7 @@ namespace detail {
             template<typename R, std::size_t... SeqIdx>
             static auto call_impl(Functor* func, ArgumentTuple&& args, std::index_sequence<SeqIdx...> /*idxs*/) -> R {
                 using VE = value_extractor<FlatIdx, SeqIdx...>;
+                ArgumentTuple local_args = std::move(args);
 
                 // Detect which form the functor supports: template parameters or integral_constant values
                 constexpr bool use_value_form = []() POET_CPP20_CONSTEVAL -> bool {
@@ -868,15 +875,16 @@ namespace detail {
                 }();
 
                 if constexpr (use_value_form) {
-                    return call_value_form<R, VE>(func, std::move(args), std::index_sequence<SeqIdx...>{});
+                    return call_value_form<R, VE>(func, std::move(local_args), std::index_sequence<SeqIdx...>{});
                 } else {
-                    return call_template_form<R, VE>(func, std::move(args), std::index_sequence<SeqIdx...>{});
+                    return call_template_form<R, VE>(func, std::move(local_args), std::index_sequence<SeqIdx...>{});
                 }
             }
 
             template<typename R>
             static auto call(Functor* func, ArgumentTuple&& args) -> R {
-                return call_impl<R>(func, std::move(args), std::make_index_sequence<sizeof...(Seqs)>{});
+                ArgumentTuple local_args = std::move(args);
+                return call_impl<R>(func, std::move(local_args), std::make_index_sequence<sizeof...(Seqs)>{});
             }
         };
 
@@ -961,12 +969,12 @@ namespace detail {
                         poet_dispatch_nd_label_##N:                                                        \
                         if constexpr ((N) < chunk_size) {                                                  \
                             if constexpr (std::is_void_v<R>) {                                             \
-                                helper_t::template nd_index_caller<Base + (N)>::template call<void>(      \
-                                  functor_ptr, std::move(argument_tuple));                                 \
+                                                                helper_t::template nd_index_caller<Base + (N)>::template call<void>(      \
+                                                                    functor_ptr, std::forward<ArgumentTuple>(argument_tuple));                                 \
                                 return;                                                                     \
                             } else {                                                                        \
-                                return helper_t::template nd_index_caller<Base + (N)>::template call<R>(   \
-                                  functor_ptr, std::move(argument_tuple));                                 \
+                                                                return helper_t::template nd_index_caller<Base + (N)>::template call<R>(   \
+                                                                    functor_ptr, std::forward<ArgumentTuple>(argument_tuple));                                 \
                             }                                                                               \
                         } else {                                                                            \
                             POET_UNREACHABLE();                                                             \
@@ -976,19 +984,19 @@ namespace detail {
                     #undef POET_GOTO_LABELS_64
                 } else {
                     if constexpr (std::is_void_v<R>) {
-                        run_chunk<Base + k_computed_goto_chunk_size>(
-                          functor_ptr, flat_idx, std::move(argument_tuple));
+                                                run_chunk<Base + k_computed_goto_chunk_size>(
+                                                    functor_ptr, flat_idx, std::forward<ArgumentTuple>(argument_tuple));
                         return;
                     } else {
-                        return run_chunk<Base + k_computed_goto_chunk_size>(
-                          functor_ptr, flat_idx, std::move(argument_tuple));
+                                                return run_chunk<Base + k_computed_goto_chunk_size>(
+                                                    functor_ptr, flat_idx, std::forward<ArgumentTuple>(argument_tuple));
                     }
                 }
             }
         }
 
         static POET_NOINLINE auto run(Functor* functor_ptr, std::size_t flat_idx, ArgumentTuple&& argument_tuple) -> R {
-            return run_chunk<0>(functor_ptr, flat_idx, std::move(argument_tuple));
+            return run_chunk<0>(functor_ptr, flat_idx, std::forward<ArgumentTuple>(argument_tuple));
         }
     };
 #endif
@@ -1081,21 +1089,21 @@ namespace detail {
             if constexpr ((POET_STATIC_DISPATCH_BACKEND == POET_STATIC_DISPATCH_BACKEND_COMPUTED_GOTO)
                           && POET_HAS_COMPUTED_GOTO) {
                 if constexpr (std::is_void_v<R>) {
-                    dispatch_1d_computed_goto<Seq, R, FunctorT, argument_tuple_type>(
-                      functor_ptr, *idx, std::move(argument_tuple));
+                                        dispatch_1d_computed_goto<Seq, R, FunctorT, argument_tuple_type>(
+                                            functor_ptr, *idx, std::forward<argument_tuple_type>(argument_tuple));
                     return;
                 } else {
-                    return dispatch_1d_computed_goto<Seq, R, FunctorT, argument_tuple_type>(
-                      functor_ptr, *idx, std::move(argument_tuple));
+                                        return dispatch_1d_computed_goto<Seq, R, FunctorT, argument_tuple_type>(
+                                            functor_ptr, *idx, std::forward<argument_tuple_type>(argument_tuple));
                 }
             } else {
                 if constexpr (std::is_void_v<R>) {
                     static constexpr auto table = make_dispatch_table_void<FunctorT, argument_tuple_type>(Seq{});
-                    table[*idx](functor_ptr, std::move(argument_tuple));
+                                        table[*idx](functor_ptr, std::forward<argument_tuple_type>(argument_tuple));
                     return;
                 } else {
                     static constexpr auto table = make_dispatch_table<FunctorT, argument_tuple_type, R>(Seq{});
-                    return table[*idx](functor_ptr, std::move(argument_tuple));
+                                        return table[*idx](functor_ptr, std::forward<argument_tuple_type>(argument_tuple));
                 }
             }
         } else {
@@ -1133,21 +1141,21 @@ namespace detail {
             if constexpr ((POET_STATIC_DISPATCH_BACKEND == POET_STATIC_DISPATCH_BACKEND_COMPUTED_GOTO)
                           && POET_HAS_COMPUTED_GOTO) {
                 if constexpr (std::is_void_v<R>) {
-                    nd_computed_goto_dispatcher<R, FunctorT, argument_tuple_type, sequences_t>::run(
-                      functor_ptr, flat_idx, std::move(argument_tuple));
+                                        nd_computed_goto_dispatcher<R, FunctorT, argument_tuple_type, sequences_t>::run(
+                                            functor_ptr, flat_idx, std::forward<argument_tuple_type>(argument_tuple));
                     return;
                 } else {
-                    return nd_computed_goto_dispatcher<R, FunctorT, argument_tuple_type, sequences_t>::run(
-                      functor_ptr, flat_idx, std::move(argument_tuple));
+                                        return nd_computed_goto_dispatcher<R, FunctorT, argument_tuple_type, sequences_t>::run(
+                                            functor_ptr, flat_idx, std::forward<argument_tuple_type>(argument_tuple));
                 }
             } else {
                 if constexpr (std::is_void_v<R>) {
                     static constexpr auto table = make_nd_dispatch_table_void<FunctorT, argument_tuple_type>(sequences);
-                    table[flat_idx](functor_ptr, std::move(argument_tuple));
+                                        table[flat_idx](functor_ptr, std::forward<argument_tuple_type>(argument_tuple));
                     return;
                 } else {
                     static constexpr auto table = make_nd_dispatch_table<FunctorT, argument_tuple_type, R>(sequences);
-                    return table[flat_idx](functor_ptr, std::move(argument_tuple));
+                                        return table[flat_idx](functor_ptr, std::forward<argument_tuple_type>(argument_tuple));
                 }
             }
         } else {
