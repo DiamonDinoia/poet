@@ -34,11 +34,26 @@ namespace detail {
     /// \tparam BlockIndices Indices for the blocks (0, 1, ...).
     template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t BlockSize, std::size_t... BlockIndices>
     POET_FORCEINLINE constexpr void static_loop_emit_all_blocks(Func &func, std::index_sequence<BlockIndices...> /*blocks*/) {
-        // Wrap block indices into integral_constants in a tuple.
-        // This tuple is then processed recursively by emit_all_blocks to avoid excessive
-        // instantiation depth that a single fold expression over all blocks might cause.
         using blocks_tuple = std::tuple<std::integral_constant<std::size_t, BlockIndices>...>;
-        emit_all_blocks<Func, Begin, Step, BlockSize>(func, blocks_tuple{});
+        emit_all_blocks<Func, Begin, Step, BlockSize, blocks_tuple>(func);
+    }
+
+    template<typename Callable,
+      std::intmax_t Begin,
+      std::intmax_t Step,
+      std::size_t BlockSize,
+      std::size_t FullBlocks,
+      std::size_t Remainder>
+    POET_FORCEINLINE constexpr void static_loop_run_blocks(Callable &callable) {
+        if constexpr (FullBlocks > 0) {
+            static_loop_emit_all_blocks<Callable, Begin, Step, BlockSize>(
+              callable, std::make_index_sequence<FullBlocks>{});
+        }
+
+        if constexpr (Remainder > 0) {
+            static_loop_impl_block<Callable, Begin, Step, FullBlocks * BlockSize>(
+              callable, std::make_index_sequence<Remainder>{});
+        }
     }
 
     /// \brief Computes a safe default block size for loop unrolling.
@@ -52,11 +67,15 @@ namespace detail {
     /// \tparam Step Range step.
     /// \return Optimized block size.
     template<std::intmax_t Begin, std::intmax_t End, std::intmax_t Step>
-    constexpr auto compute_default_static_loop_block_size() noexcept -> std::size_t {
+    POET_CPP20_CONSTEVAL auto compute_default_static_loop_block_size() noexcept -> std::size_t {
         constexpr auto count = detail::compute_range_count<Begin, End, Step>();
-        if constexpr (count == 0) { return 1; }
-        if constexpr (count > detail::kMaxStaticLoopBlock) { return detail::kMaxStaticLoopBlock; }
-        return count;
+        if constexpr (count == 0) {
+            return 1;
+        } else if constexpr (count > detail::kMaxStaticLoopBlock) {
+            return detail::kMaxStaticLoopBlock;
+        } else {
+            return count;
+        }
     }
 
     /// \brief Core loop driver.
@@ -72,56 +91,27 @@ namespace detail {
     /// \tparam Func Callable type.
     /// \param func Callable to invoke.
 
-        // POET_PUSH_OPTIMIZE: Apply aggressive optimizations to static_loop only.
-        //
-        // Why only on static_loop (not static_for)?
-        // - static_loop is the implementation workhorse where actual code emission happens
-        // - static_for is a thin wrapper that just dispatches to static_loop
-        // - Optimizing static_loop is sufficient because POET_FORCEINLINE + POET_FLATTEN
-        //   on static_for cause it to inline completely into the caller
-        //
-        // Optimization propagation:
-        // - Caller → static_for (inlined via POET_FLATTEN)
-        // - static_for → static_loop (inlined via POET_FORCEINLINE)
-        // - Result: Optimizations applied to static_loop effectively apply to the
-        //   entire call chain through inlining
-        //
-        // This approach avoids redundant PUSH/POP pairs while ensuring the hot path
-        // (static_loop's code emission) gets full optimization.
-        POET_PUSH_OPTIMIZE
-        template<std::intmax_t Begin,
-            std::intmax_t End,
-            std::intmax_t Step = 1,
-            std::size_t BlockSize = compute_default_static_loop_block_size<Begin, End, Step>(),
-            typename Func>
-        POET_FORCEINLINE POET_FLATTEN constexpr void static_loop(Func &&func) {
+    POET_PUSH_OPTIMIZE
+    template<std::intmax_t Begin,
+      std::intmax_t End,
+      std::intmax_t Step = 1,
+      std::size_t BlockSize = compute_default_static_loop_block_size<Begin, End, Step>(),
+      typename Func>
+    POET_FORCEINLINE POET_FLATTEN constexpr void static_loop(Func &&func) {
         static_assert(BlockSize > 0, "static_loop requires BlockSize > 0");
-        using Callable = std::remove_reference_t<Func>;
-        // Create a local copy of the callable to ensure state persistence across block calls
-        // if passed by rvalue, or bind a reference if passed by lvalue.
-        // This is crucial for stateful functors.
-        Callable callable(std::forward<Func>(func));
 
         constexpr auto count = detail::compute_range_count<Begin, End, Step>();
         if constexpr (count == 0) { return; }
 
-        // Calculate partitioning
         constexpr auto full_blocks = count / BlockSize;
         constexpr auto remainder = count % BlockSize;
 
-        // 1. Process all full blocks
-        // delegating to static_loop_emit_all_blocks which handles recursion limits
-        if constexpr (full_blocks > 0) {
-            static_loop_emit_all_blocks<Callable, Begin, Step, BlockSize>(
-              callable, std::make_index_sequence<full_blocks>{});
-        }
-
-        // 2. Process remaining tail elements
-        // The tail block is always smaller than BlockSize, so we can emit it directly
-        // as a single block.
-        if constexpr (remainder > 0) {
-            static_loop_impl_block<Callable, Begin, Step, full_blocks * BlockSize>(
-              callable, std::make_index_sequence<remainder>{});
+        if constexpr (std::is_lvalue_reference_v<Func>) {
+            static_loop_run_blocks<std::remove_reference_t<Func>, Begin, Step, BlockSize, full_blocks, remainder>(func);
+        } else {
+            std::remove_reference_t<Func> callable(std::forward<Func>(func));
+            static_loop_run_blocks<std::remove_reference_t<Func>, Begin, Step, BlockSize, full_blocks, remainder>(
+              callable);
         }
     }
     POET_POP_OPTIMIZE
@@ -162,47 +152,16 @@ template<std::intmax_t Begin,
     std::intmax_t Step = 1,
     std::size_t BlockSize = detail::compute_default_static_loop_block_size<Begin, End, Step>(),
     typename Func>
-// POET_FLATTEN on public API: Enables cross-translation-unit (cross-TU) inlining.
-//
-// Why it's critical for public APIs:
-// - Without POET_FLATTEN: Callers from other TUs see static_for as an opaque
-//   function call, even with inline keyword. Compiler can't see through the
-//   call boundary, losing optimization context.
-// - With POET_FLATTEN: Compiler inlines static_for AND all its callees
-//   (static_loop, helper functions) into the caller's TU, exposing the full
-//   unrolled loop to the optimizer.
-//
-// Public API vs internal functions:
-// - Public APIs (static_for, dynamic_for): MUST have POET_FLATTEN for cross-TU
-//   inlining. These are called from user code in different translation units.
-// - Internal functions (static_loop_impl_block): Don't need POET_FLATTEN
-//   because they're only called within the same TU where they're defined.
-//   Normal inlining suffices.
-//
-// Performance impact:
-// - With POET_FLATTEN: Full unrolling visible to caller's optimizer
-// - Without POET_FLATTEN: Opaque call, optimizer can't see loop structure,
-//   can't perform loop-specific optimizations (vectorization, constant folding)
 POET_FORCEINLINE POET_FLATTEN constexpr void static_for(Func &&func) {
-    // Check if the user functor accepts an integral_constant index directly.
     if constexpr (std::is_invocable_v<Func, std::integral_constant<std::intmax_t, Begin>>) {
-        // Direct invocation mode: simply forward to static_loop.
         detail::static_loop<Begin, End, Step, BlockSize>(std::forward<Func>(func));
     } else {
-        // Template operator invocation mode (func.template operator()<I>()).
-        // We wrap the functor in a helper (template_static_loop_invoker) that exposes
-        // the integral_constant call operator expected by the backend.
-
         using Functor = std::remove_reference_t<Func>;
 
         if constexpr (std::is_lvalue_reference_v<Func>) {
-            // If we got an lvalue reference, we must keep referring to the original object
-            // to allow state mutation.
             const detail::template_static_loop_invoker<Functor> invoker{ &func };
             detail::static_loop<Begin, End, Step, BlockSize>(invoker);
         } else {
-            // If we got an rvalue, we move-construct a local copy to keep it alive
-            // during the loop execution.
             Functor functor(std::forward<Func>(func));
             const detail::template_static_loop_invoker<Functor> invoker{ &functor };
             detail::static_loop<Begin, End, Step, BlockSize>(invoker);
