@@ -6,8 +6,8 @@
 ///
 /// This header defines `dynamic_for`, a utility that allows executing a loop
 /// where the range is determined at runtime, but the body is unrolled at
-/// compile-time. This is achieved by combining `static_for` for the bulk of
-/// iterations and a runtime loop (or dispatch) strategy.
+/// compile-time. This is achieved by emitting unrolled blocks and a runtime
+/// loop over those blocks.
 
 #include <cmath>
 #include <cstddef>
@@ -17,7 +17,6 @@
 #include <utility>
 
 #include <poet/core/macros.hpp>
-#include <poet/core/static_dispatch.hpp>
 #include <poet/core/static_for.hpp>
 
 namespace poet {
@@ -34,56 +33,97 @@ namespace detail {
     /// \tparam Func Type of the user-provided callable.
     /// \tparam T Type of the loop counter (e.g., int, size_t).
     template<typename Func, typename T> struct dynamic_block_invoker {
-        Func *func;
+        Func * POET_RESTRICT func;
         T base;
         T stride;
 
-        template<auto I> constexpr void operator()() const {
-            // Invoke the user lambda with the current runtime index.
-            // The runtime index is computed as: base + (compile_time_offset * stride).
+        // Direct compile-time integral_constant invocation used by `static_for`'s
+        // direct-invocation path. This avoids the extra `template_static_loop_
+        // invoker` adapter and lets the compiler call this functor directly
+        // with an `std::integral_constant` index.
+        template<std::intmax_t Value>
+        POET_FORCEINLINE constexpr void operator()(std::integral_constant<std::intmax_t, Value> /*ic*/) const {
+            (*func)(base + (static_cast<T>(Value) * stride));
+        }
+
+        // Preserve the template<auto I> operator<> overload to support other
+        // call sites that expect the template operator form.
+        template<auto I>
+        POET_FORCEINLINE constexpr void operator()() const {
             (*func)(base + (static_cast<T>(I) * stride));
         }
     };
 
+    /// \brief Calculate iteration count for non-trivial strides (helper to reduce cognitive complexity).
+    template<typename T>
+    POET_FORCEINLINE auto calculate_iteration_count_complex(T begin, T end, T stride) -> std::size_t {
+        constexpr bool is_unsigned = !std::is_signed_v<T>;
+        constexpr T half_max = std::numeric_limits<T>::max() / 2;
+        const bool is_wrapped_negative = is_unsigned && (stride > half_max);
+
+        if (POET_UNLIKELY(stride < 0 || is_wrapped_negative)) {
+            // Backward iteration
+            if (POET_UNLIKELY(begin <= end)) {
+                return 0;
+            }
+            T abs_stride;
+            if constexpr (std::is_signed_v<T>) {
+                abs_stride = static_cast<T>(-stride);
+            } else {
+                abs_stride = static_cast<T>(0) - stride;
+            }
+            auto dist = static_cast<std::size_t>(begin - end);
+            auto ustride = static_cast<std::size_t>(abs_stride);
+            return (dist + ustride - 1) / ustride;
+        }
+
+        // Forward iteration with stride > 1
+        if (POET_UNLIKELY(begin >= end)) {
+            return 0;
+        }
+
+        auto dist = static_cast<std::size_t>(end - begin);
+        auto ustride = static_cast<std::size_t>(stride);
+        const bool is_power_of_2 = (ustride & (ustride - 1)) == 0;
+
+        if (POET_LIKELY(is_power_of_2)) {
+            const unsigned int shift = poet_count_trailing_zeros(ustride);
+            return (dist + ustride - 1) >> shift;
+        }
+        return (dist + ustride - 1) / ustride;
+    }
+
     /// \brief Emits a block of unrolled iterations.
     ///
-    /// Invokes `static_for` to generate `BlockSize` calls to the user function.
+    /// Emits `BlockSize` calls to the user function.
     /// This helper is used for both the main unrolled loop body and the
-    /// tail handling (where the block size is determined at runtime via dispatch).
+    /// tail handling.
     ///
     /// \tparam Func User callable type.
     /// \tparam T Loop counter type.
     /// \tparam BlockSize Number of iterations to unroll in this block.
     template<typename Func, typename T, std::size_t BlockSize>
-    POET_HOT_LOOP void execute_runtime_block([[maybe_unused]] Func &func, [[maybe_unused]] T base, [[maybe_unused]] T stride) {
+    POET_HOT_LOOP void execute_runtime_block([[maybe_unused]] Func * POET_RESTRICT func, [[maybe_unused]] T base, [[maybe_unused]] T stride) {
         if constexpr (BlockSize > 0) {
-            // Create an invoker that captures the user function and the current base index.
-            dynamic_block_invoker<Func, T> invoker{ &func, base, stride };
-
-            // Use static_for to generate exactly 'BlockSize' compile-time calls.
-            // We pass BlockSize as the unrolling factor to ensure a single unrolled block is emitted.
-            // The range [0, BlockSize) will be iterated.
+            dynamic_block_invoker<Func, T> invoker{ func, base, stride };
             static_for<0, static_cast<std::intmax_t>(BlockSize), 1, BlockSize>(invoker);
-        } else {
-            // Nothing to do when the block size is zero.
         }
     }
 
-    /// \brief Functor for dispatching the tail of a dynamic loop.
-    ///
-    /// When the stored `Tail` template parameter matches the runtime remainder,
-    /// this operator invokes `execute_runtime_block` with the correct
-    /// compile-time block size.
-    template<typename Callable, typename T> struct tail_caller_for_dynamic_for {
-        Callable *callable;
-        T stride;
-
-        template<int Tail> void operator()(T base) const {
-            // This function is instantiated by the dispatcher for a specific 'Tail' value.
-            // We call execute_runtime_block with 'Tail' as the compile-time block size.
-            execute_runtime_block<Callable, T, static_cast<std::size_t>(Tail)>(*callable, base, stride);
+    template<std::size_t N, typename Callable, typename T>
+    POET_FORCEINLINE void dispatch_tail_impl(std::size_t remaining, Callable &callable, T index, T stride) {
+        if constexpr (N == 0) {
+            return;
+        } else {
+            if (remaining == N) {
+                execute_runtime_block<Callable, T, N>(std::addressof(callable), index, stride);
+                return;
+            }
+            if constexpr (N > 1) {
+                dispatch_tail_impl<N - 1>(remaining, callable, index, stride);
+            }
         }
-    };
+    }
 
     /// \brief Internal implementation of the dynamic loop.
     ///
@@ -95,85 +135,37 @@ namespace detail {
     /// \param end Exclusive end of the iteration range.
     /// \param stride Step/increment value (can be negative for backward iteration).
     /// \param callable User-provided function to invoke for each index.
+    POET_PUSH_OPTIMIZE
     template<typename T, typename Callable, std::size_t Unroll>
-    POET_HOT_LOOP void dynamic_for_impl(T begin, T end, T stride, Callable &callable) {
+    POET_HOT_LOOP POET_FLATTEN void dynamic_for_impl(T begin, T end, T stride, Callable &callable) {
         if (POET_UNLIKELY(stride == 0)) { return; }
 
         // Calculate iteration count.
         // We determine the number of steps to go from `begin` to `end` exclusively.
         std::size_t count = 0;
 
-        // For unsigned types, detect wrapped negative values caused by implicit conversion.
-        // When users pass negative literals (e.g., -1, -5) to unsigned parameters, C++ performs
-        // implicit conversion via unsigned wrapping, resulting in very large positive values:
-        //   - For uint32_t: -1 → 4294967295 (UINT_MAX), -2 → 4294967294, etc.
-        //   - For uint64_t: -1 → 18446744073709551615 (ULLONG_MAX), -2 → 18446744073709551614, etc.
-        //
-        // Detection heuristic: Values > (max/2) are likely wrapped negatives.
-        // This works because:
-        //   1. Negative values -1 to -N map to [max, max-N+1] (all > max/2)
-        //   2. Normal positive strides are typically small (< max/2)
-        //   3. Edge case: Very large positive strides (> max/2) would be misidentified,
-        //      but such strides are impractical (would cause integer overflow in loops)
-        //
-        // Examples for uint32_t (max = 4294967295, half_max = 2147483647):
-        //   - stride = static_cast<uint32_t>(-1)  → 4294967295 > 2147483647 → detected as wrapped negative ✓
-        //   - stride = static_cast<uint32_t>(-5)  → 4294967291 > 2147483647 → detected as wrapped negative ✓
-        //   - stride = 100                        → 100 < 2147483647          → normal positive stride ✓
-        //   - stride = 1000000                    → 1000000 < 2147483647      → normal positive stride ✓
-        constexpr bool is_unsigned = !std::is_signed_v<T>;
-        constexpr T half_max = std::numeric_limits<T>::max() / 2;
-        const bool is_wrapped_negative = is_unsigned && (stride > half_max);
-
-        if (POET_UNLIKELY(stride < 0 || is_wrapped_negative)) {
-            // Backward iteration (negative stride or wrapped unsigned)
-            if (POET_UNLIKELY(begin <= end)) {
-                count = 0;
-            } else {
-                // Compute absolute stride value
-                T abs_stride;
-                if constexpr (std::is_signed_v<T>) {
-                    abs_stride = static_cast<T>(-stride);  // Safe for signed types
-                } else {
-                    // For unsigned wrapped values: unsigned(-1) → abs is 1
-                    abs_stride = static_cast<T>(0) - stride;  // Wrapping subtraction
-                }
-                auto dist = static_cast<std::size_t>(begin - end);
-                auto ustride = static_cast<std::size_t>(abs_stride);
-                count = (dist + ustride - 1) / ustride;
-            }
+        // Super-fast path: stride == 1 (most common case ~90%)
+        if (stride == 1 && begin < end) {
+            count = static_cast<std::size_t>(end - begin);
+        } else if (POET_UNLIKELY(stride == 1)) {
+            // Empty range with stride 1
+            return;
         } else {
-            // Forward iteration (stride > 0 and not wrapped) - COMMON CASE
-            if (POET_UNLIKELY(begin >= end)) {
-                count = 0;
-            } else {
-                // Logic for positive stride:
-                // dist = end - begin
-                // count = ceil(dist / stride) = (dist + stride - 1) / stride
-                //
-                // Optimization: For power-of-2 strides, replace expensive division with bit shift.
-                // This is a common case (strides of 1, 2, 4, 8, 16 are typical in DSP/linear algebra).
-                auto dist = static_cast<std::size_t>(end - begin);
-                auto ustride = static_cast<std::size_t>(stride);
-
-                // Check if stride is a power of 2: (x & (x-1)) == 0 for powers of 2.
-                // Note: 0 is not a power of 2, but we already checked stride == 0 at the top.
-                const bool is_power_of_2 = (ustride & (ustride - 1)) == 0;
-
-                if (POET_LIKELY(is_power_of_2)) {
-                    // Fast path: Use bit shift for power-of-2 division.
-                    // count = ceil(dist / stride) = (dist + stride - 1) >> log2(stride)
-                    const unsigned int shift = poet_count_trailing_zeros(ustride);
-                    count = (dist + ustride - 1) >> shift;
-                } else {
-                    // General path: Use division for non-power-of-2 strides.
-                    count = (dist + ustride - 1) / ustride;
-                }
-            }
+            // Complex path for stride != 1 - delegate to helper function
+            count = calculate_iteration_count_complex(begin, end, stride);
         }
 
         T index = begin;
         std::size_t remaining = count;
+
+        // Fast path for tiny ranges: avoid any tail dispatch overhead.
+        if (POET_UNLIKELY(count < Unroll)) {
+            for (std::size_t i = 0; i < count; ++i) {
+                callable(index);
+                index += stride;
+            }
+            return;
+        }
 
         // Execute full blocks of size 'Unroll'.
         // We use a runtime while loop here, but the body (execute_runtime_block)
@@ -181,43 +173,37 @@ namespace detail {
         // Optimization: Hoist loop-invariant multiplication out of the loop.
         const T stride_times_unroll = static_cast<T>(Unroll) * stride;
         while (remaining >= Unroll) {
-            detail::execute_runtime_block<Callable, T, Unroll>(callable, index, stride);
+            detail::execute_runtime_block<Callable, T, Unroll>(std::addressof(callable), index, stride);
             index += stride_times_unroll;
             remaining -= Unroll;
         }
 
-        // Handle remaining iterations (tail).
+        // Handle remaining iterations (tail) using a fully inlined dispatch chain.
         if constexpr (Unroll > 1) {
             if (POET_UNLIKELY(remaining > 0)) {
-                // Dispatch the runtime 'remaining' count to a compile-time template instantiation.
-                // This ensures even the tail is unrolled, avoiding a runtime loop for the last few elements.
-                const detail::tail_caller_for_dynamic_for<Callable, T> tail_caller{ &callable, stride };
-                // Define the allowed range of tail sizes: [0, Unroll - 1].
-                using TailRange = poet::make_range<0, (static_cast<int>(Unroll) - 1)>;
-                auto params = std::make_tuple(poet::DispatchParam<TailRange>{ static_cast<int>(remaining) });
-                // Invoke dispatch. This will find the matching CompileTimeTail in TailRange
-                // and call tail_caller.operator()<CompileTimeTail>(index).
-                poet::dispatch(tail_caller, params, index);
+                detail::dispatch_tail_impl<Unroll - 1>(remaining, callable, index, stride);
             }
         }
     }
+
+    POET_POP_OPTIMIZE
 
 }// namespace detail
 
 /// \brief Executes a runtime-sized loop using compile-time unrolling.
 ///
 /// The helper iterates over the half-open range `[begin, end)` with a given
-/// `step`. Blocks of `Unroll` iterations are dispatched through `static_for`.
+/// `step`. Blocks of `Unroll` iterations are emitted via compile-time unrolling.
 ///
 /// \tparam Unroll Number of iterations emitted per unrolled block.
 /// \param begin Inclusive lower/start bound.
 /// \param end Exclusive upper/end bound.
 /// \param step Increment per iteration. Can be negative.
 /// \param func Callable invoked for each iteration.
-constexpr std::size_t kDefaultUnroll = 8;
+constexpr std::size_t kDefaultUnroll = 4;
 
 template<std::size_t Unroll = kDefaultUnroll, typename T1, typename T2, typename T3, typename Func>
-inline void dynamic_for(T1 begin, T2 end, T3 step, Func &&func) {
+inline POET_FLATTEN void dynamic_for(T1 begin, T2 end, T3 step, Func &&func) {
     static_assert(Unroll > 0, "dynamic_for requires Unroll > 0");
     static_assert(
       Unroll <= detail::kMaxStaticLoopBlock, "dynamic_for supports unroll factors up to kMaxStaticLoopBlock");
@@ -225,11 +211,15 @@ inline void dynamic_for(T1 begin, T2 end, T3 step, Func &&func) {
     using T = std::common_type_t<T1, T2, T3>;
     using Callable = std::remove_reference_t<Func>;
 
-    [[maybe_unused]] Callable callable(std::forward<Func>(func));
-
-    // Delegate to implementation
-    detail::dynamic_for_impl<T, Callable, Unroll>(
-      static_cast<T>(begin), static_cast<T>(end), static_cast<T>(step), callable);
+    if constexpr (std::is_lvalue_reference_v<Func>) {
+        // Avoid copying lvalue callables in hot paths.
+        detail::dynamic_for_impl<T, std::remove_reference_t<Func>, Unroll>(
+          static_cast<T>(begin), static_cast<T>(end), static_cast<T>(step), func);
+    } else {
+        [[maybe_unused]] Callable callable(std::forward<Func>(func));
+        detail::dynamic_for_impl<T, Callable, Unroll>(
+          static_cast<T>(begin), static_cast<T>(end), static_cast<T>(step), callable);
+    }
 }
 
 /// \brief Executes a runtime-sized loop using compile-time unrolling with
@@ -238,7 +228,7 @@ inline void dynamic_for(T1 begin, T2 end, T3 step, Func &&func) {
 /// If `begin <= end`, step is +1.
 /// If `begin > end`, step is -1.
 template<std::size_t Unroll = kDefaultUnroll, typename T1, typename T2, typename Func>
-inline void dynamic_for(T1 begin, T2 end, Func &&func) {
+inline POET_FLATTEN void dynamic_for(T1 begin, T2 end, Func &&func) {
     using T = std::common_type_t<T1, T2>;
     T s_begin = static_cast<T>(begin);
     T s_end = static_cast<T>(end);

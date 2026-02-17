@@ -151,17 +151,32 @@ namespace detail {
         }
     }
 
+    // Forward declaration of out-of-line invocation helper so it is visible
+    // when used inside `template_static_loop_invoker::operator()`.
+    template<typename Functor, std::intmax_t Value>
+    void invoke_template_operator(Functor *functor);
+
     template<typename Functor> struct template_static_loop_invoker {
         Functor *functor;
 
         // Adapter operator:
         // Receives an std::integral_constant<int, Value> from implementation internals.
         // Unpacks 'Value' and calls the user's template operator<Value>().
+        // We call a small out-of-line helper to avoid forcing the caller to
+        // inline every `operator()<Value>` instantiation. This reduces the
+        // size of the unrolled caller bodies and improves instruction-cache
+        // behavior and register allocation for large unrolls. The helper is
+        // marked `POET_NOINLINE` so it is emitted as a separate function.
         template<std::intmax_t Value>
         POET_FORCEINLINE constexpr void operator()(std::integral_constant<std::intmax_t, Value> /*integral_constant*/) const {
+            // Always inline: directly invoke the functor template operator.
+            // This forces the compiler to inline the per-index body for
+            // small/unrolled loops, removing the call overhead introduced by
+            // an out-of-line helper.
             (*functor).template operator()<Value>();
         }
     };
+    // No out-of-line helper: keep bodies inline for maximum optimization.
 
 }// namespace detail
 

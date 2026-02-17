@@ -71,12 +71,13 @@ namespace detail {
     /// \tparam BlockSize Number of iterations per block.
     /// \tparam Func Callable type.
     /// \param func Callable to invoke.
-    template<std::intmax_t Begin,
-      std::intmax_t End,
-      std::intmax_t Step = 1,
-      std::size_t BlockSize = compute_default_static_loop_block_size<Begin, End, Step>(),
-      typename Func>
-    POET_FORCEINLINE constexpr void static_loop(Func &&func) {
+        POET_PUSH_OPTIMIZE
+        template<std::intmax_t Begin,
+            std::intmax_t End,
+            std::intmax_t Step = 1,
+            std::size_t BlockSize = compute_default_static_loop_block_size<Begin, End, Step>(),
+            typename Func>
+        POET_FORCEINLINE POET_FLATTEN constexpr void static_loop(Func &&func) {
         static_assert(BlockSize > 0, "static_loop requires BlockSize > 0");
         using Callable = std::remove_reference_t<Func>;
         // Create a local copy of the callable to ensure state persistence across block calls
@@ -106,6 +107,7 @@ namespace detail {
               callable, std::make_index_sequence<remainder>{});
         }
     }
+    POET_POP_OPTIMIZE
 
 }// namespace detail
 
@@ -139,11 +141,11 @@ namespace detail {
 /// \tparam Func Callable type.
 /// \param func Callable instance invoked once per iteration.
 template<std::intmax_t Begin,
-  std::intmax_t End,
-  std::intmax_t Step = 1,
-  std::size_t BlockSize = detail::compute_default_static_loop_block_size<Begin, End, Step>(),
-  typename Func>
-POET_FORCEINLINE constexpr void static_for(Func &&func) {
+    std::intmax_t End,
+    std::intmax_t Step = 1,
+    std::size_t BlockSize = detail::compute_default_static_loop_block_size<Begin, End, Step>(),
+    typename Func>
+POET_FORCEINLINE POET_FLATTEN constexpr void static_for(Func &&func) {
     // Check if the user functor accepts an integral_constant index directly.
     if constexpr (std::is_invocable_v<Func, std::integral_constant<std::intmax_t, Begin>>) {
         // Direct invocation mode: simply forward to static_loop.
@@ -176,7 +178,7 @@ POET_FORCEINLINE constexpr void static_for(Func &&func) {
 ///
 /// \tparam End Exclusive upper bound of the range.
 /// \param func Callable instance invoked once per iteration.
-template<std::intmax_t End, typename Func> POET_FORCEINLINE constexpr void static_for(Func &&func) {
+template<std::intmax_t End, typename Func> POET_FORCEINLINE POET_FLATTEN constexpr void static_for(Func &&func) {
     static_for<0, End>(std::forward<Func>(func));
 }
 

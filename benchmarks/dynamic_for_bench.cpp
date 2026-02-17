@@ -1,6 +1,7 @@
 #include <cstddef>
 #include <string>
-
+#include <chrono>
+using namespace std::chrono_literals;
 #include <nanobench.h>
 
 #include <poet/core/dynamic_for.hpp>
@@ -39,7 +40,7 @@ void benchmark_range(ankerl::nanobench::Bench &bench, std::size_t begin, std::si
         ankerl::nanobench::doNotOptimizeAway(result);
     });
 
-    const std::string manual_label = std::string("manual for ") + label_suffix;
+    const std::string manual_label = std::string("for ") + label_suffix;
     bench.run(manual_label, [=] {
         const auto result = manual_sum(begin, end);
         ankerl::nanobench::doNotOptimizeAway(result);
@@ -50,8 +51,8 @@ void benchmark_range(ankerl::nanobench::Bench &bench, std::size_t begin, std::si
 
 void run_dynamic_for_benchmarks() {
     ankerl::nanobench::Bench bench;
-    bench.title("dynamic_for vs manual loop");
-    bench.minEpochIterations(min_epoch_iterations);
+    bench.title("dynamic_for vs for loop");
+    bench.minEpochTime(10ms);
 
     benchmark_range(bench, 0, small_count, "small range");
     benchmark_range(bench, 0, large_count, "large range");
