@@ -13,7 +13,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <tuple>
-#include <type_traits>
 #include <utility>
 
 #include <poet/core/macros.hpp>
@@ -42,7 +41,7 @@ namespace detail {
     /// \tparam Step Iteration step (must be non-zero).
     /// \return The number of steps required to traverse from Begin to End.
     template<std::intmax_t Begin, std::intmax_t End, std::intmax_t Step>
-    [[nodiscard]] constexpr auto compute_range_count() noexcept -> std::size_t {
+    [[nodiscard]] POET_CPP20_CONSTEVAL auto compute_range_count() noexcept -> std::size_t {
         static_assert(Step != 0, "static_for requires a non-zero step");
 
         if constexpr (Step > 0) {
@@ -57,8 +56,6 @@ namespace detail {
             const auto magnitude = -Step;
             return static_cast<std::size_t>((distance + magnitude - 1) / magnitude);
         }
-        // Unreachable: all cases covered by if constexpr branches above
-        POET_UNREACHABLE();
     }
 
     /// \brief Executes a single block of unrolled loop iterations.
@@ -86,10 +83,7 @@ namespace detail {
         (func(std::integral_constant<std::intmax_t, Base + (Step * static_cast<std::intmax_t>(Is))>{}), ...);
     }
 
-    /// \brief Processes a chunk of loop blocks.
-    ///
-    /// Recursively invokes `static_loop_impl_block` for a subset of the total blocks.
-    /// Used to decompose very large loops into smaller compilation units.
+    /// \brief Emits a chunk of full blocks.
     template<typename Func,
       std::intmax_t Begin,
       std::intmax_t Step,
@@ -97,14 +91,7 @@ namespace detail {
       std::size_t Offset,
       typename Tuple,
       std::size_t... Is>
-    POET_FORCEINLINE constexpr void emit_block_chunk(Func &func, const Tuple & /*tuple*/, std::index_sequence<Is...> /*indices*/) {
-        // This function processes a "chunk" of blocks to limit recursion depth.
-        // It iterates over `Is...` (0 to ChunkSize-1).
-        // For each `i` in `Is`:
-        //   - `tuple` contains the block indices {0, 1, 2, ... FullBlocks-1}.
-        //   - We access the block index at `Offset + i`.
-        //   - We convert that block index into a global start index: `block_index * BlockSize`.
-        //   - We call `static_loop_impl_block` to emit the iterations for that block.
+    POET_FORCEINLINE constexpr void emit_block_chunk(Func &func, std::index_sequence<Is...> /*indices*/) {
         (static_loop_impl_block<Func, Begin, Step, std::tuple_element_t<Offset + Is, Tuple>::value * BlockSize>(
            func, std::make_index_sequence<BlockSize>{}),
           ...);
@@ -117,66 +104,43 @@ namespace detail {
       typename Tuple,
       std::size_t Offset,
       std::size_t Remaining>
-    POET_FORCEINLINE constexpr void emit_all_blocks_from_tuple(Func &func, const Tuple &tuple) {
-        // Recursive function used to iterate over the tuple of block indices.
-        // It consumes 'chunk_size' blocks at a time, where 'chunk_size' is capped
-        // by kMaxStaticLoopBlock. This prevents generating a single massive fold
-        // expression for loops with thousands of blocks (e.g., 10k iterations unrolled).
+    POET_FORCEINLINE constexpr void emit_all_blocks_from_tuple(Func &func) {
         if constexpr (Remaining > 0) {
             constexpr auto chunk_size = Remaining < kMaxStaticLoopBlock ? Remaining : kMaxStaticLoopBlock;
 
-            // Emit the current chunk of blocks.
-            emit_block_chunk<Func, Begin, Step, BlockSize, Offset>(func, tuple, std::make_index_sequence<chunk_size>{});
+            emit_block_chunk<Func, Begin, Step, BlockSize, Offset, Tuple>(func, std::make_index_sequence<chunk_size>{});
 
-            // Recursively process the rest of the blocks.
             emit_all_blocks_from_tuple<Func,
               Begin,
               Step,
               BlockSize,
               Tuple,
               Offset + chunk_size,
-              Remaining - chunk_size>(func, tuple);
-        } else {
-            // Base case: no blocks remaining.
+              Remaining - chunk_size>(func);
         }
     }
 
     template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t BlockSize, typename Tuple>
-    POET_FORCEINLINE constexpr void emit_all_blocks(Func &func, const Tuple &tuple) {
+    POET_FORCEINLINE constexpr void emit_all_blocks(Func &func) {
         constexpr auto total_blocks = std::tuple_size_v<Tuple>;
         if constexpr (total_blocks > 0) {
-            emit_all_blocks_from_tuple<Func, Begin, Step, BlockSize, Tuple, 0, total_blocks>(func, tuple);
-        } else {
-            // Zero blocks to emit.
+            emit_all_blocks_from_tuple<Func, Begin, Step, BlockSize, Tuple, 0, total_blocks>(func);
         }
     }
-
-    // Forward declaration of out-of-line invocation helper so it is visible
-    // when used inside `template_static_loop_invoker::operator()`.
-    template<typename Functor, std::intmax_t Value>
-    void invoke_template_operator(Functor *functor);
 
     template<typename Functor> struct template_static_loop_invoker {
         Functor *functor;
 
-        // Adapter operator:
-        // Receives an std::integral_constant<int, Value> from implementation internals.
-        // Unpacks 'Value' and calls the user's template operator<Value>().
-        // We call a small out-of-line helper to avoid forcing the caller to
-        // inline every `operator()<Value>` instantiation. This reduces the
-        // size of the unrolled caller bodies and improves instruction-cache
-        // behavior and register allocation for large unrolls. The helper is
-        // marked `POET_NOINLINE` so it is emitted as a separate function.
+        // Adapter operator: receives std::integral_constant<Value> and unpacks it
+        // to call the user's template operator<Value>().
+        // Force inline to eliminate adapter overhead and enable the compiler to
+        // fully optimize the per-iteration body in unrolled loops.
         template<std::intmax_t Value>
         POET_FORCEINLINE constexpr void operator()(std::integral_constant<std::intmax_t, Value> /*integral_constant*/) const {
-            // Always inline: directly invoke the functor template operator.
-            // This forces the compiler to inline the per-index body for
-            // small/unrolled loops, removing the call overhead introduced by
-            // an out-of-line helper.
+            POET_ASSUME_NOT_NULL(functor);
             (*functor).template operator()<Value>();
         }
     };
-    // No out-of-line helper: keep bodies inline for maximum optimization.
 
 }// namespace detail
 
@@ -185,7 +149,7 @@ namespace detail {
 inline constexpr std::size_t kMaxStaticLoopBlock = detail::kMaxStaticLoopBlock;
 
 template<std::intmax_t Begin, std::intmax_t End, std::intmax_t Step>
-[[nodiscard]] constexpr auto compute_range_count() noexcept -> std::size_t {
+[[nodiscard]] POET_CPP20_CONSTEVAL auto compute_range_count() noexcept -> std::size_t {
     return detail::compute_range_count<Begin, End, Step>();
 }
 
