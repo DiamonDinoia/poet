@@ -2,15 +2,20 @@
 #define POET_CORE_STATIC_DISPATCH_HPP
 
 /// \file static_dispatch.hpp
-/// \brief Provides mechanisms for dispatch of runtime values to compile-time template parameters.
+/// \brief Runtime-to-compile-time dispatch via function pointer tables.
 ///
-/// This header implements `dispatch` and `dispatch_tuples`, which allow efficient
-/// mapping of runtime integers (or tuples of integers) to compile-time constants.
-/// It supports:
-/// - Range-based dispatch (e.g., dispatching an integer to `[0..N]`).
-/// - Sparse dispatch using `DispatchSet`.
-/// - O(1) table-based dispatch for contiguous ranges.
-/// - O(log N) key lookup for non-contiguous ranges.
+/// Maps runtime integers (or tuples of integers) to compile-time template parameters
+/// using compile-time generated function pointer arrays with O(1) runtime indexing.
+///
+/// Dispatch modes:
+/// - **Contiguous ranges**: O(1) arithmetic lookup via `sequence_runtime_lookup`.
+/// - **Sparse sequences**: O(log N) binary search on sorted keys.
+/// - **N-D ranges**: Flattened to a single function pointer array with row-major strides.
+/// - **DispatchSet**: Explicit tuple matching for non-cartesian combinations.
+///
+/// Key optimizations:
+/// - Stateless functors eliminate the functor pointer from table entries.
+/// - Parameter type introspection passes small trivial types by value.
 
 #include <algorithm>
 #include <array>
@@ -198,8 +203,8 @@ namespace detail {
     // Helper to compute the size of a sequence
     template<typename Sequence> struct sequence_size;
 
-    template<int... Values>
-    struct sequence_size<std::integer_sequence<int, Values...>>
+    template<typename T, T... Values>
+    struct sequence_size<std::integer_sequence<T, Values...>>
       : std::integral_constant<std::size_t, sizeof...(Values)> {};
 
     // Helper to check if a value exists in a sequence
@@ -387,37 +392,6 @@ namespace detail {
     POET_FORCEINLINE POET_CPP20_CONSTEVAL auto extract_dimensions() -> std::array<std::size_t, std::tuple_size_v<std::decay_t<ParamTuple>>> {
         return extract_dimensions_impl<ParamTuple>(
           std::make_index_sequence<std::tuple_size_v<std::decay_t<ParamTuple>>>{}
-        );
-    }
-
-    template<typename ParamTuple, std::size_t... Idx>
-    POET_FORCEINLINE auto extract_runtime_indices_impl(const ParamTuple& params, std::index_sequence<Idx...> /*idxs*/)
-        -> std::optional<std::array<int, sizeof...(Idx)>> {
-        using P = std::decay_t<ParamTuple>;
-        std::array<int, sizeof...(Idx)> out{};
-
-        const bool all_matched = ([&]() -> bool {
-            using Seq = typename std::tuple_element_t<Idx, P>::seq_type;
-            const std::size_t mapped = sequence_runtime_lookup<Seq>::find(std::get<Idx>(params).runtime_val);
-            if (POET_LIKELY(mapped != dispatch_npos)) {
-                out[Idx] = static_cast<int>(mapped);
-                return true;
-            }
-            return false;
-        }() && ...);
-
-        if (POET_LIKELY(all_matched)) {
-            return out;
-        }
-        return std::nullopt;
-    }
-
-    template<typename ParamTuple>
-    POET_FORCEINLINE auto extract_runtime_indices(const ParamTuple& params)
-        -> std::optional<std::array<int, std::tuple_size_v<std::decay_t<ParamTuple>>>> {
-        return extract_runtime_indices_impl(
-            params,
-            std::make_index_sequence<std::tuple_size_v<std::decay_t<ParamTuple>>>{}
         );
     }
 
@@ -679,9 +653,6 @@ namespace detail {
         using type = std::conditional_t<by_value, raw_unqual, T>;
     };
 
-    template<typename T>
-    using dispatch_pass_t = typename dispatch_arg_pass<T>::type;
-
     template<typename T, typename Functor, int V>
     using dispatch_pass_opt_t = typename dispatch_arg_pass<T, Functor, V>::type;
 
@@ -731,10 +702,7 @@ namespace detail {
 
     template<typename Functor, typename... Args, int... Values>
     struct dispatch_table_void_builder<Functor, arg_pack<Args...>, Values...> {
-        // Get first value for uniform signature determination
-        template<int First, int... Rest>
-        static constexpr auto get_first(std::integer_sequence<int, First, Rest...> /*unused*/) -> int { return First; }
-        static constexpr int first_value = get_first(std::integer_sequence<int, Values...>{});
+        static constexpr int first_value = sequence_first<std::integer_sequence<int, Values...>>::value;
 
         // Uniform signature based on first value
         using opt_arg_types = arg_pack<dispatch_pass_opt_t<Args&&, Functor, first_value>...>;
@@ -799,10 +767,7 @@ namespace detail {
 
     template<typename Functor, typename... Args, typename R, int... Values>
     struct dispatch_table_builder<Functor, arg_pack<Args...>, R, Values...> {
-        // Get first value for uniform signature determination
-        template<int First, int... Rest>
-        static constexpr auto get_first(std::integer_sequence<int, First, Rest...> /*unused*/) -> int { return First; }
-        static constexpr int first_value = get_first(std::integer_sequence<int, Values...>{});
+        static constexpr int first_value = sequence_first<std::integer_sequence<int, Values...>>::value;
 
         // Helper to create a single lambda for a specific V value
         template<int V>
@@ -1075,14 +1040,10 @@ template<typename ValueType, typename... Tuples> struct DispatchSet {
 
     static_assert(sizeof...(Tuples) >= 1, "DispatchSet requires at least one allowed tuple");
 
-    // Ensure all tuples have the same arity
-    template<typename S> struct seq_len;
-    template<typename VType, VType... V>
-    struct seq_len<std::integer_sequence<VType, V...>> : std::integral_constant<std::size_t, sizeof...(V)> {};
+    // Ensure all tuples have the same arity (reuses detail::sequence_size)
+    static constexpr std::size_t tuple_arity = detail::sequence_size<first_t>::value;
 
-    static constexpr std::size_t tuple_arity = seq_len<first_t>::value;
-
-    template<typename S> struct same_arity : std::bool_constant<seq_len<S>::value == tuple_arity> {};
+    template<typename S> struct same_arity : std::bool_constant<detail::sequence_size<S>::value == tuple_arity> {};
 
     static_assert((same_arity<typename convert_tuple<Tuples>::type>::value && ...),
       "All tuples in DispatchSet must have the same arity");
@@ -1117,10 +1078,11 @@ namespace detail {
     inline constexpr const char *k_no_match_error =
       "poet::dispatch: no matching compile-time combination for runtime inputs";
 
-    /// \brief 1D dispatch through function-pointer tables (contiguous and sparse).
+    /// \brief 1D dispatch through a function-pointer table.
+    /// O(1) for contiguous sequences, O(log N) for sparse — selected by sequence_runtime_lookup.
     template<bool ThrowOnNoMatch, typename R, typename Functor, typename ParamTuple, typename... Args>
-    POET_FORCEINLINE POET_FLATTEN
-    auto dispatch_1d_contiguous(Functor&& functor, ParamTuple const &params, Args &&...args) -> R {
+    POET_FORCEINLINE
+    auto dispatch_1d(Functor&& functor, ParamTuple const &params, Args &&...args) -> R {
         using FirstParam = std::tuple_element_t<0, std::remove_reference_t<ParamTuple>>;
         using Seq = typename FirstParam::seq_type;
         const int runtime_val = std::get<0>(params).runtime_val;
@@ -1158,10 +1120,12 @@ namespace detail {
         }
     }
 
-    /// \brief N-D dispatch through flattened function-pointer tables.
+    /// \brief N-D dispatch through a flattened function-pointer table.
+    /// Uses fused speculative indexing for all-contiguous dimensions,
+    /// short-circuit validation for mixed contiguous/sparse.
     template<bool ThrowOnNoMatch, typename R, typename Functor, typename ParamTuple, typename... Args>
-    POET_FORCEINLINE POET_FLATTEN
-    auto dispatch_nd_contiguous(Functor&& functor, ParamTuple const &params, Args &&...args) -> R {
+    POET_FORCEINLINE
+    auto dispatch_nd(Functor&& functor, ParamTuple const &params, Args &&...args) -> R {
         constexpr auto dimensions = extract_dimensions<ParamTuple>();
         constexpr auto strides = compute_strides(dimensions);
         constexpr std::size_t table_size = compute_total_size(dimensions);
@@ -1205,17 +1169,17 @@ namespace detail {
 
     /// \brief Internal implementation for dispatch with compile-time error handling policy.
     template<bool ThrowOnNoMatch, typename Functor, typename ParamTuple, typename... Args>
-    POET_FORCEINLINE POET_FLATTEN
+    POET_FORCEINLINE
     auto dispatch_impl(Functor&& functor, ParamTuple const &params, Args&&... args) -> decltype(auto) {
         constexpr std::size_t param_count = std::tuple_size_v<std::remove_reference_t<ParamTuple>>;
         using sequences_t = decltype(extract_sequences(std::declval<ParamTuple>()));
         using result_type = dispatch_result_t<Functor, sequences_t, Args&&...>;
 
         if constexpr (param_count == 1) {
-            return dispatch_1d_contiguous<ThrowOnNoMatch, result_type>(
+            return dispatch_1d<ThrowOnNoMatch, result_type>(
               std::forward<Functor>(functor), params, std::forward<Args>(args)...);
         } else {
-            return dispatch_nd_contiguous<ThrowOnNoMatch, result_type>(
+            return dispatch_nd<ThrowOnNoMatch, result_type>(
               std::forward<Functor>(functor), params, std::forward<Args>(args)...);
         }
     }
@@ -1312,7 +1276,6 @@ template<typename Functor,
   typename FirstParam,
   typename... Rest,
   std::enable_if_t<detail::is_dispatch_param_v<FirstParam>, int> = 0>
-POET_FLATTEN
 auto dispatch(Functor&& functor, FirstParam&& first_param, Rest&&... rest) -> decltype(auto) {
     return detail::dispatch_variadic_impl<false>(
       std::forward<Functor>(functor), std::forward<FirstParam>(first_param), std::forward<Rest>(rest)...);
@@ -1332,7 +1295,6 @@ template<typename Functor,
   typename ParamTuple,
   typename... Args,
   std::enable_if_t<detail::is_dispatch_param_tuple_v<ParamTuple>, int> = 0>
-POET_FLATTEN
 auto dispatch(Functor&& functor, ParamTuple const& params, Args&&... args) -> decltype(auto) {
     return detail::dispatch_impl<false>(std::forward<Functor>(functor), params, std::forward<Args>(args)...);
 }
@@ -1359,8 +1321,8 @@ auto dispatch(Functor&& functor, ParamTuple const& params, Args&&... args) -> de
 namespace detail {
     /// \brief Internal implementation for dispatch_tuples with compile-time error handling policy.
     template<bool ThrowOnNoMatch, typename Functor, typename TupleList, typename RuntimeTuple, typename... Args>
-    auto dispatch_tuples_impl(Functor&& functor, TupleList const & /*unused*/, const RuntimeTuple &runtime_tuple, Args&&... args)
-      -> decltype(auto) {
+    auto dispatch_tuples_impl(Functor&& functor, TupleList const & /*unused*/, const RuntimeTuple &runtime_tuple,
+      Args&&... args) -> decltype(auto) { // NOLINT(cppcoreguidelines-missing-std-forward) forwarded inside short-circuiting fold
         using TL = std::decay_t<TupleList>;
         static_assert(std::tuple_size_v<TL> >= 1, "tuple list must contain at least one allowed tuple");
 
@@ -1432,7 +1394,6 @@ auto dispatch_tuples(throw_on_no_match_t /*tag*/,
 ///
 /// Routes the call to `dispatch_tuples` using the set's allowed combinations.
 template<typename Functor, typename... Tuples, typename... Args>
-POET_FLATTEN
 auto dispatch(Functor &&functor, const DispatchSet<Tuples...> &dispatch_set, Args &&...args) -> decltype(auto) {
         return dispatch_tuples(std::forward<Functor>(functor),
             typename DispatchSet<Tuples...>::seq_type{},
@@ -1442,7 +1403,6 @@ auto dispatch(Functor &&functor, const DispatchSet<Tuples...> &dispatch_set, Arg
 
 /// \brief Throwing overload for `DispatchSet` dispatch.
 template<typename Functor, typename... Tuples, typename... Args>
-POET_FLATTEN
 auto dispatch(throw_on_no_match_t /*tag*/, Functor&& functor, const DispatchSet<Tuples...> &dispatch_set, Args&&... args)
     -> decltype(auto) {
         return dispatch_tuples(throw_on_no_match_t{},
@@ -1472,7 +1432,6 @@ template<typename Functor,
   typename FirstParam,
   typename... Rest,
   std::enable_if_t<detail::is_dispatch_param_v<FirstParam>, int> = 0>
-POET_FLATTEN
 auto dispatch(throw_on_no_match_t tag, Functor&& functor, FirstParam&& first_param, Rest&&... rest) -> decltype(auto) {
     (void)tag;
     return detail::dispatch_variadic_impl<true>(
@@ -1484,7 +1443,6 @@ template<typename Functor,
   typename ParamTuple,
   typename... Args,
   std::enable_if_t<detail::is_dispatch_param_tuple_v<ParamTuple>, int> = 0>
-POET_FLATTEN
 auto dispatch(throw_on_no_match_t /*tag*/, Functor&& functor, ParamTuple const& params, Args&&... args) -> decltype(auto) {
     return detail::dispatch_impl<true>(std::forward<Functor>(functor), params, std::forward<Args>(args)...);
 }

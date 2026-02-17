@@ -12,7 +12,6 @@
 ///
 /// POET defines several utility macros for portability and optimization:
 /// - POET_UNREACHABLE: Marks unreachable code paths
-/// - POET_FLATTEN: Requests flattening of callees into function
 /// - POET_FORCEINLINE: Forces function inlining
 /// - POET_RESTRICT: Portable restrict keyword for pointers
 /// - POET_NOINLINE: Prevents function inlining
@@ -66,13 +65,6 @@
 // ============================================================================
 #ifdef POET_UNREACHABLE
     #undef POET_UNREACHABLE
-#endif
-
-// ============================================================================
-// Undefine POET_FLATTEN
-// ============================================================================
-#ifdef POET_FLATTEN
-    #undef POET_FLATTEN
 #endif
 
 // ============================================================================

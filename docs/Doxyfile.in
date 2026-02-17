@@ -21,7 +21,6 @@ ENABLE_PREPROCESSING   = YES
 MACRO_EXPANSION        = YES
 EXPAND_ONLY_PREDEF     = YES
 PREDEFINED             = POET_FORCEINLINE= \
-                         POET_FLATTEN= \
                          POET_HOT_LOOP= \
                          POET_PUSH_OPTIMIZE= \
                          POET_POP_OPTIMIZE= \

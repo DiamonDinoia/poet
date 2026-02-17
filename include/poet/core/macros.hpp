@@ -17,21 +17,6 @@
 #endif
 
 // ============================================================================
-// POET_FLATTEN
-// ============================================================================
-/// Requests inlining all callees into this function (GCC/Clang only).
-/// Use on public API entry points for cross-TU inlining.
-#ifndef POET_ENABLE_FLATTEN
-    #define POET_ENABLE_FLATTEN 0 // NOLINT(cppcoreguidelines-macro-usage)
-#endif
-
-#if POET_ENABLE_FLATTEN && (defined(__GNUC__) || defined(__clang__))
-    #define POET_FLATTEN __attribute__((flatten))
-#else
-    #define POET_FLATTEN
-#endif
-
-// ============================================================================
 // POET_FORCEINLINE
 // ============================================================================
 /// Forces function inlining regardless of compiler heuristics.

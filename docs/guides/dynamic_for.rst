@@ -71,19 +71,38 @@ Choose unroll based on your profile and compile-time/code-size constraints.
 Callable Signatures
 -------------------
 
-``dynamic_for`` supports these callable forms:
+``dynamic_for`` supports two callable forms:
 
-- ``func(index)``
+- ``func(index)`` — index only
 - ``func(lane, index)`` where ``lane`` is ``std::integral_constant<std::size_t, L>``
-- ``func.template operator()<L>(index)``
 
-The ``lane`` value is the compile-time position inside the current unrolled block.
+The ``lane`` value is the compile-time position inside the current unrolled block
+(cycles from 0 to ``Unroll-1``).
 
 .. code-block:: cpp
 
    poet::dynamic_for<4>(0, 10, [](auto lane_c, int i) {
        constexpr std::size_t lane = decltype(lane_c)::value;
        use(lane, i);
+   });
+
+Compile-Time Step
+-----------------
+
+When the stride is a compile-time constant, use the template-parameter overload.
+This lets the compiler constant-fold per-lane stride multiplication and eliminate
+the stride argument from tail dispatch.
+
+.. code-block:: cpp
+
+   // Step=2 known at compile time
+   poet::dynamic_for<4, 2>(0, 100, [](int i) {
+       // i = 0,2,4,...,98
+   });
+
+   // Negative compile-time step
+   poet::dynamic_for<4, -1>(10, 0, [](int i) {
+       // i = 10,9,...,1
    });
 
 Tail Handling

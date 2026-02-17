@@ -129,7 +129,7 @@ template<std::intmax_t Begin,
     std::intmax_t Step = 1,
     std::size_t BlockSize = detail::compute_default_static_loop_block_size<Begin, End, Step>(),
     typename Func>
-POET_FORCEINLINE POET_FLATTEN constexpr void static_for(Func &&func) {
+POET_FORCEINLINE constexpr void static_for(Func &&func) {
     static_assert(BlockSize > 0, "static_for requires BlockSize > 0");
 
     constexpr auto count = detail::compute_range_count<Begin, End, Step>();
@@ -138,28 +138,26 @@ POET_FORCEINLINE POET_FLATTEN constexpr void static_for(Func &&func) {
     constexpr auto full_blocks = count / BlockSize;
     constexpr auto remainder = count % BlockSize;
 
-    // Inline the callable storage to avoid a lambda indirection that
-    // compilers may refuse to inline (the lambda passed to
-    // with_stored_callable has no always_inline guarantee).
+    // Callable storage is handled inline (rather than via a helper) to
+    // avoid introducing an indirection that compilers may refuse to
+    // inline across the block emission pipeline.
+    using callable_t = std::remove_reference_t<Func>;
+
     if constexpr (std::is_invocable_v<Func, std::integral_constant<std::intmax_t, Begin>>) {
         if constexpr (std::is_lvalue_reference_v<Func>) {
-            using callable_t = std::remove_reference_t<Func>;
             detail::static_loop_run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(func);
         } else {
-            std::remove_reference_t<Func> callable(std::forward<Func>(func));
-            detail::static_loop_run_blocks<decltype(callable), Begin, Step, BlockSize, full_blocks, remainder>(callable);
+            callable_t callable(std::forward<Func>(func));
+            detail::static_loop_run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(callable);
         }
     } else {
+        using invoker_t = detail::template_static_loop_invoker<callable_t>;
         if constexpr (std::is_lvalue_reference_v<Func>) {
-            using callable_t = std::remove_reference_t<Func>;
-            const detail::template_static_loop_invoker<callable_t> invoker{ &func };
-            using invoker_t = std::remove_const_t<decltype(invoker)>;
+            const invoker_t invoker{ &func };
             detail::static_loop_run_blocks<const invoker_t, Begin, Step, BlockSize, full_blocks, remainder>(invoker);
         } else {
-            std::remove_reference_t<Func> callable(std::forward<Func>(func));
-            using callable_t = decltype(callable);
-            const detail::template_static_loop_invoker<callable_t> invoker{ &callable };
-            using invoker_t = std::remove_const_t<decltype(invoker)>;
+            callable_t callable(std::forward<Func>(func));
+            const invoker_t invoker{ &callable };
             detail::static_loop_run_blocks<const invoker_t, Begin, Step, BlockSize, full_blocks, remainder>(invoker);
         }
     }
@@ -172,7 +170,7 @@ POET_POP_OPTIMIZE
 ///
 /// \tparam End Exclusive upper bound of the range.
 /// \param func Callable instance invoked once per iteration.
-template<std::intmax_t End, typename Func> POET_FORCEINLINE POET_FLATTEN constexpr void static_for(Func &&func) {
+template<std::intmax_t End, typename Func> POET_FORCEINLINE constexpr void static_for(Func &&func) {
     static_for<0, End>(std::forward<Func>(func));
 }
 

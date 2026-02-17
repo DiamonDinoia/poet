@@ -32,23 +32,6 @@ namespace poet::detail {
     inline constexpr std::size_t kMaxStaticLoopBlock = 256;
 #endif
 
-    /// \brief Recommended block size for register-pressure-aware unrolling.
-    ///
-    /// When the user passes a `BlockSize` smaller than the total iteration
-    /// count, each block becomes a separate noinline function with its own
-    /// register-allocation scope.  This prevents the compiler from
-    /// interleaving computations across blocks and spilling to the stack.
-    ///
-    /// Empirical analysis on x86-64 (GCC 15 / -O3, splitmix64 workload):
-    ///   block(4)  — 0 spills, 0 stack bytes
-    ///   block(8)  — 0 stores/loads, only 3 callee-saved pushes
-    ///   block(16) — 10 stores, 5 loads, measurable spill pressure
-    ///   block(32) — 48 stores, 24 loads, severe spill pressure
-    ///
-    /// 8 is a good starting point: zero actual spill traffic while
-    /// minimising per-block function-call overhead (~10 cycles per boundary).
-    inline constexpr std::size_t kRecommendedBlockSize = 8;
-
     /// \brief Computes the number of iterations for a compile-time range.
     ///
     /// \tparam Begin Start of the range.
@@ -152,16 +135,6 @@ namespace poet::detail {
         }
     }
     POET_POP_OPTIMIZE
-
-    template<typename Func, typename Runner>
-    POET_FORCEINLINE constexpr void with_stored_callable(Func &&func, Runner &&runner) {
-        if constexpr (std::is_lvalue_reference_v<Func>) {
-            std::forward<Runner>(runner)(func);
-        } else {
-            std::remove_reference_t<Func> callable(std::forward<Func>(func));
-            std::forward<Runner>(runner)(callable);
-        }
-    }
 
     template<typename Functor> struct template_static_loop_invoker {
         Functor *functor;
