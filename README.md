@@ -63,6 +63,10 @@ int main() {
 }
 ```
 
+`dynamic_for` callable forms:
+- `func(index)`
+- `func(lane, index)` where `lane` is `std::integral_constant<std::size_t, L>`
+
 Note on C++20 ranges and the piping adaptor
 -------------------------------------------
 The header <poet/core/dynamic_for.hpp> supports C++20 pipe ranges or tuple-like (begin,end,step) values into a dynamic_for. Example:

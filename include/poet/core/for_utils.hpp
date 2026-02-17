@@ -12,14 +12,12 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <tuple>
+#include <type_traits>
 #include <utility>
 
 #include <poet/core/macros.hpp>
 
-namespace poet {
-
-namespace detail {
+namespace poet::detail {
 
 /// \brief Maximum chunk size for static loops to limit template instantiation depth.
 /// Defines the maximum number of iterations or blocks processed in a single
@@ -84,47 +82,30 @@ namespace detail {
     }
 
     /// \brief Emits a chunk of full blocks.
-    template<typename Func,
-      std::intmax_t Begin,
-      std::intmax_t Step,
-      std::size_t BlockSize,
-      std::size_t Offset,
-      typename Tuple,
-      std::size_t... Is>
+    template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t BlockSize, std::size_t Offset, std::size_t... Is>
     POET_FORCEINLINE constexpr void emit_block_chunk(Func &func, std::index_sequence<Is...> /*indices*/) {
-        (static_loop_impl_block<Func, Begin, Step, std::tuple_element_t<Offset + Is, Tuple>::value * BlockSize>(
-           func, std::make_index_sequence<BlockSize>{}),
+        (static_loop_impl_block<Func, Begin, Step, (Offset + Is) * BlockSize>(func, std::make_index_sequence<BlockSize>{}),
           ...);
     }
 
-    template<typename Func,
-      std::intmax_t Begin,
-      std::intmax_t Step,
-      std::size_t BlockSize,
-      typename Tuple,
-      std::size_t Offset,
-      std::size_t Remaining>
-    POET_FORCEINLINE constexpr void emit_all_blocks_from_tuple(Func &func) {
+    template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t BlockSize, std::size_t Offset, std::size_t Remaining>
+    POET_FORCEINLINE constexpr void emit_all_blocks(Func &func) {
         if constexpr (Remaining > 0) {
             constexpr auto chunk_size = Remaining < kMaxStaticLoopBlock ? Remaining : kMaxStaticLoopBlock;
 
-            emit_block_chunk<Func, Begin, Step, BlockSize, Offset, Tuple>(func, std::make_index_sequence<chunk_size>{});
+            emit_block_chunk<Func, Begin, Step, BlockSize, Offset>(func, std::make_index_sequence<chunk_size>{});
 
-            emit_all_blocks_from_tuple<Func,
-              Begin,
-              Step,
-              BlockSize,
-              Tuple,
-              Offset + chunk_size,
-              Remaining - chunk_size>(func);
+            emit_all_blocks<Func, Begin, Step, BlockSize, Offset + chunk_size, Remaining - chunk_size>(func);
         }
     }
 
-    template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t BlockSize, typename Tuple>
-    POET_FORCEINLINE constexpr void emit_all_blocks(Func &func) {
-        constexpr auto total_blocks = std::tuple_size_v<Tuple>;
-        if constexpr (total_blocks > 0) {
-            emit_all_blocks_from_tuple<Func, Begin, Step, BlockSize, Tuple, 0, total_blocks>(func);
+    template<typename Func, typename Runner>
+    POET_FORCEINLINE constexpr void with_stored_callable(Func &&func, Runner &&runner) {
+        if constexpr (std::is_lvalue_reference_v<Func>) {
+            std::forward<Runner>(runner)(func);
+        } else {
+            std::remove_reference_t<Func> callable(std::forward<Func>(func));
+            std::forward<Runner>(runner)(callable);
         }
     }
 
@@ -142,17 +123,6 @@ namespace detail {
         }
     };
 
-}// namespace detail
-
-// --- Public compatibility wrappers ---
-
-inline constexpr std::size_t kMaxStaticLoopBlock = detail::kMaxStaticLoopBlock;
-
-template<std::intmax_t Begin, std::intmax_t End, std::intmax_t Step>
-[[nodiscard]] POET_CPP20_CONSTEVAL auto compute_range_count() noexcept -> std::size_t {
-    return detail::compute_range_count<Begin, End, Step>();
-}
-
-}// namespace poet
+}// namespace poet::detail
 
 #endif// POET_CORE_FOR_UTILS_HPP

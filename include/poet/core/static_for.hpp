@@ -11,7 +11,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <tuple>
 #include <type_traits>
 #include <utility>
 
@@ -21,23 +20,6 @@ namespace poet {
 
 namespace detail {
 
-    /// \brief Helper: Emits a sequence of full blocks.
-    ///
-    /// This splits the loop body into manageable chunks (blocks) and delegates
-    /// to `emit_all_blocks`. This partitioning prevents massive single fold
-    /// expressions which can overwhelm the compiler.
-    ///
-    /// \tparam Func Callable type.
-    /// \tparam Begin Range start.
-    /// \tparam Step Range step.
-    /// \tparam BlockSize Number of iterations per block.
-    /// \tparam BlockIndices Indices for the blocks (0, 1, ...).
-    template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t BlockSize, std::size_t... BlockIndices>
-    POET_FORCEINLINE constexpr void static_loop_emit_all_blocks(Func &func, std::index_sequence<BlockIndices...> /*blocks*/) {
-        using blocks_tuple = std::tuple<std::integral_constant<std::size_t, BlockIndices>...>;
-        emit_all_blocks<Func, Begin, Step, BlockSize, blocks_tuple>(func);
-    }
-
     template<typename Callable,
       std::intmax_t Begin,
       std::intmax_t Step,
@@ -46,8 +28,7 @@ namespace detail {
       std::size_t Remainder>
     POET_FORCEINLINE constexpr void static_loop_run_blocks(Callable &callable) {
         if constexpr (FullBlocks > 0) {
-            static_loop_emit_all_blocks<Callable, Begin, Step, BlockSize>(
-              callable, std::make_index_sequence<FullBlocks>{});
+            emit_all_blocks<Callable, Begin, Step, BlockSize, 0, FullBlocks>(callable);
         }
 
         if constexpr (Remainder > 0) {
@@ -106,13 +87,10 @@ namespace detail {
         constexpr auto full_blocks = count / BlockSize;
         constexpr auto remainder = count % BlockSize;
 
-        if constexpr (std::is_lvalue_reference_v<Func>) {
-            static_loop_run_blocks<std::remove_reference_t<Func>, Begin, Step, BlockSize, full_blocks, remainder>(func);
-        } else {
-            std::remove_reference_t<Func> callable(std::forward<Func>(func));
-            static_loop_run_blocks<std::remove_reference_t<Func>, Begin, Step, BlockSize, full_blocks, remainder>(
-              callable);
-        }
+        with_stored_callable(std::forward<Func>(func), [&](auto &callable) -> void {
+            using callable_t = std::remove_reference_t<decltype(callable)>;
+            static_loop_run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(callable);
+        });
     }
     POET_POP_OPTIMIZE
 
@@ -134,9 +112,9 @@ namespace detail {
 ///   `static_for` internally adapts the functor to the integral-constant based
 ///   machinery.
 ///
-/// The default `BlockSize` spans the entire range, clamped to
-/// `poet::kMaxStaticLoopBlock` (currently `256`), to balance unrolling with
-/// compile-time cost. Lvalue callables are preserved by reference, while
+/// The default `BlockSize` spans the entire range, clamped to the internal
+/// `detail::kMaxStaticLoopBlock` cap (currently `256`), to balance unrolling
+/// with compile-time cost. Lvalue callables are preserved by reference, while
 /// rvalues are copied into a local instance for the duration of the loop.
 ///
 /// \tparam Begin Initial value of the range.
@@ -144,7 +122,7 @@ namespace detail {
 /// \tparam Step Increment applied between iterations (defaults to `1`).
 /// \tparam BlockSize Number of iterations expanded per block (defaults to the
 ///                   total iteration count, clamped to `1` for empty ranges and
-///                   to `poet::kMaxStaticLoopBlock` for large ranges).
+///                   to `detail::kMaxStaticLoopBlock` for large ranges).
 /// \tparam Func Callable type.
 /// \param func Callable instance invoked once per iteration.
 template<std::intmax_t Begin,
@@ -156,16 +134,11 @@ POET_FORCEINLINE POET_FLATTEN constexpr void static_for(Func &&func) {
     if constexpr (std::is_invocable_v<Func, std::integral_constant<std::intmax_t, Begin>>) {
         detail::static_loop<Begin, End, Step, BlockSize>(std::forward<Func>(func));
     } else {
-        using Functor = std::remove_reference_t<Func>;
-
-        if constexpr (std::is_lvalue_reference_v<Func>) {
-            const detail::template_static_loop_invoker<Functor> invoker{ &func };
+        detail::with_stored_callable(std::forward<Func>(func), [&](auto &callable) -> void {
+            using callable_t = std::remove_reference_t<decltype(callable)>;
+            const detail::template_static_loop_invoker<callable_t> invoker{ &callable };
             detail::static_loop<Begin, End, Step, BlockSize>(invoker);
-        } else {
-            Functor functor(std::forward<Func>(func));
-            const detail::template_static_loop_invoker<Functor> invoker{ &functor };
-            detail::static_loop<Begin, End, Step, BlockSize>(invoker);
-        }
+        });
     }
 }
 

@@ -57,34 +57,6 @@ namespace poet::detail {
         return flat;
     }
 
-    /// Check if indices are within bounds after offset adjustment.
-    /// Returns true if all: 0 <= (indices[i] - offsets[i]) < dims[i]
-    template<std::size_t N>
-    POET_FORCEINLINE POET_CPP23_CONSTEXPR auto check_bounds(
-        const std::array<int, N>& indices,
-        const std::array<int, N>& offsets,
-        const std::array<std::size_t, N>& dims) -> bool {
-        for (std::size_t i = 0; i < N; ++i) {
-            const int adjusted = indices[i] - offsets[i];
-            if (adjusted < 0 || static_cast<std::size_t>(adjusted) >= dims[i]) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /// Adjust indices by subtracting offsets: adjusted[i] = indices[i] - offsets[i]
-    template<std::size_t N>
-    POET_FLATTEN POET_FORCEINLINE POET_CPP23_CONSTEXPR auto adjust_indices(
-        const std::array<int, N>& indices,
-        const std::array<int, N>& offsets) -> std::array<int, N> {
-        std::array<int, N> adjusted{};
-        for (std::size_t i = 0; i < N; ++i) {
-            adjusted[i] = indices[i] - offsets[i];
-        }
-        return adjusted;
-    }
-
 }// namespace poet::detail
 
 #endif // !POET_HAS_STD_MDSPAN

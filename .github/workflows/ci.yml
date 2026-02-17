@@ -15,14 +15,26 @@ jobs:
       matrix:
         build_type: [Release, Debug]
         toolchain:
+          - gcc
           - gcc-13
+          - gcc-14
+          - llvm
           - llvm-18
+          - llvm-21
           - apple-clang
           - msvc
         include:
+          - toolchain: gcc
+            os: ubuntu-24.04
           - toolchain: gcc-13
             os: ubuntu-24.04
+          - toolchain: gcc-14
+            os: ubuntu-24.04
+          - toolchain: llvm
+            os: ubuntu-24.04
           - toolchain: llvm-18
+            os: ubuntu-24.04
+          - toolchain: llvm-21
             os: ubuntu-24.04
           - toolchain: apple-clang
             os: macos-14
@@ -71,6 +83,9 @@ jobs:
         run: |
           ctest --output-on-failure --test-dir build/${{ matrix.build_type }} -L benchmarks
           cmake --build build/${{ matrix.build_type }} --target poet_run_benchmarks
+          if cmake --build build/${{ matrix.build_type }} --target help | grep -q 'poet_run_benchmarks_native'; then
+            cmake --build build/${{ matrix.build_type }} --target poet_run_benchmarks_native
+          fi
 
       - name: Configure (multi-config)
         if: matrix.multi_config
@@ -107,6 +122,10 @@ jobs:
         run: |
           ctest --output-on-failure --test-dir build -C ${{ matrix.build_type }} -L benchmarks
           cmake --build build --config ${{ matrix.build_type }} --target poet_run_benchmarks
+          $targets = cmake --build build --config ${{ matrix.build_type }} --target help
+          if ($targets -match 'poet_run_benchmarks_native') {
+            cmake --build build --config ${{ matrix.build_type }} --target poet_run_benchmarks_native
+          }
 
       - name: Upload logs
         if: failure()

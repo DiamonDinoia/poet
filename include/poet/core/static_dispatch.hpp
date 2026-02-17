@@ -870,9 +870,6 @@ template<typename ValueType, typename... Tuples> struct DispatchSet {
     [[nodiscard]] auto runtime_tuple() const { return runtime_tuple_impl(std::make_index_sequence<tuple_arity>{}); }
 };
 
-namespace detail {
-}// namespace detail
-
 struct throw_on_no_match_t {};
 inline constexpr throw_on_no_match_t throw_t{};
 
@@ -1238,7 +1235,8 @@ template<typename Functor,
   typename... Rest,
   std::enable_if_t<detail::is_dispatch_param_v<FirstParam>, int> = 0>
 POET_FLATTEN
-auto dispatch(throw_on_no_match_t /*tag*/, Functor&& functor, FirstParam&& first_param, Rest&&... rest) -> decltype(auto) {
+auto dispatch(throw_on_no_match_t tag, Functor&& functor, FirstParam&& first_param, Rest&&... rest) -> decltype(auto) {
+    (void)tag;
     return detail::dispatch_variadic_impl<true>(
       std::forward<Functor>(functor), std::forward<FirstParam>(first_param), std::forward<Rest>(rest)...);
 }

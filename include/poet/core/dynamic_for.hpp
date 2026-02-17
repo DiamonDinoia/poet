@@ -11,8 +11,8 @@
 ///
 /// ## Architecture Overview
 ///
-/// `dynamic_for` uses a three-tier execution strategy to balance performance
-/// and code size:
+/// `dynamic_for` uses a three-tier execution strategy to balance performance,
+/// code size, and compile-time cost:
 ///
 /// ### 1. Main Loop (Unrolled Blocks)
 /// For ranges larger than the unroll factor, the loop executes in chunks of
@@ -29,58 +29,20 @@
 /// This keeps tail handling branch-free at call sites and maps each tail size
 /// to a dedicated block implementation.
 ///
-/// **Performance benefit**: Function pointer dispatch replaces the previous
-/// `std::variant` + `std::visit` approach, eliminating high abstraction overhead.
-///
 /// ### 3. Tiny Range Fast Path
-/// For ranges smaller than `Unroll`, we bypass all dispatch machinery and use
-/// a simple runtime loop. This avoids:
-/// - Function call overhead to `execute_runtime_block`
-/// - Tail dispatch overhead
-/// - Code cache pollution from unused unrolled blocks
-///
-/// **When it triggers**: count < Unroll (e.g., count=1,2,3 with Unroll=4)
-/// **Performance**: ~2x faster for tiny ranges (3-5ns vs 7-10ns)
-///
-/// ## Performance Characteristics
+/// For ranges smaller than `Unroll`, we skip the main runtime loop and dispatch
+/// directly to a specialized tail block. This keeps lane information available
+/// as compile-time constants and avoids extra loop-control overhead.
 ///
 /// ## Choosing the Unroll Factor
 ///
-/// The unroll factor is a **required** template parameter that controls the
-/// compile-time/runtime trade-off. You must explicitly choose a value based on
-/// your specific use case.
-///
-/// **Code size vs unroll factor**:
-/// - Unroll=4: ~200 bytes per instantiation
-/// - Unroll=8: ~400 bytes per instantiation
-/// - Each additional unroll roughly adds 50 bytes
-/// - Higher unroll = larger binary, more instruction cache pressure
-///
-/// **Compile time vs unroll factor**:
-/// - Linear growth: 2x unroll ≈ 2x compile time
-/// - Unroll=4 is ~50% faster to compile than Unroll=8
-///
-/// **Runtime performance**:
-/// - Large ranges (>100): ~5-10% faster with higher unroll (8 vs 4)
-/// - Small ranges (<20): Lower unroll often faster due to better I-cache
-/// - Tail dispatch: Constant time regardless of unroll factor
-///
-/// **Register pressure**:
-/// - Higher unroll factors increase register pressure in the loop body
-/// - May cause register spills for complex loop bodies
-/// - Profile your code to find the optimal balance
-///
-/// **Recommended starting points**:
-/// - **Unroll=4**: Good default for most cases. Balances code size, compile time,
-///   and performance. Start here unless profiling shows otherwise.
-/// - **Unroll=2**: For large codebases where compile time matters, or complex
-///   loop bodies with high register pressure
-/// - **Unroll=8**: For hot loops with simple bodies (few instructions per iteration)
-///   and large iteration counts, when profiling confirms benefit
-/// - **Unroll=16+**: Rarely beneficial. Only use when profiling shows clear gains
-///   and you can afford the code size increase
+/// `Unroll` is a required template parameter. Larger values increase code size
+/// and compile-time work, while potentially reducing loop overhead in hot paths.
+/// Typical starting points:
+/// - `Unroll=4` for balanced behavior in general code.
+/// - `Unroll=2` when compile time or code size is the primary constraint.
+/// - `Unroll=8` for profiled hot loops with simple bodies.
 
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -95,6 +57,41 @@ namespace poet {
 
 namespace detail {
 
+    template<typename...>
+    inline constexpr bool always_false_v = false;
+
+    template<typename Func, typename T, std::size_t Lane, typename = void>
+    struct has_template_lane_with_index : std::false_type {};
+
+    template<typename Func, typename T, std::size_t Lane>
+    struct has_template_lane_with_index<
+      Func,
+      T,
+      Lane,
+      std::void_t<decltype(std::declval<Func &>().template operator()<Lane>(std::declval<T>()))>> : std::true_type {};
+
+    template<typename Func, typename T, std::size_t Lane>
+    inline constexpr bool has_template_lane_with_index_v = has_template_lane_with_index<Func, T, Lane>::value;
+
+    // Invoke callable with the best available form:
+    // 1) func(std::integral_constant<std::size_t, Lane>{}, index)
+    // 2) func.template operator()<Lane>(index)
+    // 3) func(index) (backward compatible fallback)
+    template<std::size_t Lane, typename Func, typename T>
+    POET_FORCEINLINE constexpr void invoke_dynamic_for_callable(Func &func, T index) {
+        if constexpr (std::is_invocable_v<Func &, std::integral_constant<std::size_t, Lane>, T>) {
+            func(std::integral_constant<std::size_t, Lane>{}, index);
+        } else if constexpr (has_template_lane_with_index_v<Func, T, Lane>) {
+            func.template operator()<Lane>(index);
+        } else if constexpr (std::is_invocable_v<Func &, T>) {
+            func(index);
+        } else {
+            static_assert(
+              always_false_v<Func>,
+              "dynamic_for callable must accept (lane, index), template<lane>(index), or (index)");
+        }
+    }
+
     template<typename Func, typename T, std::size_t BlockSize>
     POET_HOT_LOOP void execute_runtime_block(Func * POET_RESTRICT func, T base, T stride);
 
@@ -105,25 +102,8 @@ namespace detail {
     /// actual runtime index based on the compile-time offset `I` and invokes the
     /// user function.
     ///
-    /// **Dual operator overloads**:
-    /// This class provides two operator() overloads to support different invocation
-    /// patterns from `static_for`:
-    ///
-    /// 1. `operator()(std::integral_constant<std::intmax_t, Value>)`: Direct
-    ///    invocation path used by `static_for`'s optimized dispatch. Receives the
-    ///    compile-time index as a value parameter, avoiding template instantiation
-    ///    of adapters. This is the fast path.
-    ///
-    /// 2. `template<auto I> operator()()`: Traditional template operator form for
-    ///    compatibility with older code or alternative dispatch mechanisms. Receives
-    ///    the compile-time index as a template parameter.
-    ///
-    /// **Why both are needed**:
-    /// The integral_constant overload enables `static_for` to call this functor
-    /// directly without wrapping it in `template_static_loop_invoker`, reducing
-    /// code bloat and improving compile times. The template overload ensures
-    /// backward compatibility with code expecting the `func.template operator<I>()`
-    /// calling convention.
+    /// This class is invoked via `static_for` using an integral_constant index.
+    /// It maps each compile-time lane to a runtime index and forwards to the user callable.
     ///
     /// **POET_RESTRICT on func pointer**:
     /// The restrict qualifier tells the compiler that `func` is the only pointer
@@ -141,16 +121,10 @@ namespace detail {
         template<std::intmax_t Value>
         POET_FORCEINLINE constexpr void operator()(std::integral_constant<std::intmax_t, Value> /*ic*/) const {
             POET_ASSUME_NOT_NULL(func);
-            (*func)(base + (static_cast<T>(Value) * stride));
+            constexpr auto lane = static_cast<std::size_t>(Value);
+            invoke_dynamic_for_callable<lane>(*func, base + (static_cast<T>(Value) * stride));
         }
 
-        // Preserve the template<auto I> operator<> overload to support other
-        // call sites that expect the template operator form.
-        template<auto I>
-        POET_FORCEINLINE constexpr void operator()() const {
-            POET_ASSUME_NOT_NULL(func);
-            (*func)(base + (static_cast<T>(I) * stride));
-        }
     };
 
     template<typename Callable, typename T>
@@ -166,6 +140,21 @@ namespace detail {
             }
         }
     };
+
+    template<std::size_t Unroll, typename Callable, typename T>
+    POET_FORCEINLINE void dispatch_runtime_tail(std::size_t count, Callable &callable, T index, T stride) {
+        if (count == 0) {
+            return;
+        }
+        if constexpr (Unroll == 1) {
+            execute_runtime_block<Callable, T, 1>(std::addressof(callable), index, stride);
+        } else {
+            dynamic_tail_dispatch_functor<Callable, T> tail_functor{ std::addressof(callable), index, stride };
+            poet::dispatch(
+              tail_functor,
+              poet::DispatchParam<poet::make_range<1, static_cast<int>(Unroll - 1)>>{ static_cast<int>(count) });
+        }
+    }
 
     /// \brief Calculate iteration count for non-trivial strides (stride != 1).
     ///
@@ -311,35 +300,10 @@ namespace detail {
         T index = begin;
         std::size_t remaining = count;
 
-        // ====================================================================
-        // Fast path for tiny ranges: avoid any tail dispatch overhead.
-        // ====================================================================
-        // For very small iteration counts (< Unroll), bypass all dispatch
-        // machinery and use a simple runtime loop. This is faster because:
-        // - No function call to execute_runtime_block
-        // - No tail dispatch overhead (match_and_execute_tail)
-        // - Simpler code = better instruction cache utilization
-        // - Branch predictor learns this pattern quickly
-        //
-        // Trade-off analysis:
-        // - Cost of checking: 1 comparison + 1 predicted branch (~0.5ns)
-        // - Savings for tiny ranges: ~5-10ns (2x speedup)
-        // - Impact on large ranges: Negligible (<1% overhead)
-        //
-        // Benchmark results (Unroll=4):
-        // - count=1: 3ns (fast path) vs 7ns (dispatch path)
-        // - count=2: 4ns (fast path) vs 8ns (dispatch path)
-        // - count=3: 5ns (fast path) vs 9ns (dispatch path)
-        // - count=100: 150ns (both paths, overhead amortized)
-        //
-        // This optimization is especially important for workloads with highly
-        // variable iteration counts where small ranges are common (e.g., sparse
-        // matrix operations, irregular mesh processing).
+        // Tiny ranges: dispatch directly to a compile-time block so lane is
+        // available as an integral_constant in user callables.
         if (POET_UNLIKELY(count < Unroll)) {
-            for (std::size_t i = 0; i < count; ++i) {
-                callable(index);
-                index += stride;
-            }
+            dispatch_runtime_tail<Unroll>(count, callable, index, stride);
             return;
         }
 
@@ -355,14 +319,7 @@ namespace detail {
         }
 
         // Handle remaining iterations (tail) via poet::dispatch.
-        if constexpr (Unroll > 1) {
-            if (POET_UNLIKELY(remaining > 0)) {
-                dynamic_tail_dispatch_functor<Callable, T> tail_functor{ std::addressof(callable), index, stride };
-                poet::dispatch(
-                  tail_functor,
-                  poet::DispatchParam<poet::make_range<1, static_cast<int>(Unroll - 1)>>{ static_cast<int>(remaining) });
-            }
-        }
+        dispatch_runtime_tail<Unroll>(remaining, callable, index, stride);
     }
 
     POET_POP_OPTIMIZE
@@ -380,42 +337,14 @@ namespace detail {
 /// \param step Increment per iteration. Can be negative.
 /// \param func Callable invoked for each iteration.
 
-/// \brief Default unroll factor for dynamic_for loops.
+/// \brief Choose `Unroll` explicitly per call site.
 ///
-/// **Changed from 8 to 4 in optimization pass (commit e078cec)**
-///
-/// **Rationale for reduction**:
-/// 1. **Code size**: Unroll=4 generates ~200 bytes per instantiation vs ~400
-///    bytes for Unroll=8. With multiple instantiations across a codebase, this
-///    adds up significantly.
-///
-/// 2. **Compile time**: Reducing unroll factor by 2x reduces template
-///    instantiation work by ~50%, leading to faster builds.
-///
-/// 3. **Instruction cache**: Smaller unrolled blocks improve I-cache hit rates,
-///    especially beneficial for loops that aren't the absolute hottest path.
-///
-/// 4. **Performance impact**: Negligible for most workloads
-///    - Small ranges (< 20 iterations): Unroll=4 matches or beats Unroll=8
-///      due to better I-cache utilization
-///    - Medium ranges (20-100): Within 1-2% (measurement noise)
-///    - Large ranges (> 100): 3-5% slower, but these loops are memory-bound
-///      anyway (unroll factor doesn't matter much)
-///
-/// 5. **Tail dispatch**: Unroll=4 has only 0-3 tail iterations vs 0-7 for
-///    Unroll=8, making tail dispatch simpler and faster
-///
-/// **Benchmark results** (x86-64, GCC 11, -O3):
-/// - Small loop (n=10): Unroll=4: 15ns, Unroll=8: 16ns (4 is faster!)
-/// - Medium loop (n=100): Unroll=4: 150ns, Unroll=8: 148ns (negligible)
-/// - Large loop (n=10000): Unroll=4: 15000ns, Unroll=8: 14500ns (3% slower)
-///
-/// **When to override**:
-/// Use `dynamic_for<8>` or higher when:
-/// - Profiling identifies a specific hot loop
-/// - Loop body is simple (few instructions per iteration)
-/// - Iteration count is consistently large (> 100)
-/// - Code size is not a concern
+/// `dynamic_for` does not provide a default unroll factor. Callers choose
+/// `Unroll` based on their own code-size, compile-time, and runtime trade-offs.
+/// Typical starting points are:
+/// - `Unroll=4` for balanced behavior in general code.
+/// - `Unroll=2` when compile time/code size is the priority.
+/// - `Unroll=8` for profiled hot loops with simple bodies.
 template<std::size_t Unroll, typename T1, typename T2, typename T3, typename Func>
 // POET_FLATTEN on public API: Enables cross-translation-unit inlining of the
 // entire dynamic_for call chain into the caller. Without this, callers from
@@ -428,42 +357,11 @@ inline POET_FLATTEN void dynamic_for(T1 begin, T2 end, T3 step, Func &&func) {
       Unroll <= detail::kMaxStaticLoopBlock, "dynamic_for supports unroll factors up to kMaxStaticLoopBlock");
 
     using T = std::common_type_t<T1, T2, T3>;
-    using Callable = std::remove_reference_t<Func>;
-
-    // ====================================================================
-    // Lvalue vs Rvalue optimization: Dual-path handling
-    // ====================================================================
-    // We handle lvalue and rvalue callables differently to optimize both cases:
-    //
-    // **Lvalue path** (Func is an lvalue reference):
-    // - Pass callable by reference directly to dynamic_for_impl
-    // - Avoids copying the callable object (important for stateful lambdas)
-    // - Typical case: Named function objects, captured-by-reference lambdas
-    // - Example: auto f = [&x](int i) { x += i; }; dynamic_for(0, 10, 1, f);
-    //
-    // **Rvalue path** (Func is an rvalue or non-reference):
-    // - Move-construct callable into local variable
-    // - Forward the moved callable to dynamic_for_impl
-    // - Prevents dangling references to temporary objects
-    // - Typical case: Inline lambdas, temporary function objects
-    // - Example: dynamic_for(0, 10, 1, [](int i) { process(i); });
-    //
-    // **Why both paths matter**:
-    // - Lvalue path: Prevents expensive copies of large stateful callables
-    // - Rvalue path: Ensures temporary callables live long enough (lifetime safety)
-    //
-    // The compiler optimizes both paths to essentially the same code after
-    // inlining, so there's no runtime overhead from this branching.
-    if constexpr (std::is_lvalue_reference_v<Func>) {
-        // Lvalue callable: Pass by reference, avoid copy
-        detail::dynamic_for_impl<T, std::remove_reference_t<Func>, Unroll>(
-          static_cast<T>(begin), static_cast<T>(end), static_cast<T>(step), func);
-    } else {
-        // Rvalue callable: Move into local storage, ensure proper lifetime
-        [[maybe_unused]] Callable callable(std::forward<Func>(func));
-        detail::dynamic_for_impl<T, Callable, Unroll>(
+    detail::with_stored_callable(std::forward<Func>(func), [&](auto &callable) -> void {
+        using callable_t = std::remove_reference_t<decltype(callable)>;
+        detail::dynamic_for_impl<T, callable_t, Unroll>(
           static_cast<T>(begin), static_cast<T>(end), static_cast<T>(step), callable);
-    }
+    });
 }
 
 /// \brief Executes a runtime-sized loop using compile-time unrolling with
@@ -497,8 +395,6 @@ template<std::size_t Unroll, typename Func> inline void dynamic_for(std::size_t 
 #if __cplusplus >= 202002L
 #include <ranges>
 #include <tuple>
-#include <type_traits>
-#include <utility>
 #include <cstddef>
 
 namespace poet {

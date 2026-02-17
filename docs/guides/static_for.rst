@@ -40,7 +40,7 @@ Template-lambda example (C++20)
    });
 
 Block partitioning and semantics
--------------------------------
+--------------------------------
 To avoid excessive template recursion/instantiation for very large ranges,
 static_for partitions the iteration space into blocks (BlockSize). This is an
 implementation detail and does not change the sequence of indices observed by
@@ -144,22 +144,21 @@ A step other than 1 can be specified to skip values.
        // use idx ...
    });
 
-What if the range exceeds kMaxStaticLoopBlock?
-----------------------------------------------
-- The default BlockSize is computed as the minimum of the total iteration count and `poet::kMaxStaticLoopBlock` (256 on most compilers, 128 on MSVC).
+What if the range exceeds the default block-size cap?
+-----------------------------------------------------
+- The default ``BlockSize`` is computed as the minimum of the total iteration count and a library-defined cap (currently 256 on most compilers, 128 on MSVC).
 - static_for still emits all iterations at compile time. There is no outer
   runtime loop. The implementation divides the total iterations into blocks and
   then emits those blocks in compile-time "chunks" to reduce template recursion
   depth.
-- Specifically:
-  - Default BlockSize: computed as `min(total_count, poet::kMaxStaticLoopBlock)`.
-  - Full blocks and a possible remainder block are computed as constexpr values
-    and expanded entirely at compile time.
-  - Internally, large numbers of blocks are processed in compile-time chunks of
-    up to `kMaxStaticLoopBlock` to avoid a single enormous fold expression.
+- Default ``BlockSize`` is ``min(total_count, library_cap)``.
+- Full blocks and a possible remainder block are computed as constexpr values
+  and expanded entirely at compile time.
+- Internally, large numbers of blocks are processed in compile-time chunks up
+  to that same cap to avoid a single enormous fold expression.
 
 Why this matters (practical note)
---------------------------------
+---------------------------------
 - The callable always receives the true iteration index (not a block-local id).
 - Block partitioning trades compile-time depth for manageable instantiation
   sizes; tuning BlockSize can reduce compile-time memory/time or limit code
@@ -168,7 +167,7 @@ Why this matters (practical note)
   compile-time ranges.
 
 Common pitfalls & tips
----------------------
+----------------------
 - If the integer is needed at runtime, use the callable's captured value or cast
   ``decltype(i)::value`` into a constexpr context; do not assume a runtime
   integer is provided by the template-lambda form.

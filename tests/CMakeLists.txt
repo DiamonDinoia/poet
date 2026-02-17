@@ -26,20 +26,36 @@ set(HEADERS_TEST_SRCS
   poet_header_tests.cpp
 )
 set(DYNAMIC_FOR_TEST_SRCS
-  dynamic_for_tests.cpp
+  dynamic_for_core_basic_tests.cpp
+  dynamic_for_core_step_tests.cpp
+  dynamic_for_edge_stress_tests.cpp
+  dynamic_for_advanced_tests.cpp
+  dynamic_for_ranges_tests.cpp
+)
+option(POET_ENABLE_HEAVY_DYNAMIC_FOR_TESTS "Enable expensive dynamic_for max-unroll stress tests" OFF)
+set(DYNAMIC_FOR_HEAVY_TEST_SRCS
+  dynamic_for_heavy_unroll_tests.cpp
 )
 set(STATIC_FOR_TEST_SRCS
   static_for_tests.cpp
 )
 set(DISPATCH_TEST_SRCS
-  static_dispatch_tests.cpp
+  static_dispatch_basic_tests.cpp
+  static_dispatch_throw_tests.cpp
+  static_dispatch_advanced_tests.cpp
   static_dispatch_tuple_tests.cpp
 )
-set(HEAVY_TEST_SRCS
-  static_dispatch_heavy_tests.cpp
-)
 
-set(POET_STATIC_DISPATCH_HEAVY_TEST_COUNT 12)
+# Heavy tests split by category to reduce linking memory usage
+set(HEAVY_ARRAY1D_TEST_SRCS
+  static_dispatch_heavy_array1d_tests.cpp
+)
+set(HEAVY_ARRAYND_TEST_SRCS
+  static_dispatch_heavy_arraynd_tests.cpp
+)
+set(HEAVY_RETURN_TEST_SRCS
+  static_dispatch_heavy_return_tests.cpp
+)
 option(POET_ENABLE_TEST_PCH "Enable precompiled headers for test targets" ON)
 
 # Internal macro: applies common configuration to all test targets
@@ -59,6 +75,14 @@ macro(_configure_poet_test target_name cxx_feature)
   endif()
 
   target_link_libraries(${target_name} PRIVATE Catch2::Catch2WithMain poet)
+
+  # Keep test builds lightweight; O3 on template-heavy tests is very costly.
+  target_compile_options(${target_name} PRIVATE
+    $<$<CXX_COMPILER_ID:GNU>:-O1>
+    $<$<CXX_COMPILER_ID:Clang>:-O1>
+    $<$<CXX_COMPILER_ID:AppleClang>:-O1>
+    $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<NOT:$<CONFIG:Debug>>>:/O1>
+  )
 
   # Add coverage instrumentation if enabled
   if(POET_ENABLE_COVERAGE)
@@ -84,20 +108,8 @@ endmacro()
 
 # Creates a test executable with Catch2 test discovery
 # Usage: add_poet_test_exec(target_name cxx_feature sources...)
-#        add_poet_test_exec(target_name cxx_feature HEAVY_TEST test_id)
 macro(add_poet_test_exec target_name cxx_feature)
-  # Parse optional HEAVY_TEST argument
-  set(_is_heavy_test FALSE)
-  set(_heavy_test_id "")
-  if("${ARGV2}" STREQUAL "HEAVY_TEST")
-    set(_is_heavy_test TRUE)
-    set(_heavy_test_id "${ARGV3}")
-    add_executable(${target_name} ${HEAVY_TEST_SRCS})
-    target_compile_definitions(${target_name} PRIVATE POET_STATIC_DISPATCH_HEAVY_TEST_ID=${_heavy_test_id})
-  else()
-    add_executable(${target_name} ${ARGN})
-  endif()
-
+  add_executable(${target_name} ${ARGN})
   _configure_poet_test(${target_name} ${cxx_feature})
   catch_discover_tests(${target_name})
 
@@ -106,29 +118,31 @@ macro(add_poet_test_exec target_name cxx_feature)
 endmacro()
 
 # Creates a complete test suite with separate executables for each test category
-# Heavy tests are split into individual executables to reduce compilation memory usage
+# Heavy tests are split by category into separate executables to reduce linking memory usage
 macro(add_poet_tests_suite suite_target cxx_feature)
   set(_suite_execs
     ${suite_target}_headers
     ${suite_target}_dynamic_for
     ${suite_target}_static_for
     ${suite_target}_dispatch
+    ${suite_target}_heavy_array1d
+    ${suite_target}_heavy_arraynd
+    ${suite_target}_heavy_return
   )
 
   # Create separate executables for each test category to enable parallel compilation
   add_poet_test_exec(${suite_target}_headers ${cxx_feature} ${HEADERS_TEST_SRCS})
   add_poet_test_exec(${suite_target}_dynamic_for ${cxx_feature} ${DYNAMIC_FOR_TEST_SRCS})
+  if(POET_ENABLE_HEAVY_DYNAMIC_FOR_TESTS AND "${suite_target}" STREQUAL "poet_tests_std23")
+    target_sources(${suite_target}_dynamic_for PRIVATE ${DYNAMIC_FOR_HEAVY_TEST_SRCS})
+  endif()
   add_poet_test_exec(${suite_target}_static_for ${cxx_feature} ${STATIC_FOR_TEST_SRCS})
   add_poet_test_exec(${suite_target}_dispatch ${cxx_feature} ${DISPATCH_TEST_SRCS})
 
-  # Heavy tests: split each test case into its own executable to reduce peak memory usage.
-  # Each executable compiles static_dispatch_heavy_tests.cpp with POET_STATIC_DISPATCH_HEAVY_TEST_ID
-  # set to enable only one test case via preprocessor guards (see static_dispatch_heavy_tests.cpp).
-  foreach(_id RANGE 1 ${POET_STATIC_DISPATCH_HEAVY_TEST_COUNT})
-    set(_heavy_target ${suite_target}_heavy_${_id})
-    add_poet_test_exec(${_heavy_target} ${cxx_feature} HEAVY_TEST ${_id})
-    list(APPEND _suite_execs ${_heavy_target})
-  endforeach()
+  # Heavy tests: split by category to reduce peak memory usage during linking
+  add_poet_test_exec(${suite_target}_heavy_array1d ${cxx_feature} ${HEAVY_ARRAY1D_TEST_SRCS})
+  add_poet_test_exec(${suite_target}_heavy_arraynd ${cxx_feature} ${HEAVY_ARRAYND_TEST_SRCS})
+  add_poet_test_exec(${suite_target}_heavy_return ${cxx_feature} ${HEAVY_RETURN_TEST_SRCS})
 
   # Create umbrella target for building all tests in this suite
   add_custom_target(${suite_target} DEPENDS ${_suite_execs})

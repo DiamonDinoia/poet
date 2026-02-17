@@ -46,7 +46,7 @@ Basic Range Dispatch
    poet::dispatch(Kernel{}, std::make_tuple(param), data_ptr);
 
 Cartesian product of ranges (multiple DispatchParam)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Dispatch over two independent ranges without enumerating a set:
 
@@ -121,7 +121,7 @@ The throwing overload with ``DispatchSet`` is also available:
 Implementation Details
 ----------------------
 
-Internally, ``dispatch`` constructs a table of ``std::variant`` types, where each variant holds a ``std::integral_constant``. It uses ``std::visit`` to invoke the callable. For ranges, it optimizes the mapping from integer to variant index to be O(1) (simple arithmetic offset). For sparse sets, it may use linear search or other strategies depending on the structure, but the ``DispatchSet`` interface is designed for efficient lookups where possible.
+Internally, ``dispatch`` builds compile-time function-pointer tables and maps runtime values to table indices. For contiguous ranges, index mapping is O(1) arithmetic. For sparse/non-contiguous ranges, lookup uses precomputed sorted metadata with O(log N) search. ``DispatchSet`` routes through tuple-based matching over explicitly allowed combinations.
 
 Advanced: ``poet::dispatch_tuples`` exposes the tuple-of-sequences form used under the hood for ``DispatchSet`` and cartesian ParamTuples. Most users should call ``poet::dispatch`` instead.
 

@@ -50,3 +50,4 @@ build-*/
 
 # Doxygen output
 docs/api/
+docs/_build/

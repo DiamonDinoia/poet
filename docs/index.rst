@@ -105,6 +105,7 @@ Install with CMake
    cmake --install build --prefix /custom/prefix
 
 High-level usage pointers
+-------------------------
 - Read the short guides for practical patterns:
   - guides/static_for — when compile-time unrolling is needed.
   - guides/dynamic_for — when low-overhead runtime loops in unrolled blocks are desired.

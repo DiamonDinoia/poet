@@ -1,6 +1,7 @@
 import textwrap
 import os
 import sys
+import glob
 
 # Project information
 project = 'POET'
@@ -27,10 +28,30 @@ breathe_default_project = "POET"
 exhale_args = {
     "containmentFolder":     "./api",
     "rootFileName":          "library_root.rst",
-    "doxygenStripFromPath":  "..",
+    "doxygenStripFromPath":  os.path.abspath(".."),
     "rootFileTitle":         "POET API Reference",
     "createTreeView":        True,
-    "exhaleExecutesDoxygen": False
+    "exhaleExecutesDoxygen": False,
+    # Keep generated pages focused on public API.
+    "listingExclude": [
+        r".*::detail::.*",
+        r".*\\bdetail\\b.*",
+        r".*DispatchSet::convert_tuple.*",
+        r".*DispatchSet::seq_len.*",
+        r"^poet::dispatch$",
+        r"^poet::dispatch_tuples$",
+        r"^poet::static_for$",
+    ],
+    # Avoid brittle overload resolution pages from generated function entries.
+    "unabridgedOrphanKinds": [
+        "dir",
+        "namespace",
+        "class",
+        "struct",
+        "enum",
+        "typedef",
+        "variable",
+    ],
 }
 
 # Theme
@@ -40,3 +61,35 @@ html_theme_options = {
     'collapse_navigation': False,
     'sticky_navigation': True,
 }
+
+# Breathe/Exhale emit false-positive warnings for heavily-overloaded templated
+# APIs (notably dispatch/static_for) due to parser limitations.
+suppress_warnings = [
+    "docutils",
+    "cpp.duplicate_declaration",
+    "duplicate_declaration.cpp",
+]
+
+
+def _strip_private_macro_refs(app, env, docnames):
+    api_dir = os.path.join(os.path.dirname(__file__), "api")
+    if not os.path.isdir(api_dir):
+        return
+
+    blocked = (
+        "``poet/core/macros.hpp``",
+        "``poet/core/undef_macros.hpp``",
+    )
+
+    for rst_path in glob.glob(os.path.join(api_dir, "file_include_*.rst")):
+        with open(rst_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        filtered = [line for line in lines if not any(token in line for token in blocked)]
+        if filtered != lines:
+            with open(rst_path, "w", encoding="utf-8") as f:
+                f.writelines(filtered)
+
+
+def setup(app):
+    app.connect("env-before-read-docs", _strip_private_macro_refs)
