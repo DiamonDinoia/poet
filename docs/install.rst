@@ -25,7 +25,7 @@ If POET has been cloned (or added as a submodule) into a subdirectory (e.g., ``e
 .. code-block:: cmake
 
    add_subdirectory(extern/poet)
-   
+
    add_executable(my_app main.cpp)
    target_link_libraries(my_app PRIVATE poet::poet)
 
@@ -87,7 +87,7 @@ Then in the consuming project:
 .. code-block:: cmake
 
    find_package(poet CONFIG REQUIRED)
-   
+
    add_executable(my_app main.cpp)
    target_link_libraries(my_app PRIVATE poet::poet)
 
@@ -102,7 +102,7 @@ Assuming the POET repository is located at ``/path/to/poet``:
 
    CXX = g++
    CXXFLAGS = -std=c++17 -O3 -I/path/to/poet/include
-   
+
    main: main.cpp
        $(CXX) $(CXXFLAGS) -o main main.cpp
 

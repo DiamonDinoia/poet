@@ -1,7 +1,7 @@
 #pragma once
 
-#include <poet/poet.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <poet/poet.hpp>
 
 #include <array>
 #include <memory>

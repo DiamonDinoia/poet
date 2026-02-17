@@ -125,10 +125,10 @@ namespace detail {
 /// \param func Callable instance invoked once per iteration.
 POET_PUSH_OPTIMIZE
 template<std::intmax_t Begin,
-    std::intmax_t End,
-    std::intmax_t Step = 1,
-    std::size_t BlockSize = detail::compute_default_static_loop_block_size<Begin, End, Step>(),
-    typename Func>
+  std::intmax_t End,
+  std::intmax_t Step = 1,
+  std::size_t BlockSize = detail::compute_default_static_loop_block_size<Begin, End, Step>(),
+  typename Func>
 POET_FORCEINLINE constexpr void static_for(Func &&func) {
     static_assert(BlockSize > 0, "static_for requires BlockSize > 0");
 

@@ -27,9 +27,7 @@ TEST_CASE("dynamic_for vs ranges (C++20)", "[dynamic_for][ranges][cpp20]") {
 
 TEST_CASE("dynamic_for with transformed ranges (C++20)", "[dynamic_for][ranges][cpp20]") {
     std::vector<int> via_ranges;
-    auto r = std::views::iota(0)
-             | std::views::transform([](int i) { return i * 2; })
-             | std::views::take(5);
+    auto r = std::views::iota(0) | std::views::transform([](int i) { return i * 2; }) | std::views::take(5);
     std::ranges::for_each(r, [&via_ranges](int v) { via_ranges.push_back(v); });
 
     std::vector<int> via_dynamic;
@@ -68,4 +66,4 @@ TEST_CASE("dynamic_for lane works with range and tuple adaptors (C++20)", "[dyna
     }
 }
 
-#endif // __cplusplus >= 202002L
+#endif// __cplusplus >= 202002L

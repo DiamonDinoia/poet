@@ -15,13 +15,10 @@ function(poet_configure_static_analysis target)
     find_program(_clang_tidy_exe NAMES clang-tidy clang-tidy-17 clang-tidy-16)
     if(_clang_tidy_exe)
       set(_clang_tidy_command "${_clang_tidy_exe}")
-      # Default clang-tidy checks: enable everything but exclude checks known to
-      # crash or produce false-positives on bundled third-party headers.
+      # When POET_CLANG_TIDY_CHECKS is set, use those checks; otherwise let
+      # clang-tidy pick up the .clang-tidy config file from the source tree.
       if(POET_CLANG_TIDY_CHECKS)
-        # allow user to override but append safe exclusions
-        set(_clang_tidy_command "${_clang_tidy_command};-checks=${POET_CLANG_TIDY_CHECKS},-bugprone-argument-comment")
-      else()
-        set(_clang_tidy_command "${_clang_tidy_command};-checks=*,-bugprone-argument-comment,-llvmlibc-*,-altera-*,-fuchsia-*,-cppcoreguidelines-avoid-do-while,-cert-err58-cpp,-misc-use-anonymous-namespace")
+        set(_clang_tidy_command "${_clang_tidy_command};-checks=${POET_CLANG_TIDY_CHECKS}")
       endif()
       # Restrict analysis to POET sources/headers to exclude third-party code
       # append a header-filter that matches project include and src trees

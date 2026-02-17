@@ -92,10 +92,7 @@ TEST_CASE("dispatch with value-argument form (integral_constant parameters)", "[
 
 TEST_CASE("dispatch 3D (triple dispatch)", "[static_dispatch][3d]") {
     auto params = std::make_tuple(
-        DispatchParam<make_range<0, 2>>{ 1 },
-        DispatchParam<make_range<0, 2>>{ 2 },
-        DispatchParam<make_range<0, 2>>{ 0 }
-    );
+      DispatchParam<make_range<0, 2>>{ 1 }, DispatchParam<make_range<0, 2>>{ 2 }, DispatchParam<make_range<0, 2>>{ 0 });
 
     const auto result = dispatch(triple_dispatcher{}, params, 5);
     REQUIRE(result == 125);
@@ -108,9 +105,7 @@ TEST_CASE("dispatch exception safety", "[static_dispatch][exception]") {
     try {
         dispatch(throwing_dispatcher{ &count }, params, 2);
         FAIL("Expected exception was not thrown");
-    } catch (const std::runtime_error &) {
-        REQUIRE(count == 1);
-    }
+    } catch (const std::runtime_error &) { REQUIRE(count == 1); }
 }
 
 TEST_CASE("dispatch with single-element non-contiguous sequence", "[static_dispatch][edge_case]") {

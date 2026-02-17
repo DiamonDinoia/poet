@@ -16,7 +16,7 @@ namespace {
 using poet::DispatchParam;
 using poet::dispatch;
 using poet::make_range;
-}
+}// namespace
 
 TEST_CASE("dispatch ND lambda returns std::vector", "[static_dispatch][return][nd][vector]") {
     using Seq1 = make_range<0, 2>;
@@ -32,7 +32,8 @@ TEST_CASE("dispatch ND lambda returns std::vector", "[static_dispatch][return][n
     }
 }
 
-TEST_CASE("dispatch ND lambda sets separate arrays and returns std::vector", "[static_dispatch][array][nd][vector][side-effect]") {
+TEST_CASE("dispatch ND lambda sets separate arrays and returns std::vector",
+  "[static_dispatch][array][nd][vector][side-effect]") {
     constexpr int N1 = 4;
     constexpr int N2 = 4;
     std::array<std::array<int, N2>, N1> arrI{};
@@ -40,11 +41,11 @@ TEST_CASE("dispatch ND lambda sets separate arrays and returns std::vector", "[s
     using Seq1 = make_range<0, N1 - 1>;
     using Seq2 = make_range<0, N2 - 1>;
 
-    std::vector<std::pair<int, int>> picks = { {1, 2}, {3, 0} };
+    std::vector<std::pair<int, int>> picks = { { 1, 2 }, { 3, 0 } };
     std::unordered_set<int> pick_set;
-    for (const auto& p : picks) pick_set.insert(p.first * 16 + p.second);
+    for (const auto &p : picks) pick_set.insert(p.first * 16 + p.second);
 
-    for (const auto& p : picks) {
+    for (const auto &p : picks) {
         auto setter = [&arrI, &arrJ](auto I, auto J) -> std::vector<int> {
             arrI[static_cast<std::size_t>(I)][static_cast<std::size_t>(J)] = I;
             arrJ[static_cast<std::size_t>(I)][static_cast<std::size_t>(J)] = J;
@@ -69,16 +70,17 @@ TEST_CASE("dispatch ND lambda sets separate arrays and returns std::vector", "[s
     }
 }
 
-TEST_CASE("dispatch ND lambda returns NonTrivial (non-trivially copyable)", "[static_dispatch][return][nd][nontrivial]") {
+TEST_CASE("dispatch ND lambda returns NonTrivial (non-trivially copyable)",
+  "[static_dispatch][return][nd][nontrivial]") {
     using Seq1 = make_range<0, 2>;
     using Seq2 = make_range<0, 2>;
 
     struct NonTrivial {
         std::vector<int> v;
         NonTrivial() = default;
-        NonTrivial(int a, int b) : v{a, b} {}
-        NonTrivial(const NonTrivial& other) : v(other.v) {}
-        bool operator==(const NonTrivial& o) const { return v == o.v; }
+        NonTrivial(int a, int b) : v{ a, b } {}
+        NonTrivial(const NonTrivial &other) : v(other.v) {}
+        bool operator==(const NonTrivial &o) const { return v == o.v; }
     };
 
     for (int i = 0; i <= 2; ++i) {
@@ -115,18 +117,16 @@ TEST_CASE("dispatch ND lambda returns pointer (lvalue)", "[static_dispatch][retu
     constexpr int N2 = 3;
     std::array<std::array<int, N2>, N1> arr{};
     for (int i = 0; i < N1; ++i) {
-        for (int j = 0; j < N2; ++j) {
-            arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] = 0;
-        }
+        for (int j = 0; j < N2; ++j) { arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] = 0; }
     }
 
     for (int i = 0; i <= 2; ++i) {
         for (int j = 0; j <= 2; ++j) {
-            auto setter = [&arr](auto I, auto J) -> int* {
+            auto setter = [&arr](auto I, auto J) -> int * {
                 return &arr[static_cast<std::size_t>(I)][static_cast<std::size_t>(J)];
             };
             auto params = std::make_tuple(DispatchParam<Seq1>{ i }, DispatchParam<Seq2>{ j });
-            int* p = dispatch(setter, params);
+            int *p = dispatch(setter, params);
             *p = i * 100 + j;
             REQUIRE(arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] == i * 100 + j);
         }

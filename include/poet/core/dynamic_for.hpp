@@ -83,8 +83,7 @@ namespace detail {
     // Callable form detection — detect signature once, not per iteration
     // ========================================================================
 
-    template<typename...>
-    inline constexpr bool always_false_v = false;
+    template<typename...> inline constexpr bool always_false_v = false;
 
     /// \brief Tag types for callable form dispatch.
     ///
@@ -92,30 +91,26 @@ namespace detail {
     /// selected once at template instantiation via `detect_callable_form` and
     /// threaded through as a type parameter, enabling the compiler to resolve
     /// the correct invocation path via overloading — no enum or switch needed.
-    struct lane_by_value_tag {};    ///< func(integral_constant<size_t, Lane>{}, index)
-    struct index_only_tag {};       ///< func(index)
+    struct lane_by_value_tag {};///< func(integral_constant<size_t, Lane>{}, index)
+    struct index_only_tag {};///< func(index)
 
     /// \brief Detects the callable form at template instantiation time.
     ///
     /// Returns the appropriate tag type. Uses Lane=0 as representative —
     /// the form is the same for all lanes.
-    template<typename Func, typename T>
-    constexpr auto detect_callable_form() {
+    template<typename Func, typename T> constexpr auto detect_callable_form() {
         if constexpr (std::is_invocable_v<Func &, std::integral_constant<std::size_t, 0>, T>) {
             return lane_by_value_tag{};
         } else if constexpr (std::is_invocable_v<Func &, T>) {
             return index_only_tag{};
         } else {
-            static_assert(
-                always_false_v<Func>,
-                "dynamic_for callable must accept (lane, index) or (index)");
+            static_assert(always_false_v<Func>, "dynamic_for callable must accept (lane, index) or (index)");
             return index_only_tag{};
         }
     }
 
     /// \brief Type alias for the detected callable form tag.
-    template<typename Func, typename T>
-    using callable_form_t = decltype(detect_callable_form<Func, T>());
+    template<typename Func, typename T> using callable_form_t = decltype(detect_callable_form<Func, T>());
 
     // ========================================================================
     // Specialized invokers — overloaded on tag, zero per-call branching
@@ -139,16 +134,14 @@ namespace detail {
     ///
     /// Adapts the tag-dispatched invoke_lane interface for use with static_for.
     /// Each lane computes index = base + Lane * stride.
-    template<typename FormTag, typename Callable, typename T>
-    struct block_invoker {
+    template<typename FormTag, typename Callable, typename T> struct block_invoker {
         Callable &callable;
         T base;
         T stride;
 
         template<std::intmax_t Value>
         POET_FORCEINLINE constexpr void operator()(std::integral_constant<std::intmax_t, Value> /*ic*/) const {
-            invoke_lane<static_cast<std::size_t>(Value)>(FormTag{}, callable,
-                base + static_cast<T>(Value) * stride);
+            invoke_lane<static_cast<std::size_t>(Value)>(FormTag{}, callable, base + static_cast<T>(Value) * stride);
         }
     };
 
@@ -157,15 +150,13 @@ namespace detail {
     /// The stride is baked into the template parameter, so per-lane
     /// multiplication uses compile-time constants (including Step=1
     /// where `Value * 1` is constant-folded away).
-    template<std::intmax_t Step, typename FormTag, typename Callable, typename T>
-    struct block_invoker_ct_stride {
+    template<std::intmax_t Step, typename FormTag, typename Callable, typename T> struct block_invoker_ct_stride {
         Callable &callable;
         T base;
 
         template<std::intmax_t Value>
         POET_FORCEINLINE constexpr void operator()(std::integral_constant<std::intmax_t, Value> /*ic*/) const {
-            invoke_lane<static_cast<std::size_t>(Value)>(FormTag{}, callable,
-                base + static_cast<T>(Value * Step));
+            invoke_lane<static_cast<std::size_t>(Value)>(FormTag{}, callable, base + static_cast<T>(Value * Step));
         }
     };
 
@@ -176,11 +167,11 @@ namespace detail {
     /// \brief Executes an unrolled block via static_for with runtime stride.
     template<typename FormTag, typename Callable, typename T, std::size_t BlockSize>
     POET_FORCEINLINE constexpr void execute_block([[maybe_unused]] FormTag /*tag*/,
-                                                  [[maybe_unused]] Callable &callable,
-                                                  [[maybe_unused]] T base,
-                                                  [[maybe_unused]] T stride) {
+      [[maybe_unused]] Callable &callable,
+      [[maybe_unused]] T base,
+      [[maybe_unused]] T stride) {
         if constexpr (BlockSize > 0) {
-            block_invoker<FormTag, Callable, T> invoker{callable, base, stride};
+            block_invoker<FormTag, Callable, T> invoker{ callable, base, stride };
             static_for<0, static_cast<std::intmax_t>(BlockSize), 1, BlockSize>(invoker);
         }
     }
@@ -188,10 +179,10 @@ namespace detail {
     /// \brief Executes an unrolled block via static_for with compile-time stride.
     template<std::intmax_t Step, typename FormTag, typename Callable, typename T, std::size_t BlockSize>
     POET_FORCEINLINE constexpr void execute_block_ct_stride([[maybe_unused]] FormTag /*tag*/,
-                                                            [[maybe_unused]] Callable &callable,
-                                                            [[maybe_unused]] T base) {
+      [[maybe_unused]] Callable &callable,
+      [[maybe_unused]] T base) {
         if constexpr (BlockSize > 0) {
-            block_invoker_ct_stride<Step, FormTag, Callable, T> invoker{callable, base};
+            block_invoker_ct_stride<Step, FormTag, Callable, T> invoker{ callable, base };
             static_for<0, static_cast<std::intmax_t>(BlockSize), 1, BlockSize>(invoker);
         }
     }
@@ -205,13 +196,10 @@ namespace detail {
     /// Empty struct (is_stateless_v = true) so dispatch eliminates the functor
     /// pointer from the function pointer table. The callable pointer, index, and
     /// stride are passed as dispatch arguments and stay in registers.
-    template<typename FormTag, typename Callable, typename T>
-    struct tail_dispatch_functor {
-        template<int N>
-        POET_FORCEINLINE void operator()(Callable *callable, T index, T stride) const {
+    template<typename FormTag, typename Callable, typename T> struct tail_dispatch_functor {
+        template<int N> POET_FORCEINLINE void operator()(Callable *callable, T index, T stride) const {
             if constexpr (N > 0) {
-                execute_block<FormTag, Callable, T, static_cast<std::size_t>(N)>(
-                    FormTag{}, *callable, index, stride);
+                execute_block<FormTag, Callable, T, static_cast<std::size_t>(N)>(FormTag{}, *callable, index, stride);
             }
         }
     };
@@ -222,11 +210,10 @@ namespace detail {
     /// argument from the dispatch table entries.
     template<std::intmax_t Step, typename FormTag, typename Callable, typename T>
     struct tail_dispatch_functor_ct_stride {
-        template<int N>
-        POET_FORCEINLINE void operator()(Callable *callable, T index) const {
+        template<int N> POET_FORCEINLINE void operator()(Callable *callable, T index) const {
             if constexpr (N > 0) {
                 execute_block_ct_stride<Step, FormTag, Callable, T, static_cast<std::size_t>(N)>(
-                    FormTag{}, *callable, index);
+                  FormTag{}, *callable, index);
             }
         }
     };
@@ -238,11 +225,11 @@ namespace detail {
         const tail_dispatch_functor<FormTag, Callable, T> functor{};
         const T c_index = index;
         const T c_stride = stride;
-        poet::dispatch(
-            functor,
-            poet::DispatchParam<poet::make_range<1, static_cast<int>(Unroll - 1)>>{
-                static_cast<int>(count)},
-            std::addressof(callable), c_index, c_stride);
+        poet::dispatch(functor,
+          poet::DispatchParam<poet::make_range<1, static_cast<int>(Unroll - 1)>>{ static_cast<int>(count) },
+          std::addressof(callable),
+          c_index,
+          c_stride);
     }
 
     template<std::intmax_t Step, typename FormTag, std::size_t Unroll, typename Callable, typename T>
@@ -251,11 +238,10 @@ namespace detail {
         if (count == 0) { return; }
         const tail_dispatch_functor_ct_stride<Step, FormTag, Callable, T> functor{};
         const T c_index = index;
-        poet::dispatch(
-            functor,
-            poet::DispatchParam<poet::make_range<1, static_cast<int>(Unroll - 1)>>{
-                static_cast<int>(count)},
-            std::addressof(callable), c_index);
+        poet::dispatch(functor,
+          poet::DispatchParam<poet::make_range<1, static_cast<int>(Unroll - 1)>>{ static_cast<int>(count) },
+          std::addressof(callable),
+          c_index);
     }
 
     // ========================================================================
@@ -275,9 +261,7 @@ namespace detail {
         const bool is_wrapped_negative = is_unsigned && (stride > half_max);
 
         if (POET_UNLIKELY(stride < 0 || is_wrapped_negative)) {
-            if (POET_UNLIKELY(begin <= end)) {
-                return 0;
-            }
+            if (POET_UNLIKELY(begin <= end)) { return 0; }
             T abs_stride;
             if constexpr (std::is_signed_v<T>) {
                 abs_stride = static_cast<T>(-stride);
@@ -289,9 +273,7 @@ namespace detail {
             return (dist + ustride - 1) / ustride;
         }
 
-        if (POET_UNLIKELY(begin >= end)) {
-            return 0;
-        }
+        if (POET_UNLIKELY(begin >= end)) { return 0; }
 
         auto dist = static_cast<std::size_t>(end - begin);
         auto ustride = static_cast<std::size_t>(stride);
@@ -336,8 +318,7 @@ namespace detail {
     /// Handles all non-unit strides including negative, power-of-2, and general.
     /// The callable form is baked into the template parameter.
     template<typename T, typename Callable, std::size_t Unroll, typename FormTag>
-    POET_HOT_LOOP
-    void dynamic_for_impl_general(T begin, T end, T stride, Callable &callable, FormTag tag) {
+    POET_HOT_LOOP void dynamic_for_impl_general(T begin, T end, T stride, Callable &callable, FormTag tag) {
         if (POET_UNLIKELY(stride == 0)) { return; }
 
         std::size_t count = calculate_iteration_count_complex(begin, end, stride);
@@ -384,8 +365,7 @@ namespace detail {
     /// `Value * 1` is constant-folded, producing identical codegen to a
     /// hand-written stride-1 loop.
     template<std::intmax_t Step, typename T, typename Callable, std::size_t Unroll, typename FormTag>
-    POET_HOT_LOOP
-    void dynamic_for_impl_ct_stride(T begin, T end, Callable &callable, FormTag tag) {
+    POET_HOT_LOOP void dynamic_for_impl_ct_stride(T begin, T end, Callable &callable, FormTag tag) {
         std::size_t count = calculate_iteration_count_ct<Step>(begin, end);
         if (POET_UNLIKELY(count == 0)) { return; }
 
@@ -456,10 +436,10 @@ POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, T3 step, Func &&fu
 
         if (s == static_cast<T>(1)) {
             detail::dynamic_for_impl_ct_stride<1, T, callable_t, Unroll>(
-                static_cast<T>(begin), static_cast<T>(end), func, form_tag{});
+              static_cast<T>(begin), static_cast<T>(end), func, form_tag{});
         } else {
             detail::dynamic_for_impl_general<T, callable_t, Unroll>(
-                static_cast<T>(begin), static_cast<T>(end), s, func, form_tag{});
+              static_cast<T>(begin), static_cast<T>(end), s, func, form_tag{});
         }
     } else {
         std::remove_reference_t<Func> callable(std::forward<Func>(func));
@@ -468,10 +448,10 @@ POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, T3 step, Func &&fu
 
         if (s == static_cast<T>(1)) {
             detail::dynamic_for_impl_ct_stride<1, T, callable_t, Unroll>(
-                static_cast<T>(begin), static_cast<T>(end), callable, form_tag{});
+              static_cast<T>(begin), static_cast<T>(end), callable, form_tag{});
         } else {
             detail::dynamic_for_impl_general<T, callable_t, Unroll>(
-                static_cast<T>(begin), static_cast<T>(end), s, callable, form_tag{});
+              static_cast<T>(begin), static_cast<T>(end), s, callable, form_tag{});
         }
     }
 }
@@ -501,13 +481,13 @@ POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, Func &&func) {
         using callable_t = std::remove_reference_t<Func>;
         using form_tag = detail::callable_form_t<callable_t, T>;
         detail::dynamic_for_impl_ct_stride<Step, T, callable_t, Unroll>(
-            static_cast<T>(begin), static_cast<T>(end), func, form_tag{});
+          static_cast<T>(begin), static_cast<T>(end), func, form_tag{});
     } else {
         std::remove_reference_t<Func> callable(std::forward<Func>(func));
         using callable_t = std::remove_reference_t<Func>;
         using form_tag = detail::callable_form_t<callable_t, T>;
         detail::dynamic_for_impl_ct_stride<Step, T, callable_t, Unroll>(
-            static_cast<T>(begin), static_cast<T>(end), callable, form_tag{});
+          static_cast<T>(begin), static_cast<T>(end), callable, form_tag{});
     }
 }
 
@@ -529,63 +509,61 @@ POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, Func &&func) {
 /// \brief Executes a runtime-sized loop from zero using compile-time unrolling.
 ///
 /// This overload iterates over the range `[0, count)`.
-template<std::size_t Unroll, typename Func> POET_FORCEINLINE constexpr void dynamic_for(std::size_t count, Func &&func) {
+template<std::size_t Unroll, typename Func>
+POET_FORCEINLINE constexpr void dynamic_for(std::size_t count, Func &&func) {
     dynamic_for<Unroll>(static_cast<std::size_t>(0), count, std::forward<Func>(func));
 }
 
-} // namespace poet
+}// namespace poet
 
 
 #if __cplusplus >= 202002L
+#include <cstddef>
 #include <ranges>
 #include <tuple>
-#include <cstddef>
 
 namespace poet {
 
 // Adaptor holds the user callable.
 // Template ordering: Func first (deduced), Unroll second (required).
-template<typename Func, std::size_t Unroll>
-struct dynamic_for_adaptor {
-  Func func;
-  constexpr explicit dynamic_for_adaptor(Func f) : func(std::move(f)) {}
+template<typename Func, std::size_t Unroll> struct dynamic_for_adaptor {
+    Func func;
+    constexpr explicit dynamic_for_adaptor(Func f) : func(std::move(f)) {}
 };
 
 // Range overload: accept any std::ranges::range.
 // Interprets the range as a sequence of consecutive indices starting at *begin(range).
 // This implementation computes the distance by iterating the range (works even when not sized).
 template<typename Func, std::size_t Unroll, typename Range>
-  requires std::ranges::range<Range>
-void operator|(Range &&r, dynamic_for_adaptor<Func, Unroll> const &ad) {
-  auto it = std::ranges::begin(r);
-  auto it_end = std::ranges::end(r);
+requires std::ranges::range<Range> void operator|(Range &&r, dynamic_for_adaptor<Func, Unroll> const &ad) {
+    auto it = std::ranges::begin(r);
+    auto it_end = std::ranges::end(r);
 
-  if (it == it_end) return; // empty range
+    if (it == it_end) return;// empty range
 
-  using ValT = std::remove_reference_t<decltype(*it)>;
-  ValT start = *it;
+    using ValT = std::remove_reference_t<decltype(*it)>;
+    ValT start = *it;
 
-  std::size_t count = 0;
-  for (auto jt = it; jt != it_end; ++jt) ++count;
+    std::size_t count = 0;
+    for (auto jt = it; jt != it_end; ++jt) ++count;
 
-  // Call dynamic_for with [start, start+count) using step = +1
-  poet::dynamic_for<Unroll>(start, static_cast<ValT>(start + static_cast<ValT>(count)), ad.func);
+    // Call dynamic_for with [start, start+count) using step = +1
+    poet::dynamic_for<Unroll>(start, static_cast<ValT>(start + static_cast<ValT>(count)), ad.func);
 }
 
 // Tuple overload: accept tuple-like (begin, end, step)
 template<typename Func, std::size_t Unroll, typename B, typename E, typename S>
 void operator|(std::tuple<B, E, S> const &t, dynamic_for_adaptor<Func, Unroll> const &ad) {
-  auto [b, e, s] = t;
-  poet::dynamic_for<Unroll>(b, e, s, ad.func);
+    auto [b, e, s] = t;
+    poet::dynamic_for<Unroll>(b, e, s, ad.func);
 }
 
 // Helper to construct adaptor with type deduction
-template<std::size_t U, typename F>
-constexpr auto make_dynamic_for(F &&f) -> dynamic_for_adaptor<std::decay_t<F>, U> {
-  return dynamic_for_adaptor<std::decay_t<F>, U>(std::forward<F>(f));
+template<std::size_t U, typename F> constexpr auto make_dynamic_for(F &&f) -> dynamic_for_adaptor<std::decay_t<F>, U> {
+    return dynamic_for_adaptor<std::decay_t<F>, U>(std::forward<F>(f));
 }
 
-} // namespace poet
-#endif // __cplusplus >= 202002L
+}// namespace poet
+#endif// __cplusplus >= 202002L
 
 #endif// POET_CORE_DYNAMIC_FOR_HPP

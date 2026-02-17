@@ -48,7 +48,7 @@ static inline double compute_work(std::size_t i) noexcept {
 double serial_loop(std::size_t begin, std::size_t end, std::size_t salt) {
     double sum = 0.0;
     for (std::size_t i = begin; i < end; ++i) {
-        sum += compute_work(i + salt);  // Dependency chain: sum_i = sum_{i-1} + work(i)
+        sum += compute_work(i + salt);// Dependency chain: sum_i = sum_{i-1} + work(i)
     }
     return sum;
 }
@@ -56,25 +56,19 @@ double serial_loop(std::size_t begin, std::size_t end, std::size_t salt) {
 // Optimized: dynamic_for automatically unrolls to boost ILP
 // The unrolling breaks the dependency chain by exposing multiple independent operations
 // Compiler can interleave FMA chains from different iterations -> higher throughput
-template<std::size_t Unroll>
-double dynamic_for_loop(std::size_t begin, std::size_t end, std::size_t salt) {
+template<std::size_t Unroll> double dynamic_for_loop(std::size_t begin, std::size_t end, std::size_t salt) {
     double sum = 0.0;
     poet::dynamic_for<Unroll>(begin, end, [&sum, salt](std::size_t i) {
-        sum += compute_work(i + salt);  // Same code, but unrolling enables parallel execution
+        sum += compute_work(i + salt);// Same code, but unrolling enables parallel execution
     });
     return sum;
 }
 
-template<std::size_t NumAccs>
-double serial_loop_multi_acc(std::size_t begin, std::size_t end, std::size_t salt) {
+template<std::size_t NumAccs> double serial_loop_multi_acc(std::size_t begin, std::size_t end, std::size_t salt) {
     std::array<double, NumAccs> sums{};
-    for (std::size_t i = begin; i < end; ++i) {
-        sums[i % NumAccs] += compute_work(i + salt);
-    }
+    for (std::size_t i = begin; i < end; ++i) { sums[i % NumAccs] += compute_work(i + salt); }
     double total = 0.0;
-    for (double v : sums) {
-        total += v;
-    }
+    for (double v : sums) { total += v; }
     return total;
 }
 
@@ -87,9 +81,7 @@ double dynamic_for_loop_multi_acc(std::size_t begin, std::size_t end, std::size_
         sums[acc_idx] += compute_work(i + salt);
     });
     double total = 0.0;
-    for (double v : sums) {
-        total += v;
-    }
+    for (double v : sums) { total += v; }
     return total;
 }
 
@@ -100,12 +92,11 @@ inline std::uint64_t next_salt() noexcept {
 }
 
 template<typename ComputeFn>
-void run_benchmark_case(
-    ankerl::nanobench::Bench &bench,
-    std::size_t begin,
-    std::size_t end,
-    const std::string &label,
-    ComputeFn &&compute) {
+void run_benchmark_case(ankerl::nanobench::Bench &bench,
+  std::size_t begin,
+  std::size_t end,
+  const std::string &label,
+  ComputeFn &&compute) {
     auto compute_fn = std::forward<ComputeFn>(compute);
     bench.batch(end - begin).run(label, [begin, end, compute_fn = std::move(compute_fn)]() mutable {
         auto b = begin;
@@ -129,20 +120,19 @@ void benchmark_range(ankerl::nanobench::Bench &bench, std::size_t begin, std::si
     run_benchmark_case(bench, begin, end, std::string("for loop multi-acc4 ") + label, [](auto b, auto e, auto salt) {
         return serial_loop_multi_acc<4>(b, e, salt);
     });
-    run_benchmark_case(bench, begin, end, std::string("dynamic_for lane multi-acc4 ") + label, [](auto b, auto e, auto salt) {
-        return dynamic_for_loop_multi_acc<default_unroll, 4>(b, e, salt);
-    });
+    run_benchmark_case(
+      bench, begin, end, std::string("dynamic_for lane multi-acc4 ") + label, [](auto b, auto e, auto salt) {
+          return dynamic_for_loop_multi_acc<default_unroll, 4>(b, e, salt);
+      });
 }
 
 }// namespace
 
 // Runtime stride: step passed as argument
-template<std::size_t Unroll, typename T>
-double dynamic_for_runtime_stride(T begin, T end, T step, std::size_t salt) {
+template<std::size_t Unroll, typename T> double dynamic_for_runtime_stride(T begin, T end, T step, std::size_t salt) {
     double sum = 0.0;
-    poet::dynamic_for<Unroll>(begin, end, step, [&sum, salt](auto i) {
-        sum += compute_work(static_cast<std::size_t>(i) + salt);
-    });
+    poet::dynamic_for<Unroll>(
+      begin, end, step, [&sum, salt](auto i) { sum += compute_work(static_cast<std::size_t>(i) + salt); });
     return sum;
 }
 
@@ -150,9 +140,8 @@ double dynamic_for_runtime_stride(T begin, T end, T step, std::size_t salt) {
 template<std::size_t Unroll, std::intmax_t Step, typename T>
 double dynamic_for_ct_stride(T begin, T end, std::size_t salt) {
     double sum = 0.0;
-    poet::dynamic_for<Unroll, Step>(begin, end, [&sum, salt](auto i) {
-        sum += compute_work(static_cast<std::size_t>(i) + salt);
-    });
+    poet::dynamic_for<Unroll, Step>(
+      begin, end, [&sum, salt](auto i) { sum += compute_work(static_cast<std::size_t>(i) + salt); });
     return sum;
 }
 
@@ -163,16 +152,16 @@ void benchmark_stride_comparison(ankerl::nanobench::Bench &bench) {
     {
         std::size_t iters = N;
         bench.batch(iters).run("stride=1 runtime", [&]() {
-            auto b = std::size_t{0};
+            auto b = std::size_t{ 0 };
             auto e = N;
             const auto salt = next_salt();
             ankerl::nanobench::doNotOptimizeAway(b);
             ankerl::nanobench::doNotOptimizeAway(e);
-            const auto result = dynamic_for_runtime_stride<8>(b, e, std::size_t{1}, salt);
+            const auto result = dynamic_for_runtime_stride<8>(b, e, std::size_t{ 1 }, salt);
             ankerl::nanobench::doNotOptimizeAway(result);
         });
         bench.batch(iters).run("stride=1 compile-time", [&]() {
-            auto b = std::size_t{0};
+            auto b = std::size_t{ 0 };
             auto e = N;
             const auto salt = next_salt();
             ankerl::nanobench::doNotOptimizeAway(b);
@@ -186,16 +175,16 @@ void benchmark_stride_comparison(ankerl::nanobench::Bench &bench) {
     {
         std::size_t iters = N / 2;
         bench.batch(iters).run("stride=2 runtime", [&]() {
-            auto b = std::size_t{0};
+            auto b = std::size_t{ 0 };
             auto e = N;
             const auto salt = next_salt();
             ankerl::nanobench::doNotOptimizeAway(b);
             ankerl::nanobench::doNotOptimizeAway(e);
-            const auto result = dynamic_for_runtime_stride<8>(b, e, std::size_t{2}, salt);
+            const auto result = dynamic_for_runtime_stride<8>(b, e, std::size_t{ 2 }, salt);
             ankerl::nanobench::doNotOptimizeAway(result);
         });
         bench.batch(iters).run("stride=2 compile-time", [&]() {
-            auto b = std::size_t{0};
+            auto b = std::size_t{ 0 };
             auto e = N;
             const auto salt = next_salt();
             ankerl::nanobench::doNotOptimizeAway(b);
@@ -209,16 +198,16 @@ void benchmark_stride_comparison(ankerl::nanobench::Bench &bench) {
     {
         std::size_t iters = (N + 2) / 3;
         bench.batch(iters).run("stride=3 runtime", [&]() {
-            auto b = std::size_t{0};
+            auto b = std::size_t{ 0 };
             auto e = N;
             const auto salt = next_salt();
             ankerl::nanobench::doNotOptimizeAway(b);
             ankerl::nanobench::doNotOptimizeAway(e);
-            const auto result = dynamic_for_runtime_stride<8>(b, e, std::size_t{3}, salt);
+            const auto result = dynamic_for_runtime_stride<8>(b, e, std::size_t{ 3 }, salt);
             ankerl::nanobench::doNotOptimizeAway(result);
         });
         bench.batch(iters).run("stride=3 compile-time", [&]() {
-            auto b = std::size_t{0};
+            auto b = std::size_t{ 0 };
             auto e = N;
             const auto salt = next_salt();
             ankerl::nanobench::doNotOptimizeAway(b);
@@ -230,19 +219,19 @@ void benchmark_stride_comparison(ankerl::nanobench::Bench &bench) {
 
     // Small range (tail-dominated): Step=2
     {
-        constexpr std::size_t small_n = 7;  // < Unroll=8, all tail
+        constexpr std::size_t small_n = 7;// < Unroll=8, all tail
         std::size_t iters = (small_n + 1) / 2;
         bench.batch(iters).run("stride=2 small(7) runtime", [&]() {
-            auto b = std::size_t{0};
+            auto b = std::size_t{ 0 };
             auto e = small_n;
             const auto salt = next_salt();
             ankerl::nanobench::doNotOptimizeAway(b);
             ankerl::nanobench::doNotOptimizeAway(e);
-            const auto result = dynamic_for_runtime_stride<8>(b, e, std::size_t{2}, salt);
+            const auto result = dynamic_for_runtime_stride<8>(b, e, std::size_t{ 2 }, salt);
             ankerl::nanobench::doNotOptimizeAway(result);
         });
         bench.batch(iters).run("stride=2 small(7) compile-time", [&]() {
-            auto b = std::size_t{0};
+            auto b = std::size_t{ 0 };
             auto e = small_n;
             const auto salt = next_salt();
             ankerl::nanobench::doNotOptimizeAway(b);
@@ -260,7 +249,10 @@ int main() {
 
     benchmark_range(bench, 0, small_count, std::string("small ") + std::to_string(small_count));
     benchmark_range(bench, 0, large_count, std::string("large ") + std::to_string(large_count));
-    benchmark_range(bench, irregular_begin, irregular_end, std::string("irregular (") + std::to_string(irregular_begin) + "-" + std::to_string(irregular_end) + ")");
+    benchmark_range(bench,
+      irregular_begin,
+      irregular_end,
+      std::string("irregular (") + std::to_string(irregular_begin) + "-" + std::to_string(irregular_end) + ")");
 
     bench.title("dynamic_for: runtime stride vs compile-time stride");
     benchmark_stride_comparison(bench);

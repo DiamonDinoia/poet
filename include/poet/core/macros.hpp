@@ -9,11 +9,13 @@
 // ============================================================================
 /// Marks code path as unreachable. UB if reached at runtime.
 #if defined(__GNUC__) || defined(__clang__)
-    #define POET_UNREACHABLE() __builtin_unreachable() // NOLINT(cppcoreguidelines-macro-usage)
+#define POET_UNREACHABLE() __builtin_unreachable()// NOLINT(cppcoreguidelines-macro-usage)
 #elif defined(_MSC_VER)
-    #define POET_UNREACHABLE() __assume(false) // NOLINT(cppcoreguidelines-macro-usage)
+#define POET_UNREACHABLE() __assume(false)// NOLINT(cppcoreguidelines-macro-usage)
 #else
-    #define POET_UNREACHABLE() do {} while (false) // NOLINT(cppcoreguidelines-macro-usage)
+#define POET_UNREACHABLE() \
+    do {                   \
+    } while (false)// NOLINT(cppcoreguidelines-macro-usage)
 #endif
 
 // ============================================================================
@@ -21,24 +23,11 @@
 // ============================================================================
 /// Forces function inlining regardless of compiler heuristics.
 #ifdef _MSC_VER
-    #define POET_FORCEINLINE __forceinline
+#define POET_FORCEINLINE __forceinline
 #elif defined(__GNUC__) || defined(__clang__)
-    #define POET_FORCEINLINE inline __attribute__((always_inline))
+#define POET_FORCEINLINE inline __attribute__((always_inline))
 #else
-    #define POET_FORCEINLINE inline
-#endif
-
-// ============================================================================
-// POET_RESTRICT
-// ============================================================================
-/// Portable `restrict` keyword for pointer aliasing hints.
-/// Only use when pointers are guaranteed not to alias.
-#ifdef _MSC_VER
-    #define POET_RESTRICT __restrict
-#elif defined(__GNUC__) || defined(__clang__)
-    #define POET_RESTRICT __restrict__
-#else
-    #define POET_RESTRICT
+#define POET_FORCEINLINE inline
 #endif
 
 // ============================================================================
@@ -46,15 +35,20 @@
 // ============================================================================
 /// Generic assumption hint. UB if expression is false at runtime.
 #if __cplusplus >= 202302L
-    #define POET_ASSUME(expr) [[assume(expr)]] // NOLINT(cppcoreguidelines-macro-usage)
+#define POET_ASSUME(expr) [[assume(expr)]]// NOLINT(cppcoreguidelines-macro-usage)
 #elif defined(__clang__)
-    #define POET_ASSUME(expr) __builtin_assume(expr) // NOLINT(cppcoreguidelines-macro-usage)
+#define POET_ASSUME(expr) __builtin_assume(expr)// NOLINT(cppcoreguidelines-macro-usage)
 #elif defined(__GNUC__)
-    #define POET_ASSUME(expr) do { if (!(expr)) POET_UNREACHABLE(); } while (false) // NOLINT(cppcoreguidelines-macro-usage)
+#define POET_ASSUME(expr)                \
+    do {                                 \
+        if (!(expr)) POET_UNREACHABLE(); \
+    } while (false)// NOLINT(cppcoreguidelines-macro-usage)
 #elif defined(_MSC_VER)
-    #define POET_ASSUME(expr) __assume(expr) // NOLINT(cppcoreguidelines-macro-usage)
+#define POET_ASSUME(expr) __assume(expr)// NOLINT(cppcoreguidelines-macro-usage)
 #else
-    #define POET_ASSUME(expr) do {} while (false) // NOLINT(cppcoreguidelines-macro-usage)
+#define POET_ASSUME(expr) \
+    do {                  \
+    } while (false)// NOLINT(cppcoreguidelines-macro-usage)
 #endif
 
 // ============================================================================
@@ -63,16 +57,21 @@
 /// Tells compiler that pointer is non-null. UB if null at runtime.
 /// Use on pointers derived from references or after null checks.
 #if __cplusplus >= 202302L
-    #define POET_ASSUME_NOT_NULL(ptr) [[assume((ptr) != nullptr)]] // NOLINT(cppcoreguidelines-macro-usage)
+#define POET_ASSUME_NOT_NULL(ptr) [[assume((ptr) != nullptr)]]// NOLINT(cppcoreguidelines-macro-usage)
 #elif defined(__clang__)
-    #define POET_ASSUME_NOT_NULL(ptr) __builtin_assume((ptr) != nullptr) // NOLINT(cppcoreguidelines-macro-usage)
+#define POET_ASSUME_NOT_NULL(ptr) __builtin_assume((ptr) != nullptr)// NOLINT(cppcoreguidelines-macro-usage)
 #elif defined(__GNUC__)
-    // GCC doesn't have __builtin_assume, use __builtin_unreachable() with guard
-    #define POET_ASSUME_NOT_NULL(ptr) do { if (!(ptr)) POET_UNREACHABLE(); } while (false) // NOLINT(cppcoreguidelines-macro-usage)
+// GCC doesn't have __builtin_assume, use __builtin_unreachable() with guard
+#define POET_ASSUME_NOT_NULL(ptr)       \
+    do {                                \
+        if (!(ptr)) POET_UNREACHABLE(); \
+    } while (false)// NOLINT(cppcoreguidelines-macro-usage)
 #elif defined(_MSC_VER)
-    #define POET_ASSUME_NOT_NULL(ptr) __assume((ptr) != nullptr) // NOLINT(cppcoreguidelines-macro-usage)
+#define POET_ASSUME_NOT_NULL(ptr) __assume((ptr) != nullptr)// NOLINT(cppcoreguidelines-macro-usage)
 #else
-    #define POET_ASSUME_NOT_NULL(ptr) do {} while (false) // NOLINT(cppcoreguidelines-macro-usage)
+#define POET_ASSUME_NOT_NULL(ptr) \
+    do {                          \
+    } while (false)// NOLINT(cppcoreguidelines-macro-usage)
 #endif
 
 // ============================================================================
@@ -80,11 +79,11 @@
 // ============================================================================
 /// Prevents function inlining. Use to reduce code bloat or control I-cache.
 #ifdef _MSC_VER
-    #define POET_NOINLINE __declspec(noinline)
+#define POET_NOINLINE __declspec(noinline)
 #elif defined(__GNUC__) || defined(__clang__)
-    #define POET_NOINLINE __attribute__((noinline))
+#define POET_NOINLINE __attribute__((noinline))
 #else
-    #define POET_NOINLINE
+#define POET_NOINLINE
 #endif
 
 // ============================================================================
@@ -92,11 +91,11 @@
 // ============================================================================
 /// Branch prediction hints. Use for conditions true/false >95% of the time.
 #if defined(__GNUC__) || defined(__clang__)
-    #define POET_LIKELY(x) __builtin_expect(!!(x), 1) // NOLINT(cppcoreguidelines-macro-usage)
-    #define POET_UNLIKELY(x) __builtin_expect(!!(x), 0) // NOLINT(cppcoreguidelines-macro-usage)
+#define POET_LIKELY(x) __builtin_expect(!!(x), 1)// NOLINT(cppcoreguidelines-macro-usage)
+#define POET_UNLIKELY(x) __builtin_expect(!!(x), 0)// NOLINT(cppcoreguidelines-macro-usage)
 #else
-    #define POET_LIKELY(x) (x) // NOLINT(cppcoreguidelines-macro-usage)
-    #define POET_UNLIKELY(x) (x) // NOLINT(cppcoreguidelines-macro-usage)
+#define POET_LIKELY(x) (x)// NOLINT(cppcoreguidelines-macro-usage)
+#define POET_UNLIKELY(x) (x)// NOLINT(cppcoreguidelines-macro-usage)
 #endif
 
 // ============================================================================
@@ -110,11 +109,12 @@ constexpr auto poet_count_trailing_zeros(unsigned int value) noexcept -> unsigne
     return static_cast<unsigned int>(std::countr_zero(value));
 }
 
-constexpr auto poet_count_trailing_zeros(unsigned long value) noexcept -> unsigned int { // NOLINT(google-runtime-int)
+constexpr auto poet_count_trailing_zeros(unsigned long value) noexcept -> unsigned int {// NOLINT(google-runtime-int)
     return static_cast<unsigned int>(std::countr_zero(value));
 }
 
-constexpr auto poet_count_trailing_zeros(unsigned long long value) noexcept -> unsigned int { // NOLINT(google-runtime-int)
+constexpr auto poet_count_trailing_zeros(unsigned long long value) noexcept
+  -> unsigned int {// NOLINT(google-runtime-int)
     return static_cast<unsigned int>(std::countr_zero(value));
 }
 
@@ -124,11 +124,12 @@ constexpr auto poet_count_trailing_zeros(unsigned int value) noexcept -> unsigne
     return static_cast<unsigned int>(__builtin_ctz(value));
 }
 
-constexpr auto poet_count_trailing_zeros(unsigned long value) noexcept -> unsigned int { // NOLINT(google-runtime-int)
+constexpr auto poet_count_trailing_zeros(unsigned long value) noexcept -> unsigned int {// NOLINT(google-runtime-int)
     return static_cast<unsigned int>(__builtin_ctzl(value));
 }
 
-constexpr auto poet_count_trailing_zeros(unsigned long long value) noexcept -> unsigned int { // NOLINT(google-runtime-int)
+constexpr auto poet_count_trailing_zeros(unsigned long long value) noexcept
+  -> unsigned int {// NOLINT(google-runtime-int)
     return static_cast<unsigned int>(__builtin_ctzll(value));
 }
 
@@ -158,10 +159,38 @@ inline unsigned int poet_count_trailing_zeros(unsigned int value) noexcept {
 
 // Fallback: DeBruijn sequence lookup
 namespace detail {
-    constexpr unsigned char debruijn_ctz_table[32] = {
-        0,  1,  28, 2,  29, 14, 24, 3,  30, 22, 20, 15, 25, 17, 4,  8,
-        31, 27, 13, 23, 21, 19, 16, 7,  26, 12, 18, 6,  11, 5,  10, 9
-    };
+constexpr unsigned char debruijn_ctz_table[32] = { 0,
+    1,
+    28,
+    2,
+    29,
+    14,
+    24,
+    3,
+    30,
+    22,
+    20,
+    15,
+    25,
+    17,
+    4,
+    8,
+    31,
+    27,
+    13,
+    23,
+    21,
+    19,
+    16,
+    7,
+    26,
+    12,
+    18,
+    6,
+    11,
+    5,
+    10,
+    9 };
 }
 
 inline constexpr unsigned int poet_count_trailing_zeros(unsigned int value) noexcept {
@@ -174,9 +203,7 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long value) noe
 
 inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value) noexcept {
     const auto lower = static_cast<unsigned int>(value);
-    if (lower != 0) {
-        return poet_count_trailing_zeros(lower);
-    }
+    if (lower != 0) { return poet_count_trailing_zeros(lower); }
     const auto upper = static_cast<unsigned int>(value >> 32);
     return 32 + poet_count_trailing_zeros(upper);
 }
@@ -187,11 +214,11 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 // Optimization level detection
 // ============================================================================
 #if defined(__OPTIMIZE__) && !defined(__OPTIMIZE_SIZE__)
-    #define POET_HIGH_OPTIMIZATION 1 // NOLINT(cppcoreguidelines-macro-usage)
+#define POET_HIGH_OPTIMIZATION 1// NOLINT(cppcoreguidelines-macro-usage)
 #elif defined(_MSC_VER) && !defined(_DEBUG) && defined(NDEBUG)
-    #define POET_HIGH_OPTIMIZATION 1 // NOLINT(cppcoreguidelines-macro-usage)
+#define POET_HIGH_OPTIMIZATION 1// NOLINT(cppcoreguidelines-macro-usage)
 #else
-    #define POET_HIGH_OPTIMIZATION 0 // NOLINT(cppcoreguidelines-macro-usage)
+#define POET_HIGH_OPTIMIZATION 0// NOLINT(cppcoreguidelines-macro-usage)
 #endif
 
 // ============================================================================
@@ -199,11 +226,11 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 // ============================================================================
 /// Marks hot-path functions for aggressive optimization and inlining.
 #if defined(__GNUC__) || defined(__clang__)
-    #define POET_HOT_LOOP inline __attribute__((hot, always_inline))
+#define POET_HOT_LOOP inline __attribute__((hot, always_inline))
 #elif defined(_MSC_VER)
-    #define POET_HOT_LOOP __forceinline
+#define POET_HOT_LOOP __forceinline
 #else
-    #define POET_HOT_LOOP inline
+#define POET_HOT_LOOP inline
 #endif
 
 // ============================================================================
@@ -212,32 +239,30 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 /// Scoped optimization control. Enabled by default.
 /// Opt-out via -DPOET_DISABLE_PUSH_OPTIMIZE to preserve custom flags.
 #ifndef POET_DISABLE_PUSH_OPTIMIZE
-    #if defined(__GNUC__) && !defined(__clang__)
-        #if POET_HIGH_OPTIMIZATION
-            // At -O3: Apply IRA pressure tuning for hot paths
-            #define POET_PUSH_OPTIMIZE _Pragma("GCC push_options") \
-                                       _Pragma("GCC optimize(\"-fira-hoist-pressure\")") \
-                                       _Pragma("GCC optimize(\"-fno-ira-share-spill-slots\")") \
-                                       _Pragma("GCC optimize(\"-frename-registers\")")
-            #define POET_POP_OPTIMIZE  _Pragma("GCC pop_options")
-        #else
-            // Without -O3: Enable -O3 for this section
-            #define POET_PUSH_OPTIMIZE _Pragma("GCC push_options") \
-                                       _Pragma("GCC optimize(\"-O3\")")
-            #define POET_POP_OPTIMIZE  _Pragma("GCC pop_options")
-        #endif
-    #elif defined(_MSC_VER)
-        #define POET_PUSH_OPTIMIZE __pragma(optimize("gt", on))
-        #define POET_POP_OPTIMIZE  __pragma(optimize("", on))
-    #else
-        // Clang and others: no-op (Clang can only disable opts, not enable)
-        #define POET_PUSH_OPTIMIZE
-        #define POET_POP_OPTIMIZE
-    #endif
+#if defined(__GNUC__) && !defined(__clang__)
+#if POET_HIGH_OPTIMIZATION
+// At -O3: Apply IRA pressure tuning for hot paths
+#define POET_PUSH_OPTIMIZE                                                        \
+    _Pragma("GCC push_options") _Pragma("GCC optimize(\"-fira-hoist-pressure\")") \
+      _Pragma("GCC optimize(\"-fno-ira-share-spill-slots\")") _Pragma("GCC optimize(\"-frename-registers\")")
+#define POET_POP_OPTIMIZE _Pragma("GCC pop_options")
 #else
-    // User opted out: no-op to preserve their custom flags
-    #define POET_PUSH_OPTIMIZE
-    #define POET_POP_OPTIMIZE
+// Without -O3: Enable -O3 for this section
+#define POET_PUSH_OPTIMIZE _Pragma("GCC push_options") _Pragma("GCC optimize(\"-O3\")")
+#define POET_POP_OPTIMIZE _Pragma("GCC pop_options")
+#endif
+#elif defined(_MSC_VER)
+#define POET_PUSH_OPTIMIZE __pragma(optimize("gt", on))
+#define POET_POP_OPTIMIZE __pragma(optimize("", on))
+#else
+// Clang and others: no-op (Clang can only disable opts, not enable)
+#define POET_PUSH_OPTIMIZE
+#define POET_POP_OPTIMIZE
+#endif
+#else
+// User opted out: no-op to preserve their custom flags
+#define POET_PUSH_OPTIMIZE
+#define POET_POP_OPTIMIZE
 #endif
 
 // ============================================================================
@@ -245,18 +270,18 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 // ============================================================================
 /// Use `consteval` for C++20+, fallback to `constexpr` for C++17.
 #if __cplusplus >= 202002L
-    #define POET_CPP20_CONSTEVAL consteval
-    #define POET_CPP20_CONSTEXPR constexpr
+#define POET_CPP20_CONSTEVAL consteval
+#define POET_CPP20_CONSTEXPR constexpr
 #else
-    #define POET_CPP20_CONSTEVAL constexpr
-    #define POET_CPP20_CONSTEXPR constexpr
+#define POET_CPP20_CONSTEVAL constexpr
+#define POET_CPP20_CONSTEXPR constexpr
 #endif
 
 /// Use the stronger C++23 `constexpr` guarantees when available.
 #if __cplusplus >= 202302L
-    #define POET_CPP23_CONSTEXPR constexpr
+#define POET_CPP23_CONSTEXPR constexpr
 #else
-    #define POET_CPP23_CONSTEXPR POET_CPP20_CONSTEXPR
+#define POET_CPP23_CONSTEXPR POET_CPP20_CONSTEXPR
 #endif
 
 #endif// POET_CORE_MACROS_HPP

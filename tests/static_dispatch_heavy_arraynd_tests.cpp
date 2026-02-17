@@ -16,7 +16,7 @@ namespace {
 using poet::DispatchParam;
 using poet::dispatch;
 using poet::make_range;
-}
+}// namespace
 
 TEST_CASE("dispatch 2D sets selected random indexes only (lambda ND)", "[static_dispatch][array][random][nd]") {
     constexpr int N1 = 4;
@@ -45,8 +45,10 @@ TEST_CASE("dispatch 2D sets selected random indexes only (lambda ND)", "[static_
     for (int i = 0; i < N1; ++i) {
         for (int j = 0; j < N2; ++j) {
             const int key = i * 16 + j;
-            if (picks.count(key)) REQUIRE(arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] == i * 100 + j);
-            else REQUIRE(arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] == 0);
+            if (picks.count(key))
+                REQUIRE(arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] == i * 100 + j);
+            else
+                REQUIRE(arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] == 0);
         }
     }
 }
@@ -60,7 +62,8 @@ TEST_CASE("dispatch loop over non-contiguous sequences (lambda ND)", "[static_di
     std::vector<int> indices1 = { 1, 3, 5, 12 };
     std::vector<int> indices2 = { 0, 2, 7 };
     std::unordered_set<int> index_set;
-    for (int a : indices1) for (int b : indices2) index_set.insert(a * 256 + b);
+    for (int a : indices1)
+        for (int b : indices2) index_set.insert(a * 256 + b);
 
     for (int a : indices1) {
         for (int b : indices2) {
@@ -75,8 +78,10 @@ TEST_CASE("dispatch loop over non-contiguous sequences (lambda ND)", "[static_di
     for (int i = 0; i < N1; ++i) {
         for (int j = 0; j < N2; ++j) {
             const int key = i * 256 + j;
-            if (index_set.count(key)) REQUIRE(arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] == i * 10 + j);
-            else REQUIRE(arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] == 0);
+            if (index_set.count(key))
+                REQUIRE(arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] == i * 10 + j);
+            else
+                REQUIRE(arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] == 0);
         }
     }
 }
@@ -87,14 +92,13 @@ TEST_CASE("dispatch non-contiguous subset set (lambda ND)", "[static_dispatch][a
     std::array<std::array<int, N2>, N1> arr{};
     using Seq1 = std::integer_sequence<int, 1, 3, 5, 12>;
     using Seq2 = std::integer_sequence<int, 0, 2, 7>;
-    std::vector<std::pair<int, int>> set_pairs = { {3, 2}, {12, 7} };
+    std::vector<std::pair<int, int>> set_pairs = { { 3, 2 }, { 12, 7 } };
     std::unordered_set<int> set_keys;
-    for (const auto& p : set_pairs) set_keys.insert(p.first * 256 + p.second);
+    for (const auto &p : set_pairs) set_keys.insert(p.first * 256 + p.second);
 
-    for (const auto& p : set_pairs) {
-        auto setter = [&arr](auto I, auto J) {
-            arr[static_cast<std::size_t>(I)][static_cast<std::size_t>(J)] = I * 10 + J;
-        };
+    for (const auto &p : set_pairs) {
+        auto setter = [&arr](
+                        auto I, auto J) { arr[static_cast<std::size_t>(I)][static_cast<std::size_t>(J)] = I * 10 + J; };
         auto params = std::make_tuple(DispatchParam<Seq1>{ p.first }, DispatchParam<Seq2>{ p.second });
         dispatch(setter, params);
     }
@@ -102,8 +106,10 @@ TEST_CASE("dispatch non-contiguous subset set (lambda ND)", "[static_dispatch][a
     for (int i = 0; i < N1; ++i) {
         for (int j = 0; j < N2; ++j) {
             const int key = i * 256 + j;
-            if (set_keys.count(key)) REQUIRE(arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] == i * 10 + j);
-            else REQUIRE(arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] == 0);
+            if (set_keys.count(key))
+                REQUIRE(arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] == i * 10 + j);
+            else
+                REQUIRE(arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] == 0);
         }
     }
 }

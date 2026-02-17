@@ -81,6 +81,11 @@ struct value_arg_functor {
     }
 };
 
-} // namespace
+struct accumulating_dispatcher {
+    int *total;
+    template<int N> void operator()(int add) const { *total += N + add; }
+};
 
-#endif // POET_TESTS_STATIC_DISPATCH_TEST_SUPPORT_HPP
+}// namespace
+
+#endif// POET_TESTS_STATIC_DISPATCH_TEST_SUPPORT_HPP

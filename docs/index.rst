@@ -7,7 +7,7 @@ Core primitives
 ---------------
 - static_for — compile-time unrolled iteration for integer ranges or template packs.
 - dynamic_for — runtime loops emitted as compile-time unrolled blocks for low-overhead iteration.
-- dispatch / dispatch_tuples / DispatchSet — map runtime integers or tuples to compile-time non-type template parameters for zero-cost specialization.
+- dispatch / DispatchSet — map runtime integers or tuples to compile-time non-type template parameters for zero-cost specialization.
 
 Why it matters
 --------------
@@ -35,11 +35,11 @@ Prerequisites
 
 Clone:
    .. code-block:: bash
-      
+
       git clone https://github.com/DiamonDinoia/poet.git
 
 Header-only usage
-- Add the repository's `include/` directory to the compiler include path and include the umbrella header:
+- Add the repository's ``include/`` directory to the compiler include path and include the umbrella header:
 
   .. code-block:: cpp
 
@@ -62,7 +62,7 @@ CMake integration
 
 .. code-block:: cmake
 
-   # After installing POET with `cmake --install`, discover it via CMake's package config
+   # After installing POET with ``cmake --install``, discover it via CMake's package config
    find_package(poet CONFIG REQUIRED)
    add_executable(my_app main.cpp)
    target_link_libraries(my_app PRIVATE poet::poet)
@@ -114,11 +114,11 @@ High-level usage pointers
 
 Throwing dispatch
 -----------------
-Some dispatch overloads accept the tag `poet::throw_t` (alias of `throw_on_no_match_t`) and will throw `std::runtime_error` when no compile-time match exists — useful for fatal configuration errors.
+Some dispatch overloads accept the tag ``poet::throw_t`` (alias of ``throw_on_no_match_t``) and will throw ``std::runtime_error`` when no compile-time match exists — useful for fatal configuration errors.
 
 Documentation & license
 -----------------------
-- Full API docs and guides: docs/ (Sphinx/RST in repository)
+- Full API docs and guides: https://poet.readthedocs.io/en/latest/
 - License: MIT (see LICENSE file)
 
 Contributing

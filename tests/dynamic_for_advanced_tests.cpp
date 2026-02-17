@@ -34,27 +34,21 @@ TEST_CASE("dynamic_for tail dispatch completeness", "[dynamic_for][tail]") {
         poet::dynamic_for<kUnroll>(0U, total, [&visited](std::size_t i) { visited.push_back(i); });
 
         REQUIRE(visited.size() == total);
-        for (std::size_t i = 0; i < total; ++i) {
-            REQUIRE(visited[i] == i);
-        }
+        for (std::size_t i = 0; i < total; ++i) { REQUIRE(visited[i] == i); }
     }
 }
 
 TEST_CASE("dynamic_for passes compile-time lane in tiny and tail ranges", "[dynamic_for][lane][tail]") {
     constexpr std::size_t kUnroll = 8;
     std::vector<std::pair<std::size_t, std::size_t>> tiny;
-    poet::dynamic_for<kUnroll>(5U, 8U, [&tiny](auto lane_c, std::size_t i) {
-        tiny.emplace_back(i, decltype(lane_c)::value);
-    });
+    poet::dynamic_for<kUnroll>(
+      5U, 8U, [&tiny](auto lane_c, std::size_t i) { tiny.emplace_back(i, decltype(lane_c)::value); });
 
-    REQUIRE(tiny == std::vector<std::pair<std::size_t, std::size_t>>{
-      { 5U, 0U }, { 6U, 1U }, { 7U, 2U }
-    });
+    REQUIRE(tiny == std::vector<std::pair<std::size_t, std::size_t>>{ { 5U, 0U }, { 6U, 1U }, { 7U, 2U } });
 
     std::vector<std::pair<std::size_t, std::size_t>> with_tail;
-    poet::dynamic_for<kUnroll>(5U, 16U, [&with_tail](auto lane_c, std::size_t i) {
-        with_tail.emplace_back(i, decltype(lane_c)::value);
-    });
+    poet::dynamic_for<kUnroll>(
+      5U, 16U, [&with_tail](auto lane_c, std::size_t i) { with_tail.emplace_back(i, decltype(lane_c)::value); });
 
     REQUIRE(with_tail.size() == 11);
     for (std::size_t iter = 0; iter < with_tail.size(); ++iter) {
@@ -65,9 +59,8 @@ TEST_CASE("dynamic_for passes compile-time lane in tiny and tail ranges", "[dyna
 
 TEST_CASE("dynamic_for lane works with count and auto-step overloads", "[dynamic_for][lane]") {
     std::vector<std::pair<std::size_t, std::size_t>> by_count;
-    poet::dynamic_for<4>(6U, [&by_count](auto lane_c, std::size_t i) {
-        by_count.emplace_back(i, decltype(lane_c)::value);
-    });
+    poet::dynamic_for<4>(
+      6U, [&by_count](auto lane_c, std::size_t i) { by_count.emplace_back(i, decltype(lane_c)::value); });
 
     REQUIRE(by_count.size() == 6);
     for (std::size_t iter = 0; iter < by_count.size(); ++iter) {
@@ -90,11 +83,8 @@ TEST_CASE("dynamic_for lane works with count and auto-step overloads", "[dynamic
 
 TEST_CASE("dynamic_for nested loops", "[dynamic_for][nested]") {
     std::vector<std::pair<int, int>> pairs;
-    poet::dynamic_for<4>(0, 5, [&pairs](int i) {
-        poet::dynamic_for<4>(0, 5, [&pairs, i](int j) {
-            pairs.push_back({ i, j });
-        });
-    });
+    poet::dynamic_for<4>(
+      0, 5, [&pairs](int i) { poet::dynamic_for<4>(0, 5, [&pairs, i](int j) { pairs.push_back({ i, j }); }); });
 
     REQUIRE(pairs.size() == 25);
     REQUIRE(pairs[0] == std::make_pair(0, 0));
@@ -123,4 +113,43 @@ TEST_CASE("dynamic_for exception safety", "[dynamic_for][exception]") {
 
     REQUIRE_THROWS_AS(poet::dynamic_for<4>(0, 10, throwing_func), std::runtime_error);
     REQUIRE(count == 6);
+}
+
+TEST_CASE("dynamic_for lane form with various unroll factors", "[dynamic_for][lane]") {
+    // Unroll=2
+    {
+        std::vector<std::pair<std::size_t, std::size_t>> visited;
+        poet::dynamic_for<2>(std::size_t{ 0 }, std::size_t{ 5 }, [&visited](auto lane_c, std::size_t i) {
+            visited.emplace_back(decltype(lane_c)::value, i);
+        });
+        REQUIRE(visited.size() == 5);
+        for (std::size_t i = 0; i < visited.size(); ++i) {
+            REQUIRE(visited[i].first == i % 2);
+            REQUIRE(visited[i].second == i);
+        }
+    }
+    // Unroll=3
+    {
+        std::vector<std::pair<std::size_t, std::size_t>> visited;
+        poet::dynamic_for<3>(std::size_t{ 0 }, std::size_t{ 7 }, [&visited](auto lane_c, std::size_t i) {
+            visited.emplace_back(decltype(lane_c)::value, i);
+        });
+        REQUIRE(visited.size() == 7);
+        for (std::size_t i = 0; i < visited.size(); ++i) {
+            REQUIRE(visited[i].first == i % 3);
+            REQUIRE(visited[i].second == i);
+        }
+    }
+    // Unroll=16
+    {
+        std::vector<std::pair<std::size_t, std::size_t>> visited;
+        poet::dynamic_for<16>(std::size_t{ 0 }, std::size_t{ 20 }, [&visited](auto lane_c, std::size_t i) {
+            visited.emplace_back(decltype(lane_c)::value, i);
+        });
+        REQUIRE(visited.size() == 20);
+        for (std::size_t i = 0; i < visited.size(); ++i) {
+            REQUIRE(visited[i].first == i % 16);
+            REQUIRE(visited[i].second == i);
+        }
+    }
 }

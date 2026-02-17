@@ -23,8 +23,7 @@ static inline std::uint64_t splitmix64(std::uint64_t x) noexcept {
     return x ^ (x >> 31);
 }
 
-template<typename Fn>
-void run_case(ankerl::nanobench::Bench &bench, std::uint64_t batch, const char *label, Fn &&fn) {
+template<typename Fn> void run_case(ankerl::nanobench::Bench &bench, std::uint64_t batch, const char *label, Fn &&fn) {
     auto fn_local = std::forward<Fn>(fn);
     bench.batch(batch).run(label, [fn_local = std::move(fn_local)]() mutable {
         const auto result = fn_local();
@@ -41,8 +40,7 @@ struct dependent_ops_functor {
     double &acc;
     std::uint64_t s;
 
-    template<auto I>
-    void operator()() {
+    template<auto I> void operator()() {
         const std::uint64_t r = splitmix64(static_cast<std::uint64_t>(I) + s);
         double x = static_cast<double>(r) * 5.42101086242752217e-20;
 
@@ -65,8 +63,7 @@ inline double runtime_dependent_ops(std::intmax_t n, std::uint64_t s) {
     return acc;
 }
 
-template<std::intmax_t N>
-inline double static_for_dependent_ops(std::uint64_t s) {
+template<std::intmax_t N> inline double static_for_dependent_ops(std::uint64_t s) {
     double acc = 0.0;
     poet::static_for<0, N>(dependent_ops_functor{ acc, s });
     return acc;
@@ -76,8 +73,7 @@ struct simple_functor {
     double &acc;
     std::uint64_t s;
 
-    template<auto I>
-    void operator()() {
+    template<auto I> void operator()() {
         const std::uint64_t r = splitmix64(static_cast<std::uint64_t>(I) + s);
         double x = static_cast<double>(r) * 5.42101086242752217e-20;
         acc += x * x;
@@ -94,20 +90,17 @@ inline double runtime_simple(std::intmax_t n, std::uint64_t s) {
     return acc;
 }
 
-template<std::intmax_t N>
-inline double static_for_simple(std::uint64_t s) {
+template<std::intmax_t N> inline double static_for_simple(std::uint64_t s) {
     double acc = 0.0;
     poet::static_for<0, N>(simple_functor{ acc, s });
     return acc;
 }
 
-template<std::size_t NumAccs>
-struct unrolled_functor {
+template<std::size_t NumAccs> struct unrolled_functor {
     std::array<double, NumAccs> &accs;
     std::uint64_t s;
 
-    template<auto I>
-    void operator()() {
+    template<auto I> void operator()() {
         const std::uint64_t r = splitmix64(static_cast<std::uint64_t>(I) + s);
         double x = static_cast<double>(r) * 5.42101086242752217e-20;
         constexpr std::size_t idx = static_cast<std::size_t>(I) % NumAccs;
@@ -115,8 +108,7 @@ struct unrolled_functor {
     }
 };
 
-template<std::size_t UNROLL>
-inline double runtime_unroll(std::intmax_t n, std::uint64_t s) {
+template<std::size_t UNROLL> inline double runtime_unroll(std::intmax_t n, std::uint64_t s) {
     constexpr std::intmax_t U = static_cast<std::intmax_t>(UNROLL);
     std::array<double, UNROLL> accs{};
     std::intmax_t i = 0;
@@ -124,14 +116,13 @@ inline double runtime_unroll(std::intmax_t n, std::uint64_t s) {
     for (; i + (U - 1) < n; i += U) {
         std::array<std::uint64_t, UNROLL> r{};
         for (std::intmax_t k = 0; k < U; ++k) {
-            r[static_cast<std::size_t>(k)] =
-                splitmix64(static_cast<std::uint64_t>(i + k) + s);
+            r[static_cast<std::size_t>(k)] = splitmix64(static_cast<std::uint64_t>(i + k) + s);
         }
 
         std::array<double, UNROLL> x{};
         for (std::intmax_t k = 0; k < U; ++k) {
             x[static_cast<std::size_t>(k)] =
-                static_cast<double>(r[static_cast<std::size_t>(k)]) * 5.42101086242752217e-20;
+              static_cast<double>(r[static_cast<std::size_t>(k)]) * 5.42101086242752217e-20;
         }
 
         for (std::intmax_t k = 0; k < U; ++k) {
@@ -151,8 +142,7 @@ inline double runtime_unroll(std::intmax_t n, std::uint64_t s) {
     return sum;
 }
 
-template<std::intmax_t N, std::intmax_t BlockSize>
-inline double static_for_unrolled(std::uint64_t s) {
+template<std::intmax_t N, std::intmax_t BlockSize> inline double static_for_unrolled(std::uint64_t s) {
     std::array<double, static_cast<std::size_t>(BlockSize)> accs{};
     poet::static_for<0, N, 1, BlockSize>(unrolled_functor<static_cast<std::size_t>(BlockSize)>{ accs, s });
     double sum = 0.0;
@@ -160,6 +150,6 @@ inline double static_for_unrolled(std::uint64_t s) {
     return sum;
 }
 
-} // namespace poet_bench::static_for_support
+}// namespace poet_bench::static_for_support
 
-#endif // POET_BENCHMARKS_STATIC_FOR_BENCH_SUPPORT_HPP
+#endif// POET_BENCHMARKS_STATIC_FOR_BENCH_SUPPORT_HPP

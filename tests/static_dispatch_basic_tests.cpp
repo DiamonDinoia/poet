@@ -164,3 +164,75 @@ TEST_CASE("dispatch handles negative non-contiguous sequences", "[static_dispatc
     REQUIRE(result == 15);
     REQUIRE(invoked);
 }
+
+// ============================================================================
+// Variadic dispatch form (DispatchParam args directly, no std::make_tuple)
+// ============================================================================
+
+TEST_CASE("dispatch variadic form 1D", "[static_dispatch][variadic]") {
+    bool invoked = false;
+    const auto result = dispatch(guard_dispatcher{ &invoked }, DispatchParam<make_range<0, 5>>{ 3 }, 10);
+    REQUIRE(result == 13);
+    REQUIRE(invoked);
+}
+
+TEST_CASE("dispatch variadic form 2D", "[static_dispatch][variadic]") {
+    std::vector<int> values;
+    dispatch(
+      vector_dispatcher{ &values }, DispatchParam<make_range<0, 3>>{ 2 }, DispatchParam<make_range<-2, 1>>{ -1 }, 5);
+    REQUIRE(values == std::vector<int>{ 24 });
+}
+
+TEST_CASE("dispatch variadic form no match", "[static_dispatch][variadic]") {
+    bool invoked = false;
+    const auto result = dispatch(guard_dispatcher{ &invoked }, DispatchParam<make_range<0, 2>>{ 10 }, 5);
+    REQUIRE(result == 0);
+    REQUIRE_FALSE(invoked);
+}
+
+TEST_CASE("dispatch variadic form with no extra args", "[static_dispatch][variadic]") {
+    int out = 0;
+    dispatch(duplicate_reporter{ &out }, DispatchParam<make_range<3, 7>>{ 5 });
+    REQUIRE(out == 5);
+}
+
+// ============================================================================
+// Sparse 1D dispatch (non-contiguous single dimension)
+// ============================================================================
+
+TEST_CASE("dispatch sparse 1D iterates all values", "[static_dispatch][sparse]") {
+    using Sparse = std::integer_sequence<int, 1, 5, 10, 50>;
+    for (int val : { 1, 5, 10, 50 }) {
+        bool invoked = false;
+        const auto result = dispatch(guard_dispatcher{ &invoked }, DispatchParam<Sparse>{ val }, 0);
+        REQUIRE(result == val);
+        REQUIRE(invoked);
+    }
+}
+
+TEST_CASE("dispatch sparse 1D miss between values", "[static_dispatch][sparse]") {
+    using Sparse = std::integer_sequence<int, 1, 5, 10, 50>;
+    for (int val : { 0, 2, 6, 11, 49, 51 }) {
+        bool invoked = false;
+        const auto result = dispatch(guard_dispatcher{ &invoked }, DispatchParam<Sparse>{ val }, 0);
+        REQUIRE(result == 0);
+        REQUIRE_FALSE(invoked);
+    }
+}
+
+// ============================================================================
+// Stateful functor preserves state across dispatch calls
+// ============================================================================
+
+TEST_CASE("dispatch with stateful functor", "[static_dispatch][stateful]") {
+    int total = 0;
+    accumulating_dispatcher func{ &total };
+
+    auto p1 = std::make_tuple(DispatchParam<make_range<0, 5>>{ 2 });
+    dispatch(func, p1, 10);
+    REQUIRE(total == 12);// 2 + 10
+
+    auto p2 = std::make_tuple(DispatchParam<make_range<0, 5>>{ 4 });
+    dispatch(func, p2, 100);
+    REQUIRE(total == 116);// 12 + 4 + 100
+}

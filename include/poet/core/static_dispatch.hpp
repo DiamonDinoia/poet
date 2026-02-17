@@ -37,11 +37,6 @@ namespace poet {
 /// Use `T<1, 2>` to represent a tuple `(1, 2)` inside a `DispatchSet`.
 template<auto... Vs> struct T {};
 
-/// \brief Helper generating integer sequences shifted by an offset.
-///
-/// The alias \c make_range builds a sequence of integers in the range
-/// `[Start, End]` inclusive. The implementation internally uses
-/// `std::integer_sequence` and composes the offset with the supplied range.
 namespace detail {
 
     template<typename T> struct result_holder {
@@ -83,31 +78,16 @@ namespace detail {
           impl(std::index_sequence<Idx...> /*idx_seq*/, const RuntimeTuple &runtime_tuple, F &&func, Args &&...args)
             -> result_holder<ResultType> {
             result_holder<ResultType> res;
-            if constexpr (sizeof...(V) == 0) {
-                // Case: The compile-time integer_sequence is empty.
-                // This typically means the user is dispatching to a function with no template parameters,
-                // or an empty parameter list. We only match if the runtime tuple provided is also empty.
-                if constexpr (sizeof...(Idx) == 0) {
-                    // Invoke the functor directly without template arguments.
-                    if constexpr (std::is_void_v<ResultType>) {
-                        std::forward<F>(func)(std::forward<Args>(args)...);
-                        res.set();
-                    } else {
-                        res.set(std::forward<F>(func)(std::forward<Args>(args)...));
-                    }
-                }
-            } else {
-                // Case: N compile-time values (V...) and N runtime values in runtime_tuple.
-                // We expand the fold expression ((std::get<Idx>(runtime_tuple) == V) && ...)
-                // to check if *every* runtime value matches its corresponding compile-time value V.
-                if (((std::get<Idx>(runtime_tuple) == V) && ...)) {
-                    // Match found! Invoke the functor with the sequence V... as template arguments.
-                    if constexpr (std::is_void_v<ResultType>) {
-                        std::forward<F>(func).template operator()<V...>(std::forward<Args>(args)...);
-                        res.set();
-                    } else {
-                        res.set(std::forward<F>(func).template operator()<V...>(std::forward<Args>(args)...));
-                    }
+            // N compile-time values (V...) and N runtime values in runtime_tuple.
+            // We expand the fold expression ((std::get<Idx>(runtime_tuple) == V) && ...)
+            // to check if *every* runtime value matches its corresponding compile-time value V.
+            if (((std::get<Idx>(runtime_tuple) == V) && ...)) {
+                // Match found! Invoke the functor with the sequence V... as template arguments.
+                if constexpr (std::is_void_v<ResultType>) {
+                    std::forward<F>(func).template operator()<V...>(std::forward<Args>(args)...);
+                    res.set();
+                } else {
+                    res.set(std::forward<F>(func).template operator()<V...>(std::forward<Args>(args)...));
                 }
             }
             return res;
@@ -126,28 +106,19 @@ namespace detail {
     /// \brief Helper to compute result type for tuple-sequence calls.
     template<typename Seq, typename Functor, typename... Args> struct result_of_seq_call;
 
-    // Specialization for empty integer_sequence
-    template<typename ValueType, typename Functor, typename... Args>
-    struct result_of_seq_call<std::integer_sequence<ValueType>, Functor, Args...> {
-        using type = decltype(std::declval<Functor>()(std::declval<Args>()...));
-    };
-
     template<typename ValueType, ValueType... V, typename Functor, typename... Args>
     struct result_of_seq_call<std::integer_sequence<ValueType, V...>, Functor, Args...> {
         using type = decltype(std::declval<Functor>().template operator()<V...>(std::declval<Args>()...));
     };
 
-    template<int Offset, typename Seq> struct offset_sequence;
-
-    template<int Offset, int... Values> struct offset_sequence<Offset, std::integer_sequence<int, Values...>> {
-        using type = std::integer_sequence<int, (Offset + Values)...>;
-    };
+    template<int Start, int... Is>
+    auto make_range_impl(std::integer_sequence<int, Is...>) -> std::integer_sequence<int, (Start + Is)...>;
 
 }// namespace detail
 
-// Public alias that composes the offset with an integer sequence.
+/// \brief Generates an inclusive integer sequence `[Start, End]`.
 template<int Start, int End>
-using make_range = typename detail::offset_sequence<Start, std::make_integer_sequence<int, End - Start + 1>>::type;
+using make_range = decltype(detail::make_range_impl<Start>(std::make_integer_sequence<int, End - Start + 1>{}));
 
 /// \brief Wraps runtime dispatch parameters and their candidate sequences.
 ///
@@ -165,40 +136,19 @@ namespace detail {
     template<typename T> struct is_dispatch_param : std::false_type {};
     template<typename Seq> struct is_dispatch_param<DispatchParam<Seq>> : std::true_type {};
 
-    template<typename T>
-    inline constexpr bool is_dispatch_param_v = is_dispatch_param<std::decay_t<T>>::value;
+    template<typename T> inline constexpr bool is_dispatch_param_v = is_dispatch_param<std::decay_t<T>>::value;
 
     // Trait to detect if a type is a tuple of DispatchParams
     template<typename T> struct is_dispatch_param_tuple : std::false_type {};
 
     template<typename... Ts>
-    struct is_dispatch_param_tuple<std::tuple<Ts...>>
-        : std::bool_constant<(is_dispatch_param_v<Ts> && ...)> {};
+    struct is_dispatch_param_tuple<std::tuple<Ts...>> : std::bool_constant<(is_dispatch_param_v<Ts> && ...)> {};
 
     template<typename T>
     inline constexpr bool is_dispatch_param_tuple_v = is_dispatch_param_tuple<std::decay_t<T>>::value;
 }// namespace detail
 
 namespace detail {
-
-    // Helper to extract the minimum value from a sequence
-    template<typename Sequence> struct sequence_min;
-
-    template<int First, int... Rest>
-    struct sequence_min<std::integer_sequence<int, First, Rest...>> : std::integral_constant<int, First> {};
-
-    // Note: Empty sequence (std::integer_sequence<int>) is intentionally not specialized.
-    // Attempting to use it will result in a compile-time "incomplete type" error.
-
-    // Helper to extract the maximum value from a sequence (uses fold expression to avoid O(N) recursion depth)
-    template<typename Sequence> struct sequence_max;
-
-    template<int First, int... Rest>
-    struct sequence_max<std::integer_sequence<int, First, Rest...>>
-      : std::integral_constant<int, std::max({ First, Rest... })> {};
-
-    // Note: Empty sequence (std::integer_sequence<int>) is intentionally not specialized.
-    // Attempting to use it will result in a compile-time "incomplete type" error.
 
     // Helper to compute the size of a sequence
     template<typename Sequence> struct sequence_size;
@@ -224,17 +174,17 @@ namespace detail {
       : std::bool_constant<!sequence_contains<First, std::integer_sequence<int, Rest...>>::value
                            && sequence_unique<std::integer_sequence<int, Rest...>>::value> {};
 
-    // Compile-time predicate: true when sequence is contiguous ascending and unique
-    // Primary template: false for non-sequence types
+    // Compile-time predicate: true when sequence is contiguous ascending and unique.
+    // A contiguous ascending sequence has max - first + 1 == count.
+    // We intentionally use First (not min) so that descending sequences like
+    // <6,5,4,3,2,1,0> are NOT marked contiguous — the O(1) arithmetic lookup
+    // (value - first) only works when the sequence is ascending from first.
     template<typename Seq> struct is_contiguous_sequence : std::false_type {};
 
-    // Specialization for integer_sequence: checks (max - min + 1 == count) && unique
-    template<int... Values>
-    struct is_contiguous_sequence<std::integer_sequence<int, Values...>>
-      : std::bool_constant<((sequence_max<std::integer_sequence<int, Values...>>::value
-                              - sequence_min<std::integer_sequence<int, Values...>>::value + 1)
-                             == static_cast<int>(sizeof...(Values)))
-                           && sequence_unique<std::integer_sequence<int, Values...>>::value> {};
+    template<int First, int... Rest>
+    struct is_contiguous_sequence<std::integer_sequence<int, First, Rest...>>
+      : std::bool_constant<(std::max({ First, Rest... }) - First + 1 == static_cast<int>(1 + sizeof...(Rest)))
+                           && sequence_unique<std::integer_sequence<int, First, Rest...>>::value> {};
 
     /// \brief True when every sequence in a tuple of DispatchParams is contiguous.
     template<typename ParamTuple, typename = std::make_index_sequence<std::tuple_size_v<std::decay_t<ParamTuple>>>>
@@ -242,20 +192,18 @@ namespace detail {
 
     template<typename ParamTuple, std::size_t... Idx>
     struct all_contiguous<ParamTuple, std::index_sequence<Idx...>>
-      : std::bool_constant<(is_contiguous_sequence<
-            typename std::tuple_element_t<Idx, std::decay_t<ParamTuple>>::seq_type
-        >::value && ...)> {};
+      : std::bool_constant<(
+          is_contiguous_sequence<typename std::tuple_element_t<Idx, std::decay_t<ParamTuple>>::seq_type>::value
+          && ...)> {};
 
-    template<typename ParamTuple>
-    inline constexpr bool all_contiguous_v = all_contiguous<ParamTuple>::value;
+    template<typename ParamTuple> inline constexpr bool all_contiguous_v = all_contiguous<ParamTuple>::value;
 
     template<typename Sequence> struct sequence_first;
 
     // Compact sparse lookup metadata: sorted (value, first_index) pairs.
     template<typename Seq> struct sparse_sequence_index_data;
 
-    template<int... Values>
-    struct sparse_sequence_index_data<std::integer_sequence<int, Values...>> {
+    template<int... Values> struct sparse_sequence_index_data<std::integer_sequence<int, Values...>> {
         using seq_type = std::integer_sequence<int, Values...>;
         static constexpr std::size_t value_count = sizeof...(Values);
 
@@ -292,9 +240,7 @@ namespace detail {
             } else {
                 std::size_t count = 1;
                 for (std::size_t i = 1; i < value_count; ++i) {
-                    if (sorted_data.sorted_keys[i] != sorted_data.sorted_keys[i - 1]) {
-                        ++count;
-                    }
+                    if (sorted_data.sorted_keys[i] != sorted_data.sorted_keys[i - 1]) { ++count; }
                 }
                 return count;
             }
@@ -335,28 +281,23 @@ namespace detail {
     /// Sentinel value returned by sequence_runtime_lookup::find() on miss.
     inline constexpr std::size_t dispatch_npos = static_cast<std::size_t>(-1);
 
-    template<typename Seq, bool IsContiguous = is_contiguous_sequence<Seq>::value>
-    struct sequence_runtime_lookup;
+    template<typename Seq, bool IsContiguous = is_contiguous_sequence<Seq>::value> struct sequence_runtime_lookup;
 
     // O(1) arithmetic lookup for contiguous ascending sequences.
-    template<int... Values>
-    struct sequence_runtime_lookup<std::integer_sequence<int, Values...>, true> {
+    template<int... Values> struct sequence_runtime_lookup<std::integer_sequence<int, Values...>, true> {
         using seq_type = std::integer_sequence<int, Values...>;
         static constexpr int first = sequence_first<seq_type>::value;
         static constexpr std::size_t len = sizeof...(Values);
 
         static POET_FORCEINLINE auto find(int value) -> std::size_t {
             const auto idx = static_cast<std::size_t>(value - first);
-            if (POET_LIKELY(idx < len)) {
-                return idx;
-            }
+            if (POET_LIKELY(idx < len)) { return idx; }
             return dispatch_npos;
         }
     };
 
     // O(log N) compact lookup for sparse/non-contiguous sequences.
-    template<int... Values>
-    struct sequence_runtime_lookup<std::integer_sequence<int, Values...>, false> {
+    template<int... Values> struct sequence_runtime_lookup<std::integer_sequence<int, Values...>, false> {
         using seq_type = std::integer_sequence<int, Values...>;
         using sparse_data = sparse_sequence_index_data<seq_type>;
 
@@ -381,27 +322,27 @@ namespace detail {
     /// extracts the dimensions [4, 5] (sizes of each sequence).
     template<typename ParamTuple, std::size_t... Idx>
     POET_FORCEINLINE POET_CPP20_CONSTEVAL auto extract_dimensions_impl(std::index_sequence<Idx...> /*idxs*/)
-        -> std::array<std::size_t, sizeof...(Idx)> {
+      -> std::array<std::size_t, sizeof...(Idx)> {
         using P = std::decay_t<ParamTuple>;
         return std::array<std::size_t, sizeof...(Idx)>{
-          sequence_size<typename std::tuple_element_t<Idx, P>::seq_type>::value...
+            sequence_size<typename std::tuple_element_t<Idx, P>::seq_type>::value...
         };
     }
 
     template<typename ParamTuple>
-    POET_FORCEINLINE POET_CPP20_CONSTEVAL auto extract_dimensions() -> std::array<std::size_t, std::tuple_size_v<std::decay_t<ParamTuple>>> {
+    POET_FORCEINLINE POET_CPP20_CONSTEVAL auto extract_dimensions()
+      -> std::array<std::size_t, std::tuple_size_v<std::decay_t<ParamTuple>>> {
         return extract_dimensions_impl<ParamTuple>(
-          std::make_index_sequence<std::tuple_size_v<std::decay_t<ParamTuple>>>{}
-        );
+          std::make_index_sequence<std::tuple_size_v<std::decay_t<ParamTuple>>>{});
     }
 
     /// \brief Combined index validation and flattening for N-D dispatch.
     /// Returns the flat index directly, or dispatch_npos on miss.
     /// Avoids std::optional overhead from extract_runtime_indices.
     template<typename ParamTuple, std::size_t... Idx>
-    POET_FORCEINLINE auto extract_flat_index_impl(const ParamTuple& params,
-        const std::array<std::size_t, sizeof...(Idx)>& strides,
-        std::index_sequence<Idx...> /*idxs*/) -> std::size_t {
+    POET_FORCEINLINE auto extract_flat_index_impl(const ParamTuple &params,
+      const std::array<std::size_t, sizeof...(Idx)> &strides,
+      std::index_sequence<Idx...> /*idxs*/) -> std::size_t {
         using P = std::decay_t<ParamTuple>;
         std::size_t flat = 0;
 
@@ -422,9 +363,9 @@ namespace detail {
     /// Computes all indices unconditionally and checks OOB once at the end,
     /// allowing the CPU to pipeline index computations across dimensions.
     template<typename ParamTuple, std::size_t... Idx>
-    POET_FORCEINLINE auto extract_flat_index_fused_impl(const ParamTuple& params,
-        const std::array<std::size_t, sizeof...(Idx)>& strides,
-        std::index_sequence<Idx...> /*idxs*/) -> std::size_t {
+    POET_FORCEINLINE auto extract_flat_index_fused_impl(const ParamTuple &params,
+      const std::array<std::size_t, sizeof...(Idx)> &strides,
+      std::index_sequence<Idx...> /*idxs*/) -> std::size_t {
         using P = std::decay_t<ParamTuple>;
         std::size_t oob = 0;
 
@@ -435,20 +376,20 @@ namespace detail {
             const auto mapped = static_cast<std::size_t>(std::get<Idx>(params).runtime_val - first);
             oob |= static_cast<std::size_t>(mapped >= len);
             return mapped * strides[Idx];
-        }()) + ... + std::size_t{0});
+        }()) + ... + std::size_t{ 0 });
 
         return POET_LIKELY(oob == 0) ? flat : dispatch_npos;
     }
 
     template<typename ParamTuple>
-    POET_FORCEINLINE auto extract_flat_index(const ParamTuple& params,
-        const std::array<std::size_t, std::tuple_size_v<std::decay_t<ParamTuple>>>& strides) -> std::size_t {
+    POET_FORCEINLINE auto extract_flat_index(const ParamTuple &params,
+      const std::array<std::size_t, std::tuple_size_v<std::decay_t<ParamTuple>>> &strides) -> std::size_t {
         if constexpr (all_contiguous_v<ParamTuple>) {
-            return extract_flat_index_fused_impl(params, strides,
-                std::make_index_sequence<std::tuple_size_v<std::decay_t<ParamTuple>>>{});
+            return extract_flat_index_fused_impl(
+              params, strides, std::make_index_sequence<std::tuple_size_v<std::decay_t<ParamTuple>>>{});
         } else {
-            return extract_flat_index_impl(params, strides,
-                std::make_index_sequence<std::tuple_size_v<std::decay_t<ParamTuple>>>{});
+            return extract_flat_index_impl(
+              params, strides, std::make_index_sequence<std::tuple_size_v<std::decay_t<ParamTuple>>>{});
         }
     }
 
@@ -494,24 +435,21 @@ namespace detail {
         // First preference: value-argument form (passes std::integral_constant values as parameters).
         template<typename... Args>
         static auto compute_impl(std::true_type /*use_value_args*/)
-          -> decltype(std::declval<Functor&>()(
-            std::integral_constant<int, sequence_first<Seq>::value>{}...,
+          -> decltype(std::declval<Functor &>()(std::integral_constant<int, sequence_first<Seq>::value>{}...,
             std::declval<Args>()...));
 
         // Fallback: template-parameter form.
         template<typename... Args>
         static auto compute_impl(std::false_type /*use_value_args*/)
-          -> decltype(std::declval<Functor&>().template operator()<sequence_first<Seq>::value...>(
+          -> decltype(std::declval<Functor &>().template operator()<sequence_first<Seq>::value...>(
             std::declval<Args>()...));
 
         // Detection of value-argument viability using std::is_invocable
         template<typename... Args>
-        static auto compute() -> decltype(compute_impl<Args...>(
-          std::integral_constant<bool, std::is_invocable_v<Functor&,
-            std::integral_constant<int, sequence_first<Seq>::value>..., Args...>>{})) {
-            return compute_impl<Args...>(
-              std::integral_constant<bool, std::is_invocable_v<Functor&,
-                std::integral_constant<int, sequence_first<Seq>::value>..., Args...>>{});
+        static auto compute() -> decltype(compute_impl<Args...>(std::integral_constant<bool,
+          std::is_invocable_v<Functor &, std::integral_constant<int, sequence_first<Seq>::value>..., Args...>>{})) {
+            return compute_impl<Args...>(std::integral_constant<bool,
+              std::is_invocable_v<Functor &, std::integral_constant<int, sequence_first<Seq>::value>..., Args...>>{});
         }
     };
 
@@ -529,16 +467,10 @@ namespace detail {
     // Function pointer table-based dispatch (C++17/20)
     // ============================================================================
 
-    /// \brief Function pointer type for dispatch with no return value (void)
-    template<typename... Args>
-    using dispatch_function_ptr_void = void(*)(Args...);
+    /// \brief Function pointer type for dispatch (works for all return types including void).
+    template<typename R, typename... Args> using dispatch_function_ptr = R (*)(Args...);
 
-    /// \brief Function pointer type for dispatch with return value
-    template<typename R, typename... Args>
-    using dispatch_function_ptr = R(*)(Args...);
-
-    template<typename... Args>
-    struct arg_pack {};
+    template<typename... Args> struct arg_pack {};
 
     /// \brief True when a functor can be default-constructed inside table entries.
     /// Requires both is_empty (no state) and is_default_constructible (C++20 lambdas).
@@ -555,34 +487,31 @@ namespace detail {
     /// \tparam Functor The functor type to introspect
     /// \tparam V The template parameter value
     /// \tparam T The caller's argument type (possibly a reference)
-    template<typename Functor, int V, typename T>
-    struct functor_accepts_by_value {
+    template<typename Functor, int V, typename T> struct functor_accepts_by_value {
         using raw = std::remove_cv_t<std::remove_reference_t<T>>;
 
         // Only consider small trivially copyable types as optimization candidates
-        static constexpr bool is_candidate =
-            std::is_trivially_copyable_v<raw> && sizeof(raw) <= 2 * sizeof(void*);
+        static constexpr bool is_candidate = std::is_trivially_copyable_v<raw> && sizeof(raw) <= 2 * sizeof(void *);
 
         // Test template form: Functor::template operator()<V>(U)
-        template<typename F, typename U,
-            typename = decltype(std::declval<F>().template operator()<V>(std::declval<U>()))>
+        template<typename F,
+          typename U,
+          typename = decltype(std::declval<F>().template operator()<V>(std::declval<U>()))>
         static std::true_type test_template(int);
 
-        template<typename F, typename U>
-        static std::false_type test_template(...);
+        template<typename F, typename U> static std::false_type test_template(...);
 
         // Test value form: Functor::operator()(integral_constant<int, V>, U)
-        template<typename F, typename U,
-            typename = decltype(std::declval<F>()(std::integral_constant<int, V>{}, std::declval<U>()))>
+        template<typename F,
+          typename U,
+          typename = decltype(std::declval<F>()(std::integral_constant<int, V>{}, std::declval<U>()))>
         static std::true_type test_value(int);
 
-        template<typename F, typename U>
-        static std::false_type test_value(...);
+        template<typename F, typename U> static std::false_type test_value(...);
 
-        static constexpr bool value = is_candidate && (
-            decltype(test_template<Functor, raw>(0))::value ||
-            decltype(test_value<Functor, raw>(0))::value
-        );
+        static constexpr bool value =
+          is_candidate
+          && (decltype(test_template<Functor, raw>(0))::value || decltype(test_value<Functor, raw>(0))::value);
     };
 
     /// \brief Multi-dimensional version: checks if functor accepts type by-value with multiple template params.
@@ -594,33 +523,30 @@ namespace detail {
     /// \tparam Functor The functor type
     /// \tparam T The caller's argument type
     /// \tparam Vs The template parameter values (one per dimension)
-    template<typename Functor, typename T, int... Vs>
-    struct functor_accepts_by_value_multi {
+    template<typename Functor, typename T, int... Vs> struct functor_accepts_by_value_multi {
         using raw = std::remove_cv_t<std::remove_reference_t<T>>;
 
-        static constexpr bool is_candidate =
-            std::is_trivially_copyable_v<raw> && sizeof(raw) <= 2 * sizeof(void*);
+        static constexpr bool is_candidate = std::is_trivially_copyable_v<raw> && sizeof(raw) <= 2 * sizeof(void *);
 
         // Test template form: Functor::template operator()<Vs...>(U)
-        template<typename F, typename U,
-            typename = decltype(std::declval<F>().template operator()<Vs...>(std::declval<U>()))>
+        template<typename F,
+          typename U,
+          typename = decltype(std::declval<F>().template operator()<Vs...>(std::declval<U>()))>
         static std::true_type test_template(int);
 
-        template<typename F, typename U>
-        static std::false_type test_template(...);
+        template<typename F, typename U> static std::false_type test_template(...);
 
         // Test value form: Functor::operator()(integral_constant<int, Vs>..., U)
-        template<typename F, typename U,
-            typename = decltype(std::declval<F>()(std::integral_constant<int, Vs>{}..., std::declval<U>()))>
+        template<typename F,
+          typename U,
+          typename = decltype(std::declval<F>()(std::integral_constant<int, Vs>{}..., std::declval<U>()))>
         static std::true_type test_value(int);
 
-        template<typename F, typename U>
-        static std::false_type test_value(...);
+        template<typename F, typename U> static std::false_type test_value(...);
 
-        static constexpr bool value = is_candidate && (
-            decltype(test_template<Functor, raw>(0))::value ||
-            decltype(test_value<Functor, raw>(0))::value
-        );
+        static constexpr bool value =
+          is_candidate
+          && (decltype(test_template<Functor, raw>(0))::value || decltype(test_value<Functor, raw>(0))::value);
     };
 
     /// \brief Optimizes argument passing for dispatch function pointer tables.
@@ -629,26 +555,22 @@ namespace detail {
     /// - Rvalue references (safe: caller doesn't observe the move)
     /// - Const lvalue references (safe: const guarantees no output-parameter semantics)
     /// - Non-const lvalue references IF functor accepts by-value (safe: proves no output semantics)
-    template<typename T, typename Functor = void, int V = 0>
-    struct dispatch_arg_pass {
+    template<typename T, typename Functor = void, int V = 0> struct dispatch_arg_pass {
         using raw = std::remove_reference_t<T>;
         using raw_unqual = std::remove_cv_t<raw>;
         static constexpr bool is_small_trivial =
-            std::is_trivially_copyable_v<raw_unqual> &&
-            (sizeof(raw_unqual) <= 2 * sizeof(void*));
+          std::is_trivially_copyable_v<raw_unqual> && (sizeof(raw_unqual) <= 2 * sizeof(void *));
 
         // Original conditions: caller explicitly allows copying
         static constexpr bool caller_allows_copy =
-            std::is_rvalue_reference_v<T> ||
-            (std::is_lvalue_reference_v<T> && std::is_const_v<raw>);
+          std::is_rvalue_reference_v<T> || (std::is_lvalue_reference_v<T> && std::is_const_v<raw>);
 
         // New condition: functor parameter type introspection
         // If functor accepts by-value, it cannot have output semantics
         static constexpr bool functor_allows_copy =
-            !std::is_void_v<Functor> && functor_accepts_by_value<Functor, V, T>::value;
+          !std::is_void_v<Functor> && functor_accepts_by_value<Functor, V, T>::value;
 
-        static constexpr bool by_value =
-            is_small_trivial && (caller_allows_copy || functor_allows_copy);
+        static constexpr bool by_value = is_small_trivial && (caller_allows_copy || functor_allows_copy);
 
         using type = std::conditional_t<by_value, raw_unqual, T>;
     };
@@ -657,23 +579,18 @@ namespace detail {
     using dispatch_pass_opt_t = typename dispatch_arg_pass<T, Functor, V>::type;
 
     /// \brief N-D version of dispatch_arg_pass for multi-dimensional dispatch.
-    template<typename T, typename Functor, int... Vs>
-    struct dispatch_arg_pass_nd {
+    template<typename T, typename Functor, int... Vs> struct dispatch_arg_pass_nd {
         using raw = std::remove_reference_t<T>;
         using raw_unqual = std::remove_cv_t<raw>;
         static constexpr bool is_small_trivial =
-            std::is_trivially_copyable_v<raw_unqual> &&
-            (sizeof(raw_unqual) <= 2 * sizeof(void*));
+          std::is_trivially_copyable_v<raw_unqual> && (sizeof(raw_unqual) <= 2 * sizeof(void *));
 
         static constexpr bool caller_allows_copy =
-            std::is_rvalue_reference_v<T> ||
-            (std::is_lvalue_reference_v<T> && std::is_const_v<raw>);
+          std::is_rvalue_reference_v<T> || (std::is_lvalue_reference_v<T> && std::is_const_v<raw>);
 
-        static constexpr bool functor_allows_copy =
-            functor_accepts_by_value_multi<Functor, T, Vs...>::value;
+        static constexpr bool functor_allows_copy = functor_accepts_by_value_multi<Functor, T, Vs...>::value;
 
-        static constexpr bool by_value =
-            is_small_trivial && (caller_allows_copy || functor_allows_copy);
+        static constexpr bool by_value = is_small_trivial && (caller_allows_copy || functor_allows_copy);
 
         using type = std::conditional_t<by_value, raw_unqual, T>;
     };
@@ -682,116 +599,50 @@ namespace detail {
     using dispatch_pass_nd_t = typename dispatch_arg_pass_nd<T, Functor, Vs...>::type;
 
     /// \brief Helper to detect value-argument form invocability
-    template<typename Functor, int Value, typename ArgPack>
-    struct can_use_value_form : std::false_type {};
+    template<typename Functor, int Value, typename ArgPack> struct can_use_value_form : std::false_type {};
 
     template<typename Functor, int Value, typename... Args>
     struct can_use_value_form<Functor, Value, arg_pack<Args...>>
-      : std::bool_constant<std::is_invocable_v<Functor&, std::integral_constant<int, Value>, Args&&...>> {};
+      : std::bool_constant<std::is_invocable_v<Functor &, std::integral_constant<int, Value>, Args &&...>> {};
 
-    /// \brief Generate function pointer table for contiguous 1D dispatch (void return).
+    /// \brief Generate function pointer table for contiguous 1D dispatch.
     ///
     /// Creates a compile-time array of function pointers for O(1) dispatch.
-    /// Each entry corresponds to one value in the sequence.
+    /// Each entry corresponds to one value in the sequence. Works for both
+    /// void and non-void return types via `return void_expr;` idiom.
     ///
     /// \tparam Functor User callable type.
-    /// \tparam Args Runtime argument types.
+    /// \tparam ArgPack arg_pack<Args...> with runtime argument types.
+    /// \tparam R Return type (may be void).
     /// \tparam Values Compile-time integer values in the sequence.
-    template<typename Functor, typename ArgPack, int... Values>
-    struct dispatch_table_void_builder;
-
-    template<typename Functor, typename... Args, int... Values>
-    struct dispatch_table_void_builder<Functor, arg_pack<Args...>, Values...> {
-        static constexpr int first_value = sequence_first<std::integer_sequence<int, Values...>>::value;
-
-        // Uniform signature based on first value
-        using opt_arg_types = arg_pack<dispatch_pass_opt_t<Args&&, Functor, first_value>...>;
-
-        // Helper to create a single lambda for a specific V value
-        template<int V>
-        struct lambda_maker {
-            static POET_CPP20_CONSTEVAL auto make_stateless() {
-                return +[](dispatch_pass_opt_t<Args&&, Functor, first_value>... args) -> void {
-                    Functor func{};
-                    constexpr bool use_value_form = can_use_value_form<Functor, V, arg_pack<Args...>>::value;
-                    if constexpr (use_value_form) {
-                        func(std::integral_constant<int, V>{}, static_cast<Args&&>(args)...);
-                    } else {
-                        func.template operator()<V>(static_cast<Args&&>(args)...);
-                    }
-                };
-            }
-
-            static POET_CPP20_CONSTEVAL auto make_stateful() {
-                return +[](Functor* func, dispatch_pass_opt_t<Args&&, Functor, first_value>... args) -> void {
-                    POET_ASSUME_NOT_NULL(func);
-                    constexpr bool use_value_form = can_use_value_form<Functor, V, arg_pack<Args...>>::value;
-                    if constexpr (use_value_form) {
-                        (*func)(std::integral_constant<int, V>{}, static_cast<Args&&>(args)...);
-                    } else {
-                        func->template operator()<V>(static_cast<Args&&>(args)...);
-                    }
-                };
-            }
-        };
-
-        static POET_CPP20_CONSTEVAL auto make() {
-            if constexpr (is_stateless_v<Functor>) {
-                return std::array<dispatch_function_ptr_void<dispatch_pass_opt_t<Args&&, Functor, first_value>...>, sizeof...(Values)>{
-                    lambda_maker<Values>::make_stateless()...
-                };
-            } else {
-                return std::array<dispatch_function_ptr_void<Functor*, dispatch_pass_opt_t<Args&&, Functor, first_value>...>, sizeof...(Values)>{
-                    lambda_maker<Values>::make_stateful()...
-                };
-            }
-        }
-    };
-
-    template<typename Functor, typename ArgPack, int... Values>
-    POET_CPP20_CONSTEVAL auto make_dispatch_table_void(std::integer_sequence<int, Values...> /*seq*/) {
-        return dispatch_table_void_builder<Functor, ArgPack, Values...>::make();
-    }
-
-    /// \brief Generate function pointer table for contiguous 1D dispatch (non-void return).
-    ///
-    /// Creates a compile-time array of function pointers for O(1) dispatch.
-    /// Each entry corresponds to one value in the sequence.
-    ///
-    /// \tparam Functor User callable type.
-    /// \tparam Args Runtime argument types.
-    /// \tparam R Return type.
-    /// \tparam Values Compile-time integer values in the sequence.
-    template<typename Functor, typename ArgPack, typename R, int... Values>
-    struct dispatch_table_builder;
+    template<typename Functor, typename ArgPack, typename R, int... Values> struct dispatch_table_builder;
 
     template<typename Functor, typename... Args, typename R, int... Values>
     struct dispatch_table_builder<Functor, arg_pack<Args...>, R, Values...> {
         static constexpr int first_value = sequence_first<std::integer_sequence<int, Values...>>::value;
 
         // Helper to create a single lambda for a specific V value
-        template<int V>
-        struct lambda_maker {
+        template<int V> struct lambda_maker {
             static POET_CPP20_CONSTEVAL auto make_stateless() {
-                return +[](dispatch_pass_opt_t<Args&&, Functor, first_value>... args) -> R {
+                return +[](dispatch_pass_opt_t<Args &&, Functor, first_value>... args) -> R {
                     Functor func{};
                     constexpr bool use_value_form = can_use_value_form<Functor, V, arg_pack<Args...>>::value;
                     if constexpr (use_value_form) {
-                        return func(std::integral_constant<int, V>{}, static_cast<Args&&>(args)...);
+                        return func(std::integral_constant<int, V>{}, static_cast<Args &&>(args)...);
                     } else {
-                        return func.template operator()<V>(static_cast<Args&&>(args)...);
+                        return func.template operator()<V>(static_cast<Args &&>(args)...);
                     }
                 };
             }
 
             static POET_CPP20_CONSTEVAL auto make_stateful() {
-                return +[](Functor* func, dispatch_pass_opt_t<Args&&, Functor, first_value>... args) -> R {
+                return +[](Functor *func, dispatch_pass_opt_t<Args &&, Functor, first_value>... args) -> R {
                     POET_ASSUME_NOT_NULL(func);
                     constexpr bool use_value_form = can_use_value_form<Functor, V, arg_pack<Args...>>::value;
                     if constexpr (use_value_form) {
-                        return (*func)(std::integral_constant<int, V>{}, static_cast<Args&&>(args)...);
+                        return (*func)(std::integral_constant<int, V>{}, static_cast<Args &&>(args)...);
                     } else {
-                        return func->template operator()<V>(static_cast<Args&&>(args)...);
+                        return func->template operator()<V>(static_cast<Args &&>(args)...);
                     }
                 };
             }
@@ -799,13 +650,12 @@ namespace detail {
 
         static POET_CPP20_CONSTEVAL auto make() {
             if constexpr (is_stateless_v<Functor>) {
-                return std::array<dispatch_function_ptr<R, dispatch_pass_opt_t<Args&&, Functor, first_value>...>, sizeof...(Values)>{
-                    lambda_maker<Values>::make_stateless()...
-                };
+                return std::array<dispatch_function_ptr<R, dispatch_pass_opt_t<Args &&, Functor, first_value>...>,
+                  sizeof...(Values)>{ lambda_maker<Values>::make_stateless()... };
             } else {
-                return std::array<dispatch_function_ptr<R, Functor*, dispatch_pass_opt_t<Args&&, Functor, first_value>...>, sizeof...(Values)>{
-                    lambda_maker<Values>::make_stateful()...
-                };
+                return std::array<
+                  dispatch_function_ptr<R, Functor *, dispatch_pass_opt_t<Args &&, Functor, first_value>...>,
+                  sizeof...(Values)>{ lambda_maker<Values>::make_stateful()... };
             }
         }
     };
@@ -828,32 +678,30 @@ namespace detail {
 
     /// \brief Recursively generate function pointer for each flattened index.
     template<typename Functor, typename... Args, typename... Seqs, std::size_t... FlatIndices>
-    struct make_nd_dispatch_table_helper<Functor, arg_pack<Args...>, std::tuple<Seqs...>, std::index_sequence<FlatIndices...>> {
+    struct make_nd_dispatch_table_helper<Functor,
+      arg_pack<Args...>,
+      std::tuple<Seqs...>,
+      std::index_sequence<FlatIndices...>> {
 
         /// \brief Get the Ith value from a sequence at compile-time.
-        template<std::size_t I, typename Seq>
-        struct get_sequence_value;
+        template<std::size_t I, typename Seq> struct get_sequence_value;
 
-        template<std::size_t I, int... Values>
-            struct get_sequence_value<I, std::integer_sequence<int, Values...>> {
-                // Select the I-th value from the integer pack without creating a temporary
-                // std::array (which may emit calls in some libstdc++/libc++ builds).
-                template<std::size_t J, int First, int... Rest>
-                struct select_impl {
-                    static constexpr int value = select_impl<J - 1, Rest...>::value;
-                };
-
-                template<int First, int... Rest>
-                struct select_impl<0, First, Rest...> {
-                    static constexpr int value = First;
-                };
-
-                static constexpr int value = select_impl<I, Values...>::value;
+        template<std::size_t I, int... Values> struct get_sequence_value<I, std::integer_sequence<int, Values...>> {
+            // Select the I-th value from the integer pack without creating a temporary
+            // std::array (which may emit calls in some libstdc++/libc++ builds).
+            template<std::size_t J, int First, int... Rest> struct select_impl {
+                static constexpr int value = select_impl<J - 1, Rest...>::value;
             };
 
+            template<int First, int... Rest> struct select_impl<0, First, Rest...> {
+                static constexpr int value = First;
+            };
+
+            static constexpr int value = select_impl<I, Values...>::value;
+        };
+
         /// \brief Compute the index for a specific dimension from a flat index.
-        template<std::size_t FlatIdx, std::size_t DimIdx, std::size_t... Dims>
-        struct compute_dim_index {
+        template<std::size_t FlatIdx, std::size_t DimIdx, std::size_t... Dims> struct compute_dim_index {
             static POET_CPP20_CONSTEVAL auto compute() -> std::size_t {
                 constexpr std::array<std::size_t, sizeof...(Dims)> dimensions = { Dims... };
                 constexpr std::array<std::size_t, sizeof...(Dims)> strides = compute_strides(dimensions);
@@ -872,19 +720,16 @@ namespace detail {
         }
 
         /// \brief Helper to build integral_constants from extracted values.
-        template<std::size_t FlatIdx, std::size_t... SeqIdx>
-        struct value_extractor {
+        template<std::size_t FlatIdx, std::size_t... SeqIdx> struct value_extractor {
             static constexpr std::array<int, sizeof...(SeqIdx)> values = {
                 extract_value_for_dim<FlatIdx, SeqIdx, sequence_size<Seqs>::value...>()...
             };
 
-            template<std::size_t N>
-            using ic = std::integral_constant<int, values[N]>;
+            template<std::size_t N> using ic = std::integral_constant<int, values[N]>;
         };
 
         /// \brief Helper struct to call functor with values computed from flat index.
-        template<std::size_t FlatIdx>
-        struct nd_index_caller {
+        template<std::size_t FlatIdx> struct nd_index_caller {
             // Helper to build value_extractor type with proper index sequence
             template<std::size_t... Is>
             static auto make_ve(std::index_sequence<Is...>) -> value_extractor<FlatIdx, Is...>;
@@ -894,13 +739,13 @@ namespace detail {
             // Expand index sequence to build parameter types using VE::values
             template<typename T, std::size_t... Is>
             static auto make_opt_type_impl(std::index_sequence<Is...>)
-                -> dispatch_pass_nd_t<T, Functor, VE::values[Is]...>;
+              -> dispatch_pass_nd_t<T, Functor, VE::values[Is]...>;
 
             template<typename T>
             using opt_type = decltype(make_opt_type_impl<T>(std::make_index_sequence<sizeof...(Seqs)>{}));
 
             template<typename R, typename VE_inner, std::size_t... SeqIdx>
-            static POET_FORCEINLINE auto call_value_form(Functor* func, Args&&... args) -> R {
+            static POET_FORCEINLINE auto call_value_form(Functor *func, Args &&...args) -> R {
                 POET_ASSUME_NOT_NULL(func);
                 if constexpr (std::is_void_v<R>) {
                     (*func)(typename VE_inner::template ic<SeqIdx>{}..., std::forward<Args>(args)...);
@@ -911,22 +756,24 @@ namespace detail {
             }
 
             template<typename R, typename VE_inner, std::size_t... SeqIdx>
-            static POET_FORCEINLINE auto call_template_form(Functor* func, Args&&... args) -> R {
+            static POET_FORCEINLINE auto call_template_form(Functor *func, Args &&...args) -> R {
                 POET_ASSUME_NOT_NULL(func);
                 if constexpr (std::is_void_v<R>) {
                     func->template operator()<VE_inner::template ic<SeqIdx>::value...>(std::forward<Args>(args)...);
                     return;
                 } else {
-                    return func->template operator()<VE_inner::template ic<SeqIdx>::value...>(std::forward<Args>(args)...);
+                    return func->template operator()<VE_inner::template ic<SeqIdx>::value...>(
+                      std::forward<Args>(args)...);
                 }
             }
 
             template<typename R, std::size_t... SeqIdx>
-            static POET_FORCEINLINE auto call_impl(Functor* func, Args&&... args) -> R {
+            static POET_FORCEINLINE auto call_impl(Functor *func, Args &&...args) -> R {
                 using VE_local = value_extractor<FlatIdx, SeqIdx...>;
 
                 // Detect which form the functor supports: template parameters or integral_constant values
-                constexpr bool use_value_form = std::is_invocable_v<Functor&, typename VE_local::template ic<SeqIdx>..., Args&&...>;
+                constexpr bool use_value_form =
+                  std::is_invocable_v<Functor &, typename VE_local::template ic<SeqIdx>..., Args &&...>;
 
                 if constexpr (use_value_form) {
                     return call_value_form<R, VE_local, SeqIdx...>(func, std::forward<Args>(args)...);
@@ -936,85 +783,63 @@ namespace detail {
             }
 
             template<typename R, std::size_t... SeqIdx>
-            static POET_FORCEINLINE auto call_with_indices(Functor* func, std::index_sequence<SeqIdx...> /*indices*/, Args&&... args) -> R {
+            static POET_FORCEINLINE auto
+              call_with_indices(Functor *func, std::index_sequence<SeqIdx...> /*indices*/, Args &&...args) -> R {
                 return call_impl<R, SeqIdx...>(func, std::forward<Args>(args)...);
             }
 
             // Helper to build optimized type for a single argument using representative values (FlatIdx=0)
-            template<typename T, typename IndexSeq>
-            struct repr_opt_type_helper_impl;
+            template<typename T, typename IndexSeq> struct repr_opt_type_helper_impl;
 
-            template<typename T, std::size_t... Is>
-            struct repr_opt_type_helper_impl<T, std::index_sequence<Is...>> {
+            template<typename T, std::size_t... Is> struct repr_opt_type_helper_impl<T, std::index_sequence<Is...>> {
                 // Extract values from FlatIdx=0
-                using type = dispatch_pass_nd_t<T, Functor,
-                    extract_value_for_dim<0, Is, sequence_size<Seqs>::value...>()...>;
+                using type =
+                  dispatch_pass_nd_t<T, Functor, extract_value_for_dim<0, Is, sequence_size<Seqs>::value...>()...>;
             };
 
             template<typename T>
-            using repr_opt_type = typename repr_opt_type_helper_impl<T,
-                std::make_index_sequence<sizeof...(Seqs)>>::type;
+            using repr_opt_type =
+              typename repr_opt_type_helper_impl<T, std::make_index_sequence<sizeof...(Seqs)>>::type;
 
-            template<typename R>
-            static POET_FORCEINLINE auto call(Functor* func, repr_opt_type<Args&&>... args) -> R {
-                return call_with_indices<R>(func, std::make_index_sequence<sizeof...(Seqs)>{}, static_cast<Args&&>(args)...);
+            template<typename R> static POET_FORCEINLINE auto call(Functor *func, repr_opt_type<Args &&>... args) -> R {
+                return call_with_indices<R>(
+                  func, std::make_index_sequence<sizeof...(Seqs)>{}, static_cast<Args &&>(args)...);
             }
 
-            template<typename R>
-            static POET_FORCEINLINE auto call_stateless(repr_opt_type<Args&&>... args) -> R {
+            template<typename R> static POET_FORCEINLINE auto call_stateless(repr_opt_type<Args &&>... args) -> R {
                 Functor func{};
-                return call_with_indices<R>(&func, std::make_index_sequence<sizeof...(Seqs)>{}, static_cast<Args&&>(args)...);
+                return call_with_indices<R>(
+                  &func, std::make_index_sequence<sizeof...(Seqs)>{}, static_cast<Args &&>(args)...);
             }
         };
 
-        /// \brief Generate function pointer table for all N-D combinations (void return).
-        static constexpr auto make_table_void() {
+        /// \brief Generate function pointer table for all N-D combinations.
+        /// Works for both void and non-void return types.
+        template<typename R> static constexpr auto make_table() {
             // Use first flat index (0) for uniform signature
             using representative_caller = nd_index_caller<0>;
 
             if constexpr (is_stateless_v<Functor>) {
-                return std::array<dispatch_function_ptr_void<typename representative_caller::template repr_opt_type<Args&&>...>, sizeof...(FlatIndices)>{
-                    &nd_index_caller<FlatIndices>::template call_stateless<void>...
-                };
+                return std::array<
+                  dispatch_function_ptr<R, typename representative_caller::template repr_opt_type<Args &&>...>,
+                  sizeof...(FlatIndices)>{ &nd_index_caller<FlatIndices>::template call_stateless<R>... };
             } else {
-                return std::array<dispatch_function_ptr_void<Functor*, typename representative_caller::template repr_opt_type<Args&&>...>, sizeof...(FlatIndices)>{
-                    &nd_index_caller<FlatIndices>::template call<void>...
-                };
-            }
-        }
-
-        /// \brief Generate function pointer table for all N-D combinations (non-void return).
-        template<typename R>
-        static constexpr auto make_table() {
-            // Use first flat index (0) for uniform signature
-            using representative_caller = nd_index_caller<0>;
-
-            if constexpr (is_stateless_v<Functor>) {
-                return std::array<dispatch_function_ptr<R, typename representative_caller::template repr_opt_type<Args&&>...>, sizeof...(FlatIndices)>{
-                    &nd_index_caller<FlatIndices>::template call_stateless<R>...
-                };
-            } else {
-                return std::array<dispatch_function_ptr<R, Functor*, typename representative_caller::template repr_opt_type<Args&&>...>, sizeof...(FlatIndices)>{
-                    &nd_index_caller<FlatIndices>::template call<R>...
-                };
+                return std::array<dispatch_function_ptr<R,
+                                    Functor *,
+                                    typename representative_caller::template repr_opt_type<Args &&>...>,
+                  sizeof...(FlatIndices)>{ &nd_index_caller<FlatIndices>::template call<R>... };
             }
         }
     };
 
     /// \brief Generate N-D dispatch table for contiguous multidimensional dispatch.
-    template<typename Functor, typename ArgPack, typename... Seqs>
-    POET_CPP20_CONSTEVAL auto make_nd_dispatch_table_void(std::tuple<Seqs...> /*seqs*/) {
-        constexpr std::size_t total_size = (sequence_size<Seqs>::value * ... * 1);
-        return make_nd_dispatch_table_helper<Functor, ArgPack, std::tuple<Seqs...>,
-                                            std::make_index_sequence<total_size>>::make_table_void();
-    }
-
-    /// \brief Generate N-D dispatch table for contiguous multidimensional dispatch (non-void return).
     template<typename Functor, typename ArgPack, typename R, typename... Seqs>
     POET_CPP20_CONSTEVAL auto make_nd_dispatch_table(std::tuple<Seqs...> /*seqs*/) {
         constexpr std::size_t total_size = (sequence_size<Seqs>::value * ... * 1);
-        return make_nd_dispatch_table_helper<Functor, ArgPack, std::tuple<Seqs...>,
-                                            std::make_index_sequence<total_size>>::template make_table<R>();
+        return make_nd_dispatch_table_helper<Functor,
+          ArgPack,
+          std::tuple<Seqs...>,
+          std::make_index_sequence<total_size>>::template make_table<R>();
     }
 
 }// namespace detail
@@ -1081,8 +906,7 @@ namespace detail {
     /// \brief 1D dispatch through a function-pointer table.
     /// O(1) for contiguous sequences, O(log N) for sparse — selected by sequence_runtime_lookup.
     template<bool ThrowOnNoMatch, typename R, typename Functor, typename ParamTuple, typename... Args>
-    POET_FORCEINLINE
-    auto dispatch_1d(Functor&& functor, ParamTuple const &params, Args &&...args) -> R {
+    POET_FORCEINLINE auto dispatch_1d(Functor &&functor, ParamTuple const &params, Args &&...args) -> R {
         using FirstParam = std::tuple_element_t<0, std::remove_reference_t<ParamTuple>>;
         using Seq = typename FirstParam::seq_type;
         const int runtime_val = std::get<0>(params).runtime_val;
@@ -1091,31 +915,28 @@ namespace detail {
         if (POET_LIKELY(idx != dispatch_npos)) {
             using FunctorT = std::decay_t<Functor>;
 
-            if constexpr (std::is_void_v<R>) {
-                static constexpr auto table = make_dispatch_table_void<FunctorT, arg_pack<Args...>>(Seq{});
-                if constexpr (is_stateless_v<FunctorT>) {
+            static constexpr auto table = make_dispatch_table<FunctorT, arg_pack<Args...>, R>(Seq{});
+            if constexpr (is_stateless_v<FunctorT>) {
+                if constexpr (std::is_void_v<R>) {
                     table[idx](std::forward<Args>(args)...);
+                    return;
                 } else {
-                    auto &&fwd = std::forward<Functor>(functor);
-                    table[idx](std::addressof(static_cast<FunctorT&>(fwd)), std::forward<Args>(args)...);
-                }
-                return;
-            } else {
-                static constexpr auto table = make_dispatch_table<FunctorT, arg_pack<Args...>, R>(Seq{});
-                if constexpr (is_stateless_v<FunctorT>) {
                     return table[idx](std::forward<Args>(args)...);
+                }
+            } else {
+                auto &&fwd = std::forward<Functor>(functor);
+                if constexpr (std::is_void_v<R>) {
+                    table[idx](std::addressof(static_cast<FunctorT &>(fwd)), std::forward<Args>(args)...);
+                    return;
                 } else {
-                    auto &&fwd = std::forward<Functor>(functor);
-                    return table[idx](std::addressof(static_cast<FunctorT&>(fwd)), std::forward<Args>(args)...);
+                    return table[idx](std::addressof(static_cast<FunctorT &>(fwd)), std::forward<Args>(args)...);
                 }
             }
         } else {
             if constexpr (ThrowOnNoMatch) {
                 throw std::runtime_error(k_no_match_error);
             } else {
-                if constexpr (!std::is_void_v<R>) {
-                    return R{};
-                }
+                if constexpr (!std::is_void_v<R>) { return R{}; }
             }
         }
     }
@@ -1124,8 +945,7 @@ namespace detail {
     /// Uses fused speculative indexing for all-contiguous dimensions,
     /// short-circuit validation for mixed contiguous/sparse.
     template<bool ThrowOnNoMatch, typename R, typename Functor, typename ParamTuple, typename... Args>
-    POET_FORCEINLINE
-    auto dispatch_nd(Functor&& functor, ParamTuple const &params, Args &&...args) -> R {
+    POET_FORCEINLINE auto dispatch_nd(Functor &&functor, ParamTuple const &params, Args &&...args) -> R {
         constexpr auto dimensions = extract_dimensions<ParamTuple>();
         constexpr auto strides = compute_strides(dimensions);
         constexpr std::size_t table_size = compute_total_size(dimensions);
@@ -1138,42 +958,38 @@ namespace detail {
             static constexpr sequences_t sequences{};
 
             using FunctorT = std::decay_t<Functor>;
-            if constexpr (std::is_void_v<R>) {
-                static constexpr auto table = make_nd_dispatch_table_void<FunctorT, arg_pack<Args...>>(sequences);
-                if constexpr (is_stateless_v<FunctorT>) {
+            static constexpr auto table = make_nd_dispatch_table<FunctorT, arg_pack<Args...>, R>(sequences);
+            if constexpr (is_stateless_v<FunctorT>) {
+                if constexpr (std::is_void_v<R>) {
                     table[flat_idx](std::forward<Args>(args)...);
+                    return;
                 } else {
-                    auto &&fwd = std::forward<Functor>(functor);
-                    table[flat_idx](std::addressof(static_cast<FunctorT&>(fwd)), std::forward<Args>(args)...);
-                }
-                return;
-            } else {
-                static constexpr auto table = make_nd_dispatch_table<FunctorT, arg_pack<Args...>, R>(sequences);
-                if constexpr (is_stateless_v<FunctorT>) {
                     return table[flat_idx](std::forward<Args>(args)...);
+                }
+            } else {
+                auto &&fwd = std::forward<Functor>(functor);
+                if constexpr (std::is_void_v<R>) {
+                    table[flat_idx](std::addressof(static_cast<FunctorT &>(fwd)), std::forward<Args>(args)...);
+                    return;
                 } else {
-                    auto &&fwd = std::forward<Functor>(functor);
-                    return table[flat_idx](std::addressof(static_cast<FunctorT&>(fwd)), std::forward<Args>(args)...);
+                    return table[flat_idx](std::addressof(static_cast<FunctorT &>(fwd)), std::forward<Args>(args)...);
                 }
             }
         } else {
             if constexpr (ThrowOnNoMatch) {
                 throw std::runtime_error(k_no_match_error);
             } else {
-                if constexpr (!std::is_void_v<R>) {
-                    return R{};
-                }
+                if constexpr (!std::is_void_v<R>) { return R{}; }
             }
         }
     }
 
     /// \brief Internal implementation for dispatch with compile-time error handling policy.
     template<bool ThrowOnNoMatch, typename Functor, typename ParamTuple, typename... Args>
-    POET_FORCEINLINE
-    auto dispatch_impl(Functor&& functor, ParamTuple const &params, Args&&... args) -> decltype(auto) {
+    POET_FORCEINLINE auto dispatch_impl(Functor &&functor, ParamTuple const &params, Args &&...args) -> decltype(auto) {
         constexpr std::size_t param_count = std::tuple_size_v<std::remove_reference_t<ParamTuple>>;
         using sequences_t = decltype(extract_sequences(std::declval<ParamTuple>()));
-        using result_type = dispatch_result_t<Functor, sequences_t, Args&&...>;
+        using result_type = dispatch_result_t<Functor, sequences_t, Args &&...>;
 
         if constexpr (param_count == 1) {
             return dispatch_1d<ThrowOnNoMatch, result_type>(
@@ -1196,19 +1012,17 @@ namespace detail {
         static constexpr std::size_t value = 0;
     };
 
-    template<typename First, typename... Rest>
-    struct count_leading_dispatch_params<First, Rest...> {
+    template<typename First, typename... Rest> struct count_leading_dispatch_params<First, Rest...> {
         static constexpr std::size_t value =
-            is_dispatch_param_v<First> ? (1 + count_leading_dispatch_params<Rest...>::value) : 0;
+          is_dispatch_param_v<First> ? (1 + count_leading_dispatch_params<Rest...>::value) : 0;
     };
 
     // Split a variadic call into leading DispatchParams and trailing runtime args.
     template<bool ThrowOnNoMatch, typename Functor, std::size_t... ParamIdx, std::size_t... ArgIdx, typename... All>
-    POET_FORCEINLINE auto dispatch_multi_impl(
-        Functor&& functor,
-        std::index_sequence<ParamIdx...> /*p*/,
-        std::index_sequence<ArgIdx...> /*a*/,
-        All&&... all) -> decltype(auto) {
+    POET_FORCEINLINE auto dispatch_multi_impl(Functor &&functor,
+      std::index_sequence<ParamIdx...> /*p*/,
+      std::index_sequence<ArgIdx...> /*a*/,
+      All &&...all) -> decltype(auto) {
 
         constexpr std::size_t num_params = sizeof...(ParamIdx);
         auto all_refs = std::forward_as_tuple(std::forward<All>(all)...);
@@ -1218,14 +1032,11 @@ namespace detail {
 
         // Forward remaining runtime arguments directly.
         return dispatch_impl<ThrowOnNoMatch>(
-            std::forward<Functor>(functor),
-            params,
-            std::get<num_params + ArgIdx>(std::move(all_refs))...
-        );
+          std::forward<Functor>(functor), params, std::get<num_params + ArgIdx>(std::move(all_refs))...);
     }
 
     template<bool ThrowOnNoMatch, typename Functor, typename FirstParam, typename... Rest>
-    POET_FORCEINLINE auto dispatch_variadic_impl(Functor&& functor, FirstParam&& first_param, Rest&&... rest)
+    POET_FORCEINLINE auto dispatch_variadic_impl(Functor &&functor, FirstParam &&first_param, Rest &&...rest)
       -> decltype(auto) {
         // Count leading DispatchParams to split params from runtime arguments.
         constexpr std::size_t num_params = 1 + count_leading_dispatch_params<Rest...>::value;
@@ -1235,8 +1046,7 @@ namespace detail {
             auto params = std::make_tuple(std::forward<FirstParam>(first_param), std::forward<Rest>(rest)...);
             return dispatch_impl<ThrowOnNoMatch>(std::forward<Functor>(functor), params);
         } else {
-            return dispatch_multi_impl<ThrowOnNoMatch>(
-              std::forward<Functor>(functor),
+            return dispatch_multi_impl<ThrowOnNoMatch>(std::forward<Functor>(functor),
               std::make_index_sequence<num_params>{},
               std::make_index_sequence<num_args>{},
               std::forward<FirstParam>(first_param),
@@ -1276,7 +1086,7 @@ template<typename Functor,
   typename FirstParam,
   typename... Rest,
   std::enable_if_t<detail::is_dispatch_param_v<FirstParam>, int> = 0>
-auto dispatch(Functor&& functor, FirstParam&& first_param, Rest&&... rest) -> decltype(auto) {
+auto dispatch(Functor &&functor, FirstParam &&first_param, Rest &&...rest) -> decltype(auto) {
     return detail::dispatch_variadic_impl<false>(
       std::forward<Functor>(functor), std::forward<FirstParam>(first_param), std::forward<Rest>(rest)...);
 }
@@ -1295,40 +1105,23 @@ template<typename Functor,
   typename ParamTuple,
   typename... Args,
   std::enable_if_t<detail::is_dispatch_param_tuple_v<ParamTuple>, int> = 0>
-auto dispatch(Functor&& functor, ParamTuple const& params, Args&&... args) -> decltype(auto) {
+auto dispatch(Functor &&functor, ParamTuple const &params, Args &&...args) -> decltype(auto) {
     return detail::dispatch_impl<false>(std::forward<Functor>(functor), params, std::forward<Args>(args)...);
 }
-
-/// \brief Dispatch to an explicit compile-time list of tuples.
-///
-/// This overload allows dispatching based on an exact set of allowed tuple
-/// combinations. The caller supplies a compile-time tuple of `std::integer_sequence<int, ...>`
-/// values where each element encodes one allowed tuple (all tuples must have the
-/// same arity). The runtime tuple is compared against each allowed tuple in
-/// order; when a match is found the functor is invoked with the tuple elements
-/// as non-type template parameters. If no match is found a default-constructed
-/// result is returned (or an exception is thrown when `poet::throw_t` is used).
-///
-/// Example:
-///   using List = std::tuple<std::integer_sequence<int,1,2>, std::integer_sequence<int,2,4>>;
-///   auto rt = std::make_tuple(2,4);
-///   dispatch_tuples(functor, List{}, rt, runtime_args...);
-///
-/// Optional policy tag: when passed as the first argument to `dispatch_tuples`,
-/// requests that the function throw an exception if no matching compile-time tuple
-/// is found for the runtime inputs.
 
 namespace detail {
     /// \brief Internal implementation for dispatch_tuples with compile-time error handling policy.
     template<bool ThrowOnNoMatch, typename Functor, typename TupleList, typename RuntimeTuple, typename... Args>
-    auto dispatch_tuples_impl(Functor&& functor, TupleList const & /*unused*/, const RuntimeTuple &runtime_tuple,
-      Args&&... args) -> decltype(auto) { // NOLINT(cppcoreguidelines-missing-std-forward) forwarded inside short-circuiting fold
+    auto dispatch_tuples_impl(Functor &&functor,
+      TupleList const & /*unused*/,
+      const RuntimeTuple &runtime_tuple,
+      Args &&...args)// NOLINT(cppcoreguidelines-missing-std-forward) forwarded inside short-circuiting fold
+      -> decltype(auto) {
         using TL = std::decay_t<TupleList>;
         static_assert(std::tuple_size_v<TL> >= 1, "tuple list must contain at least one allowed tuple");
 
         using first_seq = std::tuple_element_t<0, TL>;
-        using result_type =
-          typename result_of_seq_call<first_seq, std::decay_t<Functor>, std::decay_t<Args>...>::type;
+        using result_type = typename result_of_seq_call<first_seq, std::decay_t<Functor>, std::decay_t<Args>...>::type;
 
         result_holder<result_type> out;
 
@@ -1369,47 +1162,27 @@ namespace detail {
     }
 }// namespace detail
 
-template<typename Functor,
-  typename TupleList,
-  typename RuntimeTuple,
-  typename... Args,
-  std::enable_if_t<!std::is_same_v<std::decay_t<Functor>, throw_on_no_match_t>, int> = 0>
-auto dispatch_tuples(Functor&& functor, TupleList const &tuple_list, const RuntimeTuple &runtime_tuple, Args&&... args)
-  -> decltype(auto) {
-    return detail::dispatch_tuples_impl<false>(
-      std::forward<Functor>(functor), tuple_list, runtime_tuple, std::forward<Args>(args)...);
-}
-
-template<typename Functor, typename TupleList, typename RuntimeTuple, typename... Args>
-auto dispatch_tuples(throw_on_no_match_t /*tag*/,
-  Functor&& functor,
-  TupleList const &tuple_list,
-  const RuntimeTuple &runtime_tuple,
-  Args&&... args) -> decltype(auto) {
-    return detail::dispatch_tuples_impl<true>(
-      std::forward<Functor>(functor), tuple_list, runtime_tuple, std::forward<Args>(args)...);
-}
-
 /// \brief Dispatches using a specific `DispatchSet`.
 ///
-/// Routes the call to `dispatch_tuples` using the set's allowed combinations.
+/// Routes the call to the internal tuple dispatch using the set's allowed combinations.
 template<typename Functor, typename... Tuples, typename... Args>
 auto dispatch(Functor &&functor, const DispatchSet<Tuples...> &dispatch_set, Args &&...args) -> decltype(auto) {
-        return dispatch_tuples(std::forward<Functor>(functor),
-            typename DispatchSet<Tuples...>::seq_type{},
-            dispatch_set.runtime_tuple(),
-            std::forward<Args>(args)...);
+    return detail::dispatch_tuples_impl<false>(std::forward<Functor>(functor),
+      typename DispatchSet<Tuples...>::seq_type{},
+      dispatch_set.runtime_tuple(),
+      std::forward<Args>(args)...);
 }
 
 /// \brief Throwing overload for `DispatchSet` dispatch.
 template<typename Functor, typename... Tuples, typename... Args>
-auto dispatch(throw_on_no_match_t /*tag*/, Functor&& functor, const DispatchSet<Tuples...> &dispatch_set, Args&&... args)
-    -> decltype(auto) {
-        return dispatch_tuples(throw_on_no_match_t{},
-            std::forward<Functor>(functor),
-            typename DispatchSet<Tuples...>::seq_type{},
-            dispatch_set.runtime_tuple(),
-            std::forward<Args>(args)...);
+auto dispatch(throw_on_no_match_t /*tag*/,
+  Functor &&functor,
+  const DispatchSet<Tuples...> &dispatch_set,
+  Args &&...args) -> decltype(auto) {
+    return detail::dispatch_tuples_impl<true>(std::forward<Functor>(functor),
+      typename DispatchSet<Tuples...>::seq_type{},
+      dispatch_set.runtime_tuple(),
+      std::forward<Args>(args)...);
 }
 
 // Note: nothrow is the default behavior of `dispatch` (no explicit tag).
@@ -1432,7 +1205,7 @@ template<typename Functor,
   typename FirstParam,
   typename... Rest,
   std::enable_if_t<detail::is_dispatch_param_v<FirstParam>, int> = 0>
-auto dispatch(throw_on_no_match_t tag, Functor&& functor, FirstParam&& first_param, Rest&&... rest) -> decltype(auto) {
+auto dispatch(throw_on_no_match_t tag, Functor &&functor, FirstParam &&first_param, Rest &&...rest) -> decltype(auto) {
     (void)tag;
     return detail::dispatch_variadic_impl<true>(
       std::forward<Functor>(functor), std::forward<FirstParam>(first_param), std::forward<Rest>(rest)...);
@@ -1443,7 +1216,8 @@ template<typename Functor,
   typename ParamTuple,
   typename... Args,
   std::enable_if_t<detail::is_dispatch_param_tuple_v<ParamTuple>, int> = 0>
-auto dispatch(throw_on_no_match_t /*tag*/, Functor&& functor, ParamTuple const& params, Args&&... args) -> decltype(auto) {
+auto dispatch(throw_on_no_match_t /*tag*/, Functor &&functor, ParamTuple const &params, Args &&...args)
+  -> decltype(auto) {
     return detail::dispatch_impl<true>(std::forward<Functor>(functor), params, std::forward<Args>(args)...);
 }
 

@@ -31,20 +31,16 @@ TEST_CASE("dispatch with throw_t succeeds on valid match", "[static_dispatch][th
 }
 
 TEST_CASE("dispatch with throw_t handles multiple parameters correctly", "[static_dispatch][throw]") {
-    auto params = std::make_tuple(
-        DispatchParam<make_range<1, 3>>{ 2 },
-        DispatchParam<make_range<5, 7>>{ 6 },
-        DispatchParam<make_range<10, 12>>{ 11 }
-    );
+    auto params = std::make_tuple(DispatchParam<make_range<1, 3>>{ 2 },
+      DispatchParam<make_range<5, 7>>{ 6 },
+      DispatchParam<make_range<10, 12>>{ 11 });
 
     const auto result = dispatch(poet::throw_t, sum_dispatcher{}, params, 100);
     REQUIRE(result == 119);
 
-    auto bad_params1 = std::make_tuple(
-        DispatchParam<make_range<1, 3>>{ 0 },
-        DispatchParam<make_range<5, 7>>{ 6 },
-        DispatchParam<make_range<10, 12>>{ 11 }
-    );
+    auto bad_params1 = std::make_tuple(DispatchParam<make_range<1, 3>>{ 0 },
+      DispatchParam<make_range<5, 7>>{ 6 },
+      DispatchParam<make_range<10, 12>>{ 11 });
     REQUIRE_THROWS_AS(dispatch(poet::throw_t, sum_dispatcher{}, bad_params1, 100), std::runtime_error);
 }
 
@@ -77,4 +73,40 @@ TEST_CASE("dispatch with throw_t preserves return type deduction", "[static_disp
 
     static_assert(std::is_same_v<decltype(result), const double>, "Return type should be double");
     REQUIRE(result == 7.5);
+}
+
+TEST_CASE("dispatch with throw_t variadic form", "[static_dispatch][throw][variadic]") {
+    bool invoked = false;
+
+    SECTION("throws on miss") {
+        REQUIRE_THROWS_AS(
+          dispatch(poet::throw_t, guard_dispatcher{ &invoked }, DispatchParam<make_range<0, 2>>{ 10 }, 5),
+          std::runtime_error);
+        REQUIRE_FALSE(invoked);
+    }
+
+    SECTION("succeeds on hit") {
+        const auto result =
+          dispatch(poet::throw_t, guard_dispatcher{ &invoked }, DispatchParam<make_range<0, 5>>{ 3 }, 10);
+        REQUIRE(invoked);
+        REQUIRE(result == 13);
+    }
+}
+
+TEST_CASE("dispatch with throw_t tuple form", "[static_dispatch][throw][tuple]") {
+    auto params = std::make_tuple(DispatchParam<make_range<0, 3>>{ 2 });
+
+    SECTION("succeeds on hit") {
+        bool invoked = false;
+        const auto result = dispatch(poet::throw_t, guard_dispatcher{ &invoked }, params, 10);
+        REQUIRE(result == 12);
+        REQUIRE(invoked);
+    }
+
+    SECTION("throws on miss") {
+        auto bad = std::make_tuple(DispatchParam<make_range<0, 3>>{ 10 });
+        bool invoked = false;
+        REQUIRE_THROWS_AS(dispatch(poet::throw_t, guard_dispatcher{ &invoked }, bad, 5), std::runtime_error);
+        REQUIRE_FALSE(invoked);
+    }
 }

@@ -11,9 +11,7 @@ TEST_CASE("dynamic_for supports unsigned backward iteration with wrapped step", 
     constexpr unsigned kEnd = 5U;
     constexpr unsigned kStep = static_cast<unsigned>(-1);
 
-    poet::dynamic_for<4>(kStart, kEnd, kStep, [&visited](unsigned index) {
-        visited.push_back(index);
-    });
+    poet::dynamic_for<4>(kStart, kEnd, kStep, [&visited](unsigned index) { visited.push_back(index); });
 
     std::vector<unsigned> expected = { 10U, 9U, 8U, 7U, 6U };
     REQUIRE(visited == expected);
@@ -25,9 +23,7 @@ TEST_CASE("dynamic_for supports unsigned backward iteration with wrapped step -2
     constexpr unsigned kEnd = 10U;
     constexpr unsigned kStep = static_cast<unsigned>(-2);
 
-    poet::dynamic_for<4>(kStart, kEnd, kStep, [&visited](unsigned index) {
-        visited.push_back(index);
-    });
+    poet::dynamic_for<4>(kStart, kEnd, kStep, [&visited](unsigned index) { visited.push_back(index); });
 
     std::vector<unsigned> expected = { 20U, 18U, 16U, 14U, 12U };
     REQUIRE(visited == expected);
@@ -39,36 +35,28 @@ TEST_CASE("dynamic_for unsigned backward iteration handles empty range", "[dynam
     constexpr unsigned kEnd = 10U;
     constexpr unsigned kStep = static_cast<unsigned>(-1);
 
-    poet::dynamic_for<4>(kStart, kEnd, kStep, [&visited](unsigned index) {
-        visited.push_back(index);
-    });
+    poet::dynamic_for<4>(kStart, kEnd, kStep, [&visited](unsigned index) { visited.push_back(index); });
 
     REQUIRE(visited.empty());
 }
 
 TEST_CASE("dynamic_for handles step==0 gracefully", "[dynamic_for][edge_case]") {
     std::vector<int> visited;
-    poet::dynamic_for<4>(0, 10, 0, [&visited](int index) {
-        visited.push_back(index);
-    });
+    poet::dynamic_for<4>(0, 10, 0, [&visited](int index) { visited.push_back(index); });
 
     REQUIRE(visited.empty());
 }
 
 TEST_CASE("dynamic_for handles step==0 with signed types", "[dynamic_for][edge_case]") {
     bool invoked = false;
-    poet::dynamic_for<8>(-5, 5, 0, [&invoked](int) {
-        invoked = true;
-    });
+    poet::dynamic_for<8>(-5, 5, 0, [&invoked](int) { invoked = true; });
 
     REQUIRE_FALSE(invoked);
 }
 
 TEST_CASE("dynamic_for handles step==0 with unsigned types", "[dynamic_for][edge_case]") {
     std::vector<std::size_t> visited;
-    poet::dynamic_for<4>(0U, 100U, 0U, [&visited](std::size_t index) {
-        visited.push_back(index);
-    });
+    poet::dynamic_for<4>(0U, 100U, 0U, [&visited](std::size_t index) { visited.push_back(index); });
 
     REQUIRE(visited.empty());
 }
@@ -77,9 +65,7 @@ TEST_CASE("dynamic_for handles large iteration counts", "[dynamic_for][stress]")
     std::size_t count = 0;
     constexpr std::size_t kLargeCount = 1000000U;
 
-    poet::dynamic_for<8>(0U, kLargeCount, [&count](std::size_t) {
-        ++count;
-    });
+    poet::dynamic_for<8>(0U, kLargeCount, [&count](std::size_t) { ++count; });
 
     REQUIRE(count == kLargeCount);
 }
@@ -90,9 +76,7 @@ TEST_CASE("dynamic_for handles large counts with custom step", "[dynamic_for][st
     constexpr std::size_t kEnd = 500000U;
     constexpr std::size_t kStep = 7U;
 
-    poet::dynamic_for<16>(kStart, kEnd, kStep, [&count](std::size_t) {
-        ++count;
-    });
+    poet::dynamic_for<16>(kStart, kEnd, kStep, [&count](std::size_t) { ++count; });
 
     constexpr std::size_t expected = (kEnd - kStart + kStep - 1) / kStep;
     REQUIRE(count == expected);
@@ -100,9 +84,7 @@ TEST_CASE("dynamic_for handles large counts with custom step", "[dynamic_for][st
 
 TEST_CASE("dynamic_for handles single iteration edge case", "[dynamic_for][edge_case]") {
     std::vector<int> visited;
-    poet::dynamic_for<8>(5, 6, [&visited](int index) {
-        visited.push_back(index);
-    });
+    poet::dynamic_for<8>(5, 6, [&visited](int index) { visited.push_back(index); });
 
     REQUIRE(visited.size() == 1);
     REQUIRE(visited[0] == 5);
@@ -122,5 +104,38 @@ TEST_CASE("dynamic_for block start pattern with Unroll=4 step=2", "[dynamic_for]
     const std::size_t num_blocks = visited.size() / Unroll;
     for (std::size_t b = 0; b < num_blocks; ++b) {
         REQUIRE(visited[b * Unroll] == static_cast<int>(b * Unroll * Step));
+    }
+}
+
+TEST_CASE("dynamic_for power-of-2 stride uses shift optimization", "[dynamic_for][stride]") {
+    for (std::size_t stride :
+      { std::size_t{ 1 }, std::size_t{ 2 }, std::size_t{ 4 }, std::size_t{ 8 }, std::size_t{ 16 } }) {
+        std::size_t count = 0;
+        constexpr std::size_t kEnd = 128U;
+        poet::dynamic_for<4>(std::size_t{ 0 }, kEnd, stride, [&count](std::size_t) { ++count; });
+        REQUIRE(count == (kEnd + stride - 1) / stride);
+    }
+}
+
+TEST_CASE("dynamic_for non-power-of-2 strides", "[dynamic_for][stride]") {
+    for (std::size_t stride : { std::size_t{ 3 }, std::size_t{ 5 }, std::size_t{ 7 }, std::size_t{ 11 } }) {
+        std::vector<std::size_t> visited;
+        constexpr std::size_t kEnd = 50U;
+        poet::dynamic_for<4>(std::size_t{ 0 }, kEnd, stride, [&visited](std::size_t i) { visited.push_back(i); });
+
+        std::vector<std::size_t> expected;
+        for (std::size_t i = 0; i < kEnd; i += stride) expected.push_back(i);
+        REQUIRE(visited == expected);
+    }
+}
+
+TEST_CASE("dynamic_for tiny range bypasses main loop", "[dynamic_for][tiny]") {
+    // count < Unroll should go straight to tail dispatch
+    constexpr std::size_t kUnroll = 8;
+    for (std::size_t total = 1; total < kUnroll; ++total) {
+        std::vector<std::size_t> visited;
+        poet::dynamic_for<kUnroll>(std::size_t{ 0 }, total, [&visited](std::size_t i) { visited.push_back(i); });
+        REQUIRE(visited.size() == total);
+        for (std::size_t i = 0; i < total; ++i) { REQUIRE(visited[i] == i); }
     }
 }

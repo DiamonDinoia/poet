@@ -295,12 +295,10 @@ function(poet_configure_static_analysis target)
     find_program(_clang_tidy_exe NAMES clang-tidy clang-tidy-17 clang-tidy-16)
     if(_clang_tidy_exe)
       set(_clang_tidy_command "${_clang_tidy_exe}")
+      # When POET_CLANG_TIDY_CHECKS is set, use those checks; otherwise let
+      # clang-tidy pick up the .clang-tidy config file from the source tree.
       if(POET_CLANG_TIDY_CHECKS)
-        # Use user-provided checks, but still disable bugprone-argument-comment (often has false positives)
-        set(_clang_tidy_command "${_clang_tidy_command};-checks=${POET_CLANG_TIDY_CHECKS},-bugprone-argument-comment")
-      else()
-        # Default: enable all checks except those that are too noisy or platform-specific
-        set(_clang_tidy_command "${_clang_tidy_command};-checks=*,-bugprone-argument-comment,-llvmlibc-*,-altera-*,-fuchsia-*,-cppcoreguidelines-avoid-do-while,-cert-err58-cpp,-misc-use-anonymous-namespace")
+        set(_clang_tidy_command "${_clang_tidy_command};-checks=${POET_CLANG_TIDY_CHECKS}")
       endif()
       # Only analyze headers in the project's include/poet and src directories (not external dependencies)
       set(_clang_tidy_command "${_clang_tidy_command};-header-filter=^${PROJECT_SOURCE_DIR}/(include/poet|src)")

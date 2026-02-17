@@ -195,7 +195,7 @@ static_assert(incremented[3] == 4);
 
 // Functor for exception testing - must be at namespace scope
 struct throwing_functor {
-    int* counter;
+    int *counter;
     template<auto I> void operator()() {
         (*counter)++;
         if constexpr (I == 2) { throw std::runtime_error("test exception"); }
@@ -257,9 +257,8 @@ TEST_CASE("static_for negative step with custom block size and remainder", "[sta
     // Range: 10 to 0 (exclusive), step -3 -> 10, 7, 4, 1
     // Count: 4 iterations, with block size 3, should have 1 full block + 1 remainder
     constexpr std::size_t kBlockSize = 3;
-    poet::static_for<10, 0, -3, kBlockSize>([&values](auto index_constant) {
-        values.push_back(static_cast<int>(index_constant));
-    });
+    poet::static_for<10, 0, -3, kBlockSize>(
+      [&values](auto index_constant) { values.push_back(static_cast<int>(index_constant)); });
 
     REQUIRE(values == std::vector<int>{ 10, 7, 4, 1 });
 }
@@ -268,9 +267,8 @@ TEST_CASE("static_for with all iterations in full blocks (no remainder)", "[stat
     std::vector<int> values;
     // 8 iterations with block size 4 -> exactly 2 full blocks, no remainder
     constexpr std::size_t kBlockSize = 4;
-    poet::static_for<0, 8, 1, kBlockSize>([&values](auto index_constant) {
-        values.push_back(static_cast<int>(index_constant));
-    });
+    poet::static_for<0, 8, 1, kBlockSize>(
+      [&values](auto index_constant) { values.push_back(static_cast<int>(index_constant)); });
 
     REQUIRE(values == std::vector<int>{ 0, 1, 2, 3, 4, 5, 6, 7 });
 }
@@ -278,9 +276,7 @@ TEST_CASE("static_for with all iterations in full blocks (no remainder)", "[stat
 TEST_CASE("static_for nested loops", "[static_for][nested]") {
     std::vector<std::pair<int, int>> pairs;
     poet::static_for<0, 3>([&pairs](auto i) {
-        poet::static_for<0, 3>([&pairs, i](auto j) {
-            pairs.push_back({ static_cast<int>(i), static_cast<int>(j) });
-        });
+        poet::static_for<0, 3>([&pairs, i](auto j) { pairs.push_back({ static_cast<int>(i), static_cast<int>(j) }); });
     });
 
     REQUIRE(pairs.size() == 9);
@@ -294,7 +290,7 @@ TEST_CASE("static_for exception safety", "[static_for][exception]") {
     try {
         poet::static_for<0, 5>(::throwing_functor{ &count });
         FAIL("Expected exception was not thrown");
-    } catch (const std::runtime_error&) {
+    } catch (const std::runtime_error &) {
         // Expected - should have executed iterations 0, 1, 2 before throwing
         REQUIRE(count == 3);
     }
@@ -303,9 +299,7 @@ TEST_CASE("static_for exception safety", "[static_for][exception]") {
 TEST_CASE("static_for with step > 1 forward", "[static_for][step]") {
     std::vector<int> values;
     // Range: 0 to 10, step 2 -> 0, 2, 4, 6, 8
-    poet::static_for<0, 10, 2>([&values](auto index_constant) {
-        values.push_back(static_cast<int>(index_constant));
-    });
+    poet::static_for<0, 10, 2>([&values](auto index_constant) { values.push_back(static_cast<int>(index_constant)); });
 
     REQUIRE(values == std::vector<int>{ 0, 2, 4, 6, 8 });
 }
@@ -313,18 +307,14 @@ TEST_CASE("static_for with step > 1 forward", "[static_for][step]") {
 TEST_CASE("static_for with step > 1 backward", "[static_for][step]") {
     std::vector<int> values;
     // Range: 10 to 0, step -2 -> 10, 8, 6, 4, 2
-    poet::static_for<10, 0, -2>([&values](auto index_constant) {
-        values.push_back(static_cast<int>(index_constant));
-    });
+    poet::static_for<10, 0, -2>([&values](auto index_constant) { values.push_back(static_cast<int>(index_constant)); });
 
     REQUIRE(values == std::vector<int>{ 10, 8, 6, 4, 2 });
 }
 
 TEST_CASE("static_for single iteration", "[static_for][edge_case]") {
     int value = 0;
-    poet::static_for<5, 6>([&value](auto index_constant) {
-        value = static_cast<int>(index_constant);
-    });
+    poet::static_for<5, 6>([&value](auto index_constant) { value = static_cast<int>(index_constant); });
 
     REQUIRE(value == 5);
 }

@@ -1,44 +1,55 @@
 # POET
 
-[![CI Status](https://img.shields.io/badge/CI-GitHub%20Actions-lightgrey)](#)
+[![CI Status](https://img.shields.io/badge/CI-GitHub%20Actions-lightgrey)](https://github.com/DiamonDinoia/poet/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![C++ Standard](https://img.shields.io/badge/C%2B%2B-17%2B-lightblue)](#)
+[![C++ Standard](https://img.shields.io/badge/C%2B%2B-17%2B-lightblue)](https://en.cppreference.com/w/cpp/17)
 [![Coverage](https://codecov.io/gh/DiamonDinoia/poet/branch/main/graph/badge.svg)](https://codecov.io/gh/DiamonDinoia/poet)
 [![Docs Status](https://readthedocs.org/projects/poet/badge/?version=latest)](https://poet.readthedocs.io/en/latest/)
 
-POET is a small, header-only C++ utility library that provides compile-time oriented loop and dispatch primitives to make high-performance metaprogramming simpler and safer. It focuses on three complementary capabilities:
+POET is a small, header-only C++ utility library that provides compile-time oriented loop and dispatch
+primitives to make high-performance metaprogramming simpler and safer. It focuses on three complementary
+capabilities:
 
 - static_for — compile-time unrolled loops for iterating integer ranges or template packs.
 - dynamic_for — efficient runtime loops implemented by emitting compile-time unrolled blocks.
-- dispatch / dispatch_tuples / DispatchSet — map runtime integers or tuples to compile-time non-type template parameters for zero-cost specialization.
+- dispatch / DispatchSet — map runtime integers or tuples to compile-time non-type template parameters
+  for zero-cost specialization.
 
-Why it matters
---------------
-These utilities let you express algorithms that benefit from compile-time specialization (inlining, unrolling, and better optimization) while still driving them from runtime values. The result is code that is both efficient (no virtual calls, fewer branches) and expressive, useful in hotspots such as small-linear algebra, kernel selection, and template-based code generation.
+## Why it matters
 
-In particular, POET's runtime-to-compile-time dispatch lets you select optimized, specialized code paths based on runtime choices with zero-cost abstraction.
+These utilities let you express algorithms that benefit from compile-time specialization (inlining,
+unrolling, and better optimization) while still driving them from runtime values. The result is code
+that is both efficient (no virtual calls, fewer branches) and expressive, useful in hotspots such as
+small-linear algebra, kernel selection, and template-based code generation.
 
-Performance benefits
----------------------
-Making iteration counts and dispatch targets visible at compile time often improves register utilization and codegen quality: the compiler can allocate registers across unrolled iterations and specialized paths, reduce spills, enable better instruction scheduling, and expose opportunities for vectorization.
+In particular, POET's runtime-to-compile-time dispatch lets you select optimized, specialized code
+paths based on runtime choices with zero-cost abstraction.
 
-Common hotspots that benefit
+## Performance benefits
+
+Making iteration counts and dispatch targets visible at compile time often improves register utilization
+and codegen quality: the compiler can allocate registers across unrolled iterations and specialized paths,
+reduce spills, enable better instruction scheduling, and expose opportunities for vectorization.
+
+Common hotspots that benefit:
+
 - Small, fixed-size dense linear algebra (small GEMM, batched matrix ops)
 - Tight convolution / stencil kernels and small-kernel DSP code
 - Fixed-size FFT/DFT implementations
 - Hot parsing/serialization loops and state machines with fixed-state graphs
-- Kernel-selection/specialization in template-based libraries where runtime choices select optimized codepaths
+- Kernel-selection/specialization in template-based libraries where runtime choices select optimized
+  codepaths
 
-
-Basic usage examples
---------------------
+## Basic usage examples
 
 Include the umbrella header:
+
 ```cpp
 #include <poet/poet.hpp>
 ```
 
-static_for — compile-time unrolling
+### static_for — compile-time unrolling
+
 ```cpp
 #include <iostream>
 
@@ -50,7 +61,8 @@ int main() {
 }
 ```
 
-dynamic_for — runtime loop with compile-time blocks
+### dynamic_for — runtime loop with compile-time blocks
+
 ```cpp
 #include <iostream>
 
@@ -64,12 +76,18 @@ int main() {
 ```
 
 `dynamic_for` callable forms:
+
 - `func(index)`
 - `func(lane, index)` where `lane` is `std::integral_constant<std::size_t, L>`
 
-Note on C++20 ranges and the piping adaptor
--------------------------------------------
-The header <poet/core/dynamic_for.hpp> supports C++20 pipe ranges or tuple-like (begin,end,step) values into a dynamic_for. Example:
+When the stride is a compile-time constant, use the template-parameter overload
+`poet::dynamic_for<Unroll, Step>(begin, end, func)` to enable constant-folded per-lane arithmetic
+and lighter tail dispatch. See the [dynamic_for guide](docs/guides/dynamic_for.rst) for details.
+
+### Note on C++20 ranges and the piping adaptor
+
+The header `<poet/core/dynamic_for.hpp>` supports C++20 pipe ranges or tuple-like (begin,end,step)
+values into a dynamic_for. Example:
 
 ```cpp
 #include <ranges>
@@ -80,9 +98,12 @@ std::tuple{0, 24, 2} | poet::make_dynamic_for<4>([](int i){ /* i = 0,2,4,...,22 
 ```
 
 Notes:
-- The adaptor is an eager sink: it computes the length of the input (single-pass for non-sized ranges) and calls poet::dynamic_for immediately.
 
-dispatch — map runtime values to compile-time templates
+- The adaptor is an eager sink: it computes the length of the input (single-pass for non-sized
+  ranges) and calls `poet::dynamic_for` immediately.
+
+### dispatch — map runtime values to compile-time templates
+
 ```cpp
 #include <iostream>
 
@@ -95,12 +116,18 @@ struct Impl {
 
 int main() {
   int runtime_choice = 2;
+
+  // Tuple form: wrap DispatchParams in a std::tuple
   auto params = std::make_tuple(poet::DispatchParam<poet::make_range<0, 4>>{ runtime_choice });
   poet::dispatch(Impl{}, params, 42); // calls Impl::operator()<2>(42) if in range
+
+  // Variadic form: pass DispatchParams directly followed by runtime args
+  poet::dispatch(Impl{}, poet::DispatchParam<poet::make_range<0, 4>>{ runtime_choice }, 42);
 }
 ```
 
-dispatch with DispatchSet — sparse tuple dispatch
+### dispatch with DispatchSet — sparse tuple dispatch
+
 ```cpp
 struct Impl2 {
   template<int A, int B>
@@ -115,9 +142,11 @@ int main() {
 }
 ```
 
-Throwing dispatch 
----------------------------
-Some overloads of `dispatch` accept the tag `poet::throw_t` (alias of `throw_on_no_match_t`) as the first argument and will throw `std::runtime_error` when no compile-time match exists. This is useful when a missing specialization is a fatal configuration error.
+### Throwing dispatch
+
+Some overloads of `dispatch` accept the tag `poet::throw_t` (alias of `throw_on_no_match_t`) as the
+first argument and will throw `std::runtime_error` when no compile-time match exists. This is useful
+when a missing specialization is a fatal configuration error.
 
 ```cpp
 #include <iostream>
@@ -141,67 +170,74 @@ int main() {
 }
 ```
 
-Install / Integrate
----------------------
+## Install / Integrate
 
 (Installation instructions moved below the basic examples for readers who first want to see usage.)
+
 1. Clone
-```bash
-git clone https://github.com/DiamonDinoia/poet.git
-```
 
-2. CMake — add_subdirectory (recommended for local development)
-```cmake
-add_subdirectory(path/to/poet)
-add_executable(my_app main.cpp)
-target_link_libraries(my_app PRIVATE poet::poet)
-```
+   ```bash
+   git clone https://github.com/DiamonDinoia/poet.git
+   ```
 
-3. CMake — find_package (after install)
-```cmake
-# After you install POET somewhere with `cmake --install`,
-# discover it via CMake's package config:
-find_package(poet CONFIG REQUIRED)
+1. CMake — add_subdirectory (recommended for local development)
 
-add_executable(my_app main.cpp)
-target_link_libraries(my_app PRIVATE poet::poet)
-```
+   ```cmake
+   add_subdirectory(path/to/poet)
+   add_executable(my_app main.cpp)
+   target_link_libraries(my_app PRIVATE poet::poet)
+   ```
 
-4. CMake — FetchContent
-```cmake
-include(FetchContent)
-FetchContent_Declare(poet GIT_REPOSITORY https://github.com/DiamonDinoia/poet.git GIT_TAG main)
-FetchContent_MakeAvailable(poet)
-target_link_libraries(my_app PRIVATE poet::poet)
-```
+1. CMake — find_package (after install)
 
-5. CMake — CPM.cmake
-```cmake
-# Requires CPM.cmake available in your project
-# See https://github.com/cpm-cmake/CPM.cmake for setup
+   ```cmake
+   # After you install POET somewhere with `cmake --install`,
+   # discover it via CMake's package config:
+   find_package(poet CONFIG REQUIRED)
 
-CPMAddPackage(
-  NAME poet
-  GITHUB_REPOSITORY DiamonDinoia/poet
-  GIT_TAG main
-)
+   add_executable(my_app main.cpp)
+   target_link_libraries(my_app PRIVATE poet::poet)
+   ```
 
-add_executable(my_app main.cpp)
-target_link_libraries(my_app PRIVATE poet::poet)
-```
+1. CMake — FetchContent
 
-6. Header-only usage (no build step)
-- Add the repository `include/` directory to your compiler include path and compile your code:
+   ```cmake
+   include(FetchContent)
+   FetchContent_Declare(poet GIT_REPOSITORY https://github.com/DiamonDinoia/poet.git GIT_TAG main)
+   FetchContent_MakeAvailable(poet)
+   target_link_libraries(my_app PRIVATE poet::poet)
+   ```
 
-  ```bash
-  g++ -std=c++17 -I/path/to/poet/include your.cpp -o your_app
-  ```
+1. CMake — CPM.cmake
 
-Documentation and License
--------------------------
-- Full API docs and guides: https://poet.readthedocs.io/en/latest/ (includes Doxygen-generated API reference)
+   ```cmake
+   # Requires CPM.cmake available in your project
+   # See https://github.com/cpm-cmake/CPM.cmake for setup
+
+   CPMAddPackage(
+     NAME poet
+     GITHUB_REPOSITORY DiamonDinoia/poet
+     GIT_TAG main
+   )
+
+   add_executable(my_app main.cpp)
+   target_link_libraries(my_app PRIVATE poet::poet)
+   ```
+
+1. Header-only usage (no build step)
+
+   - Add the repository `include/` directory to your compiler include path and compile your code:
+
+     ```bash
+     g++ -std=c++17 -I/path/to/poet/include your.cpp -o your_app
+     ```
+
+## Documentation and License
+
+- Full API docs and guides: <https://poet.readthedocs.io/en/latest/> (includes Doxygen-generated
+  API reference)
 - License: MIT (see LICENSE file)
 
-Contributing
-------------
+## Contributing
+
 PRs and issues welcome.

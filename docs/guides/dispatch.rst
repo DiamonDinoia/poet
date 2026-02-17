@@ -11,7 +11,7 @@ This allows you to write "runtime-polymorphic" code that is actually compiled as
 Features
 --------
 
-- **O(1) Dispatch**: Uses a table-based lookup (array of variants) to jump directly to the correct implementation.
+- **O(1) Dispatch**: Uses a table-based lookup (array of function pointers) to jump directly to the correct implementation.
 - **Range Support**: Easily specify ranges of valid values (e.g., dispatch an integer from 0 to 10).
 - **Multiple Arguments**: Dispatch on tuples of values (e.g., dispatching based on *both* width and height).
 - **Sparse Dispatch**: Use ``DispatchSet`` to list only specific valid combinations, avoiding combinatorial explosion.
@@ -25,7 +25,7 @@ Basic Range Dispatch
 .. code-block:: cpp
 
    #include <poet/poet.hpp>
-   
+
    struct Kernel {
        template <int N>
        void operator()(float* data) {
@@ -93,7 +93,7 @@ If you only allow specific combinations (e.g., square matrices of size 2x2, 4x4,
 
     void run_matmul(int r, int c) {
         Shapes valid_shapes(r, c);
-        
+
         // Dispatches only if (r,c) matches one of the tuples above
         poet::dispatch(MatMul{}, valid_shapes);
     }
@@ -122,7 +122,5 @@ Implementation Details
 ----------------------
 
 Internally, ``dispatch`` builds compile-time function-pointer tables and maps runtime values to table indices. For contiguous ranges, index mapping is O(1) arithmetic. For sparse/non-contiguous ranges, lookup uses precomputed sorted metadata with O(log N) search. ``DispatchSet`` routes through tuple-based matching over explicitly allowed combinations.
-
-Advanced: ``poet::dispatch_tuples`` exposes the tuple-of-sequences form used under the hood for ``DispatchSet`` and cartesian ParamTuples. Most users should call ``poet::dispatch`` instead.
 
 .. note:: ``poet::make_range<Start, End>`` is inclusive on both ends.

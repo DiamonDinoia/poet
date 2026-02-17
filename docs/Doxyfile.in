@@ -24,7 +24,6 @@ PREDEFINED             = POET_FORCEINLINE= \
                          POET_HOT_LOOP= \
                          POET_PUSH_OPTIMIZE= \
                          POET_POP_OPTIMIZE= \
-                         POET_RESTRICT= \
                          POET_CPP20_CONSTEVAL=constexpr \
                          POET_CPP20_CONSTEXPR=constexpr \
                          POET_CPP23_CONSTEXPR=constexpr \

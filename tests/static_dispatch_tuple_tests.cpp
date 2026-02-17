@@ -69,7 +69,7 @@ TEST_CASE("DispatchSet with throw_t succeeds on valid match", "[static_dispatch]
     auto ds = DS(3, 4);
 
     const auto result = dispatch(throw_t, tuple_sum{}, ds, 10);
-    REQUIRE(result == 17);  // 10 + 3 + 4
+    REQUIRE(result == 17);// 10 + 3 + 4
 }
 
 TEST_CASE("DispatchSet with throw_t handles multiple valid tuples", "[static_dispatch][tuples][throw]") {
@@ -77,13 +77,13 @@ TEST_CASE("DispatchSet with throw_t handles multiple valid tuples", "[static_dis
 
     // Test each valid combination
     auto ds1 = DS(1, 2);
-    REQUIRE(dispatch(throw_t, tuple_sum{}, ds1, 0) == 3);  // 0 + 1 + 2
+    REQUIRE(dispatch(throw_t, tuple_sum{}, ds1, 0) == 3);// 0 + 1 + 2
 
     auto ds2 = DS(3, 4);
-    REQUIRE(dispatch(throw_t, tuple_sum{}, ds2, 0) == 7);  // 0 + 3 + 4
+    REQUIRE(dispatch(throw_t, tuple_sum{}, ds2, 0) == 7);// 0 + 3 + 4
 
     auto ds3 = DS(5, 6);
-    REQUIRE(dispatch(throw_t, tuple_sum{}, ds3, 0) == 11);  // 0 + 5 + 6
+    REQUIRE(dispatch(throw_t, tuple_sum{}, ds3, 0) == 11);// 0 + 5 + 6
 
     // Invalid combination
     auto ds_invalid = DS(2, 3);
@@ -95,29 +95,29 @@ TEST_CASE("DispatchSet with throw_t handles void return type", "[static_dispatch
 
     int result = 0;
     auto ds1 = DS(1, 2);
-    dispatch(throw_t, tuple_voider{&result}, ds1, 100);
-    REQUIRE(result == 103);  // 100 + 1 + 2
+    dispatch(throw_t, tuple_voider{ &result }, ds1, 100);
+    REQUIRE(result == 103);// 100 + 1 + 2
 
     auto ds2 = DS(3, 4);
-    dispatch(throw_t, tuple_voider{&result}, ds2, 50);
-    REQUIRE(result == 57);  // 50 + 3 + 4
+    dispatch(throw_t, tuple_voider{ &result }, ds2, 50);
+    REQUIRE(result == 57);// 50 + 3 + 4
 
     // Invalid
     auto ds_invalid = DS(2, 3);
-    REQUIRE_THROWS_AS(dispatch(throw_t, tuple_voider{&result}, ds_invalid, 100), std::runtime_error);
+    REQUIRE_THROWS_AS(dispatch(throw_t, tuple_voider{ &result }, ds_invalid, 100), std::runtime_error);
 }
 
 TEST_CASE("DispatchSet with 3-tuples", "[static_dispatch][tuples][arity-3]") {
     using DS = DispatchSet<int, T<1, 2, 3>, T<4, 5, 6>, T<7, 8, 9>>;
 
     auto ds1 = DS(1, 2, 3);
-    REQUIRE(dispatch(::triple_sum{}, ds1, 10) == 16);  // 10 + 1 + 2 + 3
+    REQUIRE(dispatch(::triple_sum{}, ds1, 10) == 16);// 10 + 1 + 2 + 3
 
     auto ds2 = DS(4, 5, 6);
-    REQUIRE(dispatch(::triple_sum{}, ds2, 10) == 25);  // 10 + 4 + 5 + 6
+    REQUIRE(dispatch(::triple_sum{}, ds2, 10) == 25);// 10 + 4 + 5 + 6
 
     auto ds3 = DS(7, 8, 9);
-    REQUIRE(dispatch(::triple_sum{}, ds3, 10) == 34);  // 10 + 7 + 8 + 9
+    REQUIRE(dispatch(::triple_sum{}, ds3, 10) == 34);// 10 + 7 + 8 + 9
 
     // Invalid combination
     auto ds_invalid = DS(1, 2, 4);
@@ -128,33 +128,33 @@ TEST_CASE("DispatchSet with 4-tuples", "[static_dispatch][tuples][arity-4]") {
     using DS = DispatchSet<int, T<1, 2, 3, 4>, T<5, 6, 7, 8>>;
 
     auto ds1 = DS(1, 2, 3, 4);
-    REQUIRE(dispatch(::quad_sum{}, ds1, 100) == 110);  // 100 + 1 + 2 + 3 + 4
+    REQUIRE(dispatch(::quad_sum{}, ds1, 100) == 110);// 100 + 1 + 2 + 3 + 4
 
     auto ds2 = DS(5, 6, 7, 8);
-    REQUIRE(dispatch(::quad_sum{}, ds2, 100) == 126);  // 100 + 5 + 6 + 7 + 8
+    REQUIRE(dispatch(::quad_sum{}, ds2, 100) == 126);// 100 + 5 + 6 + 7 + 8
 }
 
 TEST_CASE("DispatchSet with negative values", "[static_dispatch][tuples][negative]") {
     using DS = DispatchSet<int, T<-1, -2>, T<-5, -10>, T<0, 0>>;
 
     auto ds1 = DS(-1, -2);
-    REQUIRE(dispatch(tuple_sum{}, ds1, 10) == 7);  // 10 + (-1) + (-2)
+    REQUIRE(dispatch(tuple_sum{}, ds1, 10) == 7);// 10 + (-1) + (-2)
 
     auto ds2 = DS(-5, -10);
-    REQUIRE(dispatch(tuple_sum{}, ds2, 20) == 5);  // 20 + (-5) + (-10)
+    REQUIRE(dispatch(tuple_sum{}, ds2, 20) == 5);// 20 + (-5) + (-10)
 
     auto ds3 = DS(0, 0);
-    REQUIRE(dispatch(tuple_sum{}, ds3, 5) == 5);  // 5 + 0 + 0
+    REQUIRE(dispatch(tuple_sum{}, ds3, 5) == 5);// 5 + 0 + 0
 }
 
 TEST_CASE("DispatchSet with mixed positive and negative values", "[static_dispatch][tuples][mixed]") {
     using DS = DispatchSet<int, T<-5, 10>, T<3, -7>, T<0, 0>>;
 
     auto ds1 = DS(-5, 10);
-    REQUIRE(dispatch(tuple_sum{}, ds1, 100) == 105);  // 100 + (-5) + 10
+    REQUIRE(dispatch(tuple_sum{}, ds1, 100) == 105);// 100 + (-5) + 10
 
     auto ds2 = DS(3, -7);
-    REQUIRE(dispatch(tuple_sum{}, ds2, 50) == 46);  // 50 + 3 + (-7)
+    REQUIRE(dispatch(tuple_sum{}, ds2, 50) == 46);// 50 + 3 + (-7)
 
     auto ds3 = DS(0, 0);
     REQUIRE(dispatch(tuple_sum{}, ds3, 10) == 10);
@@ -164,7 +164,7 @@ TEST_CASE("DispatchSet with single allowed tuple", "[static_dispatch][tuples][si
     using DS = DispatchSet<int, T<42, 84>>;
 
     auto ds_valid = DS(42, 84);
-    REQUIRE(dispatch(tuple_sum{}, ds_valid, 100) == 226);  // 100 + 42 + 84
+    REQUIRE(dispatch(tuple_sum{}, ds_valid, 100) == 226);// 100 + 42 + 84
 
     // Any other combination should fail
     auto ds_invalid = DS(42, 85);
@@ -179,4 +179,28 @@ TEST_CASE("DispatchSet with 3-tuples and throw_t", "[static_dispatch][tuples][ar
 
     auto ds_invalid = DS(1, 2, 4);
     REQUIRE_THROWS_AS(dispatch(throw_t, ::triple_sum{}, ds_invalid, 10), std::runtime_error);
+}
+
+// ============================================================================
+// Internal dispatch_tuples_impl tests
+// ============================================================================
+
+TEST_CASE("dispatch_tuples_impl matches correct tuple", "[static_dispatch][tuples][internal]") {
+    using TL = std::tuple<std::integer_sequence<int, 1, 2>, std::integer_sequence<int, 3, 4>>;
+    auto rt = std::make_tuple(3, 4);
+    auto result = poet::detail::dispatch_tuples_impl<false>(tuple_sum{}, TL{}, rt, 10);
+    REQUIRE(result == 17);// 10 + 3 + 4
+}
+
+TEST_CASE("dispatch_tuples_impl returns default on no match", "[static_dispatch][tuples][internal]") {
+    using TL = std::tuple<std::integer_sequence<int, 1, 2>>;
+    auto rt = std::make_tuple(9, 9);
+    auto result = poet::detail::dispatch_tuples_impl<false>(tuple_sum{}, TL{}, rt, 5);
+    REQUIRE(result == 0);
+}
+
+TEST_CASE("dispatch_tuples_impl throws on no match with ThrowOnNoMatch", "[static_dispatch][tuples][internal]") {
+    using TL = std::tuple<std::integer_sequence<int, 1, 2>>;
+    auto rt = std::make_tuple(9, 9);
+    REQUIRE_THROWS_AS(poet::detail::dispatch_tuples_impl<true>(tuple_sum{}, TL{}, rt, 5), std::runtime_error);
 }

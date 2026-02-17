@@ -15,7 +15,7 @@ namespace {
 using poet::DispatchParam;
 using poet::dispatch;
 using poet::make_range;
-}
+}// namespace
 
 TEST_CASE("dispatch fills array using runtime index (lambda)", "[static_dispatch][array]") {
     constexpr int N = 8;
@@ -49,8 +49,10 @@ TEST_CASE("dispatch sets selected random indexes only", "[static_dispatch][array
     }
 
     for (int i = 0; i < N; ++i) {
-        if (picks.count(i)) REQUIRE(arr[i] == i);
-        else REQUIRE(arr[i] == 0);
+        if (picks.count(i))
+            REQUIRE(arr[i] == i);
+        else
+            REQUIRE(arr[i] == 0);
     }
 }
 
@@ -68,8 +70,10 @@ TEST_CASE("dispatch loop over non-contiguous sequence", "[static_dispatch][array
     }
 
     for (int i = 0; i < N; ++i) {
-        if (index_set.count(i)) REQUIRE(arr[i] == i);
-        else REQUIRE(arr[i] == 0);
+        if (index_set.count(i))
+            REQUIRE(arr[i] == i);
+        else
+            REQUIRE(arr[i] == 0);
     }
 }
 
@@ -87,7 +91,9 @@ TEST_CASE("dispatch non-contiguous subset set", "[static_dispatch][array][non-co
     }
 
     for (int i = 0; i < N; ++i) {
-        if (set_index_set.count(i)) REQUIRE(arr[i] == i);
-        else REQUIRE(arr[i] == 0);
+        if (set_index_set.count(i))
+            REQUIRE(arr[i] == i);
+        else
+            REQUIRE(arr[i] == 0);
     }
 }
