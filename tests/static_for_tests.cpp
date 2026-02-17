@@ -40,7 +40,7 @@ static_assert(compute_default_static_loop_block_size<kMaxStaticLoopBlock + 5, 0,
 
 constexpr std::array<int, 4> enumerate_forward() {
     std::array<int, 4> values{};
-    poet::detail::static_loop<0, 4, 1, kForwardBlockSize>([&values](auto index_constant) {
+    poet::static_for<0, 4, 1, kForwardBlockSize>([&values](auto index_constant) {
         const auto index = static_cast<std::size_t>(index_constant);
         values[index] = static_cast<int>(index);
     });
@@ -49,7 +49,7 @@ constexpr std::array<int, 4> enumerate_forward() {
 
 constexpr std::array<int, 4> enumerate_forward_with_defaults() {
     std::array<int, 4> values{};
-    poet::detail::static_loop<0, 4>([&values](auto index_constant) {
+    poet::static_for<0, 4>([&values](auto index_constant) {
         const auto index = static_cast<std::size_t>(index_constant);
         values[index] = static_cast<int>(index + 1);
     });
@@ -58,7 +58,7 @@ constexpr std::array<int, 4> enumerate_forward_with_defaults() {
 
 constexpr std::array<int, 5> enumerate_with_remainder() {
     std::array<int, 5> values{};
-    poet::detail::static_loop<0, 5, 1, kRemainderBlockSize>([&values](auto index_constant) {
+    poet::static_for<0, 5, 1, kRemainderBlockSize>([&values](auto index_constant) {
         const auto index = static_cast<std::size_t>(index_constant);
         values[index] = static_cast<int>(index + 1);
     });
@@ -204,9 +204,9 @@ struct throwing_functor {
 
 }// namespace
 
-TEST_CASE("static_loop emits descending sequences at runtime", "[static_for][loop]") {
+TEST_CASE("static_for emits descending sequences at runtime", "[static_for][loop]") {
     std::vector<int> values;
-    poet::detail::static_loop<3, -1, -1, kForwardBlockSize>(
+    poet::static_for<3, -1, -1, kForwardBlockSize>(
       [&values](auto index_constant) { values.push_back(static_cast<int>(index_constant)); });
 
     REQUIRE(values == std::vector<int>{ 3, 2, 1, 0 });

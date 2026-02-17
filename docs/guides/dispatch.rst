@@ -1,5 +1,5 @@
-Static Dispatch
-====================
+Dispatch
+========
 
 Overview
 --------

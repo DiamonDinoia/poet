@@ -35,6 +35,7 @@ void run_case(ankerl::nanobench::Bench &bench, std::uint64_t batch, const char *
 void run_static_for_bench_dependent(std::uint64_t s);
 void run_static_for_bench_simple(std::uint64_t s);
 void run_static_for_bench_unroll(std::uint64_t s);
+void run_static_for_bench_blocksize(std::uint64_t s);
 
 struct dependent_ops_functor {
     double &acc;

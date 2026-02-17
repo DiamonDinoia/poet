@@ -24,6 +24,8 @@ constexpr int dispatches_1d = 4;
 constexpr int dispatches_2d = 4;
 constexpr int dispatches_5d = 100;
 
+volatile int runtime_noise = 0;
+
 // 1D ranges
 using range_1d_contig = poet::make_range<1, 8>;        // 1..8
 using range_1d_noncontig = std::integer_sequence<int, 1, 10, 20, 30, 40, 50, 60, 70>;  // same size, sparse
@@ -82,11 +84,30 @@ int dispatch_5d_repeated(const std::array<int, 5> &values, int repetitions, int 
     return total;
 }
 
+int next_noise() {
+    const int v = runtime_noise;
+    runtime_noise = v + 1;
+    return v;
+}
+
+auto make_contig_hit_values(int noise) -> std::array<int, 5> {
+    return { (noise + 0) & 3, (noise + 1) & 3, (noise + 2) & 3, (noise + 3) & 3, (noise + 4) & 3 };
+}
+
+auto make_noncontig_hit_values(int noise) -> std::array<int, 5> {
+    constexpr std::array<int, 4> sparse{ 0, 10, 20, 30 };
+    return { sparse[(noise + 0) & 3],
+             sparse[(noise + 1) & 3],
+             sparse[(noise + 2) & 3],
+             sparse[(noise + 3) & 3],
+             sparse[(noise + 4) & 3] };
+}
+
 }// namespace
 
 int main() {
     ankerl::nanobench::Bench bench;
-    bench.title("static dispatch: dimensionality, hit/miss, contiguous/sparse");
+    bench.title("dispatch: dimensionality, hit/miss, contiguous/sparse");
     bench.minEpochTime(10ms);
 
     constexpr std::array<int, dispatches_1d> one_d_contig_hits{1, 3, 5, 7};
@@ -113,16 +134,30 @@ int main() {
 
     // ========== 5D Dispatch (table size = 4^5 = 1024) ==========
     run_case(bench, dispatches_5d, "5D contiguous hit", [] {
-        return dispatch_5d_repeated<range_5d_contig>({0, 1, 2, 3, 0}, dispatches_5d, 3);
+        const int noise = next_noise();
+        auto values = make_contig_hit_values(noise);
+        ankerl::nanobench::doNotOptimizeAway(values);
+        return dispatch_5d_repeated<range_5d_contig>(values, dispatches_5d, 3);
     });
     run_case(bench, dispatches_5d, "5D contiguous miss", [] {
-        return dispatch_5d_repeated<range_5d_contig>({5, 1, 2, 3, 0}, dispatches_5d, 3);
+        const int noise = next_noise();
+        auto values = make_contig_hit_values(noise);
+        values[0] = 5;
+        ankerl::nanobench::doNotOptimizeAway(values);
+        return dispatch_5d_repeated<range_5d_contig>(values, dispatches_5d, 3);
     });
     run_case(bench, dispatches_5d, "5D non-contiguous hit", [] {
-        return dispatch_5d_repeated<range_5d_noncontig>({0, 10, 20, 30, 0}, dispatches_5d, 3);
+        const int noise = next_noise();
+        auto values = make_noncontig_hit_values(noise);
+        ankerl::nanobench::doNotOptimizeAway(values);
+        return dispatch_5d_repeated<range_5d_noncontig>(values, dispatches_5d, 3);
     });
     run_case(bench, dispatches_5d, "5D non-contiguous miss", [] {
-        return dispatch_5d_repeated<range_5d_noncontig>({5, 10, 20, 30, 0}, dispatches_5d, 3);
+        const int noise = next_noise();
+        auto values = make_noncontig_hit_values(noise);
+        values[0] = 5;
+        ankerl::nanobench::doNotOptimizeAway(values);
+        return dispatch_5d_repeated<range_5d_noncontig>(values, dispatches_5d, 3);
     });
 
     return 0;

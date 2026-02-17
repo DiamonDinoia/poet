@@ -57,7 +57,8 @@ add_poet_benchmark(
   "static_for_bench_main.cpp"
   "static_for_bench_dependent.cpp"
   "static_for_bench_simple.cpp"
-  "static_for_bench_unroll.cpp")
+  "static_for_bench_unroll.cpp"
+  "static_for_bench_blocksize.cpp")
 add_poet_benchmark(dynamic_for "dynamic_for_bench.cpp")
 add_poet_benchmark(static_dispatch "static_dispatch_bench.cpp")
 

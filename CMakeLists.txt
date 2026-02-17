@@ -40,6 +40,7 @@ endif()
 option(POET_BUILD_BENCHMARKS "Build POET benchmark executables" OFF)
 option(POET_STRICT_WARNINGS "Enable the project's default warning profile" ON)
 option(POET_BUILD_DEVEL "Build POET development utilities" OFF)
+option(POET_ENABLE_FLATTEN "Enable compiler flatten attribute in POET hot entry-points" OFF)
 
 if(NOT DEFINED POET_BUILD_TESTS)
   set(POET_BUILD_TESTS ${BUILD_TESTING})
@@ -65,6 +66,7 @@ add_library(poet INTERFACE)
 add_library(poet::poet ALIAS poet)
 
 target_compile_features(poet INTERFACE cxx_std_17)
+target_compile_definitions(poet INTERFACE POET_ENABLE_FLATTEN=$<BOOL:${POET_ENABLE_FLATTEN}>)
 
 target_include_directories(poet
   INTERFACE

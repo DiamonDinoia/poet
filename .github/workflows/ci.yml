@@ -75,11 +75,12 @@ jobs:
         run: ctest --output-on-failure --test-dir build/${{ matrix.build_type }}
 
       - name: Build Benchmarks
-        if: ${{ matrix.build_type == 'Release' }}
+        if: ${{ !matrix.multi_config && matrix.build_type == 'Release' }}
         run: cmake --build build/${{ matrix.build_type }} --target poet_benchmarks
 
       - name: Run Benchmarks
-        if: ${{ matrix.build_type == 'Release' }}
+        if: ${{ !matrix.multi_config && matrix.build_type == 'Release' }}
+        shell: bash
         run: |
           ctest --output-on-failure --test-dir build/${{ matrix.build_type }} -L benchmarks
           cmake --build build/${{ matrix.build_type }} --target poet_run_benchmarks

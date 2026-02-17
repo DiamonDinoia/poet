@@ -32,6 +32,23 @@ namespace poet::detail {
     inline constexpr std::size_t kMaxStaticLoopBlock = 256;
 #endif
 
+    /// \brief Recommended block size for register-pressure-aware unrolling.
+    ///
+    /// When the user passes a `BlockSize` smaller than the total iteration
+    /// count, each block becomes a separate noinline function with its own
+    /// register-allocation scope.  This prevents the compiler from
+    /// interleaving computations across blocks and spilling to the stack.
+    ///
+    /// Empirical analysis on x86-64 (GCC 15 / -O3, splitmix64 workload):
+    ///   block(4)  — 0 spills, 0 stack bytes
+    ///   block(8)  — 0 stores/loads, only 3 callee-saved pushes
+    ///   block(16) — 10 stores, 5 loads, measurable spill pressure
+    ///   block(32) — 48 stores, 24 loads, severe spill pressure
+    ///
+    /// 8 is a good starting point: zero actual spill traffic while
+    /// minimising per-block function-call overhead (~10 cycles per boundary).
+    inline constexpr std::size_t kRecommendedBlockSize = 8;
+
     /// \brief Computes the number of iterations for a compile-time range.
     ///
     /// \tparam Begin Start of the range.
@@ -56,38 +73,61 @@ namespace poet::detail {
         }
     }
 
-    /// \brief Executes a single block of unrolled loop iterations.
+    /// \brief Executes a single block of unrolled loop iterations (always-inline variant).
     ///
     /// Expands the provided indices pack into a sequence of function calls.
     /// Each call receives a `std::integral_constant` corresponding to the
-    /// computed loop index.
+    /// computed loop index.  Used for single-block loops and remainder
+    /// iterations where the block is small enough that full inlining into the
+    /// caller is desirable.
     ///
     /// \tparam Func User callable type.
     /// \tparam Begin Range start value.
     /// \tparam Step Range step value.
     /// \tparam StartIndex The flat index offset for this block.
     /// \tparam Is Index sequence for unrolling (0, 1, ..., BlockSize-1).
+    POET_PUSH_OPTIMIZE
     template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t StartIndex, std::size_t... Is>
     POET_FORCEINLINE constexpr void static_loop_impl_block(Func &func, std::index_sequence<Is...> /*indices*/) {
-        // Fold expression over the index sequence Is...
-        // For each compile-time index 'i' in Is:
-        // 1. Compute the absolute iteration index: `StartIndex + i`
-        // 2. Map to the actual value range: `Begin + (Step * absolute_index)`
-        // 3. Construct an `std::integral_constant` for that value.
-        // 4. Invoke `func` with that constant.
-        // 5. The comma operator ... ensures sequential execution.
-        // Optimization: Precompute Base = Begin + Step*StartIndex to reduce arithmetic per iteration.
         constexpr std::intmax_t Base = Begin + (Step * static_cast<std::intmax_t>(StartIndex));
         (func(std::integral_constant<std::intmax_t, Base + (Step * static_cast<std::intmax_t>(Is))>{}), ...);
     }
+    POET_POP_OPTIMIZE
 
-    /// \brief Emits a chunk of full blocks.
+    /// \brief Executes a single block with register-pressure isolation (noinline variant).
+    ///
+    /// Used for multi-block loops where POET_FORCEINLINE would cause the
+    /// compiler to see all iterations simultaneously, resulting in excessive
+    /// register spills.  Each noinline block gets its own register allocation
+    /// scope — the compiler fully optimises within the block but cannot
+    /// interleave computations across block boundaries.
+    POET_PUSH_OPTIMIZE
+    template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t StartIndex, std::size_t... Is>
+    POET_NOINLINE constexpr void static_loop_impl_block_isolated(Func &func, std::index_sequence<Is...> /*indices*/) {
+        constexpr std::intmax_t Base = Begin + (Step * static_cast<std::intmax_t>(StartIndex));
+        (func(std::integral_constant<std::intmax_t, Base + (Step * static_cast<std::intmax_t>(Is))>{}), ...);
+    }
+    POET_POP_OPTIMIZE
+
+    /// \brief Emits a chunk of full blocks (always-inline variant).
+    POET_PUSH_OPTIMIZE
     template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t BlockSize, std::size_t Offset, std::size_t... Is>
     POET_FORCEINLINE constexpr void emit_block_chunk(Func &func, std::index_sequence<Is...> /*indices*/) {
         (static_loop_impl_block<Func, Begin, Step, (Offset + Is) * BlockSize>(func, std::make_index_sequence<BlockSize>{}),
           ...);
     }
+    POET_POP_OPTIMIZE
 
+    /// \brief Emits a chunk of register-isolated blocks (noinline variant).
+    POET_PUSH_OPTIMIZE
+    template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t BlockSize, std::size_t Offset, std::size_t... Is>
+    POET_FORCEINLINE constexpr void emit_block_chunk_isolated(Func &func, std::index_sequence<Is...> /*indices*/) {
+        (static_loop_impl_block_isolated<Func, Begin, Step, (Offset + Is) * BlockSize>(func, std::make_index_sequence<BlockSize>{}),
+          ...);
+    }
+    POET_POP_OPTIMIZE
+
+    POET_PUSH_OPTIMIZE
     template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t BlockSize, std::size_t Offset, std::size_t Remaining>
     POET_FORCEINLINE constexpr void emit_all_blocks(Func &func) {
         if constexpr (Remaining > 0) {
@@ -98,6 +138,20 @@ namespace poet::detail {
             emit_all_blocks<Func, Begin, Step, BlockSize, Offset + chunk_size, Remaining - chunk_size>(func);
         }
     }
+    POET_POP_OPTIMIZE
+
+    POET_PUSH_OPTIMIZE
+    template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t BlockSize, std::size_t Offset, std::size_t Remaining>
+    POET_FORCEINLINE constexpr void emit_all_blocks_isolated(Func &func) {
+        if constexpr (Remaining > 0) {
+            constexpr auto chunk_size = Remaining < kMaxStaticLoopBlock ? Remaining : kMaxStaticLoopBlock;
+
+            emit_block_chunk_isolated<Func, Begin, Step, BlockSize, Offset>(func, std::make_index_sequence<chunk_size>{});
+
+            emit_all_blocks_isolated<Func, Begin, Step, BlockSize, Offset + chunk_size, Remaining - chunk_size>(func);
+        }
+    }
+    POET_POP_OPTIMIZE
 
     template<typename Func, typename Runner>
     POET_FORCEINLINE constexpr void with_stored_callable(Func &&func, Runner &&runner) {

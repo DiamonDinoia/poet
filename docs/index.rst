@@ -109,7 +109,7 @@ High-level usage pointers
 - Read the short guides for practical patterns:
   - guides/static_for — when compile-time unrolling is needed.
   - guides/dynamic_for — when low-overhead runtime loops in unrolled blocks are desired.
-  - guides/static_dispatch — when runtime choices must map to compile-time specializations.
+  - guides/dispatch — when runtime choices must map to compile-time specializations.
 - Consult the API Reference for exact signatures and template parameters.
 
 Throwing dispatch
@@ -137,7 +137,7 @@ PRs and issues welcome.
 
    guides/static_for
    guides/dynamic_for
-   guides/static_dispatch
+   guides/dispatch
 
 .. toctree::
    :maxdepth: 2
