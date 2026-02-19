@@ -311,14 +311,13 @@ namespace detail {
     // Fused implementation: runtime stride
     // ========================================================================
 
-    POET_PUSH_OPTIMIZE
-
     /// \brief Fused dynamic_for implementation for arbitrary runtime stride.
     ///
     /// Handles all non-unit strides including negative, power-of-2, and general.
     /// The callable form is baked into the template parameter.
     template<typename T, typename Callable, std::size_t Unroll, typename FormTag>
-    POET_HOT_LOOP void dynamic_for_impl_general(T begin, T end, T stride, Callable &callable, FormTag tag) {
+    POET_HOT_LOOP void
+      dynamic_for_impl_general(const T begin, const T end, const T stride, Callable &callable, const FormTag tag) {
         if (POET_UNLIKELY(stride == 0)) { return; }
 
         std::size_t count = calculate_iteration_count_complex(begin, end, stride);
@@ -365,7 +364,7 @@ namespace detail {
     /// `Value * 1` is constant-folded, producing identical codegen to a
     /// hand-written stride-1 loop.
     template<std::intmax_t Step, typename T, typename Callable, std::size_t Unroll, typename FormTag>
-    POET_HOT_LOOP void dynamic_for_impl_ct_stride(T begin, T end, Callable &callable, FormTag tag) {
+    POET_HOT_LOOP void dynamic_for_impl_ct_stride(const T begin, const T end, Callable &callable, const FormTag tag) {
         std::size_t count = calculate_iteration_count_ct<Step>(begin, end);
         if (POET_UNLIKELY(count == 0)) { return; }
 
@@ -395,8 +394,6 @@ namespace detail {
             dispatch_tail_ct_stride<Step, FormTag, Unroll>(remaining, callable, index);
         }
     }
-
-    POET_POP_OPTIMIZE
 
 }// namespace detail
 
@@ -518,7 +515,6 @@ POET_FORCEINLINE constexpr void dynamic_for(std::size_t count, Func &&func) {
 
 
 #if __cplusplus >= 202002L
-#include <cstddef>
 #include <ranges>
 #include <tuple>
 
@@ -535,7 +531,7 @@ template<typename Func, std::size_t Unroll> struct dynamic_for_adaptor {
 // Interprets the range as a sequence of consecutive indices starting at *begin(range).
 // This implementation computes the distance by iterating the range (works even when not sized).
 template<typename Func, std::size_t Unroll, typename Range>
-requires std::ranges::range<Range> void operator|(Range &&r, dynamic_for_adaptor<Func, Unroll> const &ad) {
+requires std::ranges::range<Range> void operator|(Range const &r, dynamic_for_adaptor<Func, Unroll> const &ad) {
     auto it = std::ranges::begin(r);
     auto it_end = std::ranges::end(r);
 

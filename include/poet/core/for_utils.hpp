@@ -69,13 +69,11 @@ template<std::intmax_t Begin, std::intmax_t End, std::intmax_t Step>
 /// \tparam Step Range step value.
 /// \tparam StartIndex The flat index offset for this block.
 /// \tparam Is Index sequence for unrolling (0, 1, ..., BlockSize-1).
-POET_PUSH_OPTIMIZE
 template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t StartIndex, std::size_t... Is>
 POET_FORCEINLINE constexpr void static_loop_impl_block(Func &func, std::index_sequence<Is...> /*indices*/) {
     constexpr std::intmax_t Base = Begin + (Step * static_cast<std::intmax_t>(StartIndex));
     (func(std::integral_constant<std::intmax_t, Base + (Step * static_cast<std::intmax_t>(Is))>{}), ...);
 }
-POET_POP_OPTIMIZE
 
 /// \brief Executes a single block with register-pressure isolation (noinline variant).
 ///
@@ -84,16 +82,13 @@ POET_POP_OPTIMIZE
 /// register spills.  Each noinline block gets its own register allocation
 /// scope — the compiler fully optimises within the block but cannot
 /// interleave computations across block boundaries.
-POET_PUSH_OPTIMIZE
 template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t StartIndex, std::size_t... Is>
 POET_NOINLINE constexpr void static_loop_impl_block_isolated(Func &func, std::index_sequence<Is...> /*indices*/) {
     constexpr std::intmax_t Base = Begin + (Step * static_cast<std::intmax_t>(StartIndex));
     (func(std::integral_constant<std::intmax_t, Base + (Step * static_cast<std::intmax_t>(Is))>{}), ...);
 }
-POET_POP_OPTIMIZE
 
 /// \brief Emits a chunk of full blocks (always-inline variant).
-POET_PUSH_OPTIMIZE
 template<typename Func,
   std::intmax_t Begin,
   std::intmax_t Step,
@@ -104,10 +99,8 @@ POET_FORCEINLINE constexpr void emit_block_chunk(Func &func, std::index_sequence
     (static_loop_impl_block<Func, Begin, Step, (Offset + Is) * BlockSize>(func, std::make_index_sequence<BlockSize>{}),
       ...);
 }
-POET_POP_OPTIMIZE
 
 /// \brief Emits a chunk of register-isolated blocks (noinline variant).
-POET_PUSH_OPTIMIZE
 template<typename Func,
   std::intmax_t Begin,
   std::intmax_t Step,
@@ -119,9 +112,7 @@ POET_FORCEINLINE constexpr void emit_block_chunk_isolated(Func &func, std::index
        func, std::make_index_sequence<BlockSize>{}),
       ...);
 }
-POET_POP_OPTIMIZE
 
-POET_PUSH_OPTIMIZE
 template<typename Func,
   std::intmax_t Begin,
   std::intmax_t Step,
@@ -137,9 +128,7 @@ POET_FORCEINLINE constexpr void emit_all_blocks(Func &func) {
         emit_all_blocks<Func, Begin, Step, BlockSize, Offset + chunk_size, Remaining - chunk_size>(func);
     }
 }
-POET_POP_OPTIMIZE
 
-POET_PUSH_OPTIMIZE
 template<typename Func,
   std::intmax_t Begin,
   std::intmax_t Step,
@@ -155,7 +144,6 @@ POET_FORCEINLINE constexpr void emit_all_blocks_isolated(Func &func) {
         emit_all_blocks_isolated<Func, Begin, Step, BlockSize, Offset + chunk_size, Remaining - chunk_size>(func);
     }
 }
-POET_POP_OPTIMIZE
 
 template<typename Functor> struct template_static_loop_invoker {
     Functor *functor;

@@ -51,7 +51,10 @@ Checks: "*,
         -cppcoreguidelines-avoid-const-or-ref-data-members,
         -cppcoreguidelines-pro-type-member-init,
         -hicpp-member-init,
-        -readability-function-cognitive-complexity"
+        -readability-function-cognitive-complexity,
+        -readability-use-concise-preprocessor-directives,
+        -modernize-use-constraints,
+        -readability-redundant-typename"
 
 WarningsAsErrors: ''
 HeaderFilterRegex: '^${PROJECT_SOURCE_DIR}/(include|src)'

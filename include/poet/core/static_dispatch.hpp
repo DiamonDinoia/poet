@@ -26,6 +26,7 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 #include <poet/core/macros.hpp>
 #include <poet/core/mdspan_utils.hpp>
@@ -39,27 +40,8 @@ template<auto... Vs> struct T {};
 
 namespace detail {
 
-    template<typename T> struct result_holder {
-      private:
-        std::optional<T> val;
-
-      public:
-        template<typename U> void set(U &&value) { val = std::forward<U>(value); }
-        auto get() -> T {
-            assert(val.has_value());
-            return val.value();
-        }// NOLINT
-        [[nodiscard]] auto has_value() const -> bool { return val.has_value(); }
-    };
-    template<> struct result_holder<void> {
-      private:
-        bool set_called = false;
-
-      public:
-        void set() { set_called = true; }
-        void get() {}
-        [[nodiscard]] auto has_value() const -> bool { return set_called; }
-    };
+    template<typename T>
+    using result_holder = std::conditional_t<std::is_void_v<T>, std::optional<std::monostate>, std::optional<T>>;
 
     /// \brief Helper: call functor with the integer pack from an integer_sequence
     template<typename Functor, typename ResultType, typename RuntimeTuple, typename... Args> struct seq_matcher_helper;
@@ -85,9 +67,9 @@ namespace detail {
                 // Match found! Invoke the functor with the sequence V... as template arguments.
                 if constexpr (std::is_void_v<ResultType>) {
                     std::forward<F>(func).template operator()<V...>(std::forward<Args>(args)...);
-                    res.set();
+                    res = std::monostate{};
                 } else {
-                    res.set(std::forward<F>(func).template operator()<V...>(std::forward<Args>(args)...));
+                    res = std::forward<F>(func).template operator()<V...>(std::forward<Args>(args)...);
                 }
             }
             return res;
@@ -212,10 +194,10 @@ namespace detail {
             std::array<std::size_t, value_count> sorted_indices{};
         };
 
-        template<std::size_t... I>
-        static POET_CPP20_CONSTEVAL auto make_sorted_data_impl(std::index_sequence<I...> /*idxs*/) -> sorted_data_t {
-            sorted_data_t out{ { Values... }, { I... } };
-
+        static constexpr sorted_data_t sorted_data = []() constexpr -> sorted_data_t {
+            sorted_data_t out{};
+            out.sorted_keys = std::array<int, value_count>{ Values... };
+            for (std::size_t i = 0; i < value_count; ++i) { out.sorted_indices[i] = i; }
             // Stable insertion sort by key; duplicates keep source-order (first index first).
             for (std::size_t i = 1; i < value_count; ++i) {
                 const int current_key = out.sorted_keys[i];
@@ -230,24 +212,18 @@ namespace detail {
                 out.sorted_indices[insert_pos] = current_index;
             }
             return out;
-        }
+        }();
 
-        static constexpr sorted_data_t sorted_data = make_sorted_data_impl(std::make_index_sequence<value_count>{});
-
-        static POET_CPP20_CONSTEVAL auto compute_unique_count() -> std::size_t {
-            if constexpr (value_count == 0) {
-                return 0;
-            } else {
-                std::size_t count = 1;
-                for (std::size_t i = 1; i < value_count; ++i) {
-                    if (sorted_data.sorted_keys[i] != sorted_data.sorted_keys[i - 1]) { ++count; }
-                }
-                return count;
+        static constexpr std::size_t unique_count = []() constexpr -> std::size_t {
+            if constexpr (value_count == 0) { return 0; }
+            std::size_t count = 1;
+            for (std::size_t i = 1; i < value_count; ++i) {
+                if (sorted_data.sorted_keys[i] != sorted_data.sorted_keys[i - 1]) { ++count; }
             }
-        }
-        static constexpr std::size_t unique_count = compute_unique_count();
+            return count;
+        }();
 
-        static POET_CPP20_CONSTEVAL auto make_keys() -> std::array<int, unique_count> {
+        static constexpr std::array<int, unique_count> keys = []() constexpr {
             std::array<int, unique_count> out{};
             if constexpr (value_count > 0) {
                 std::size_t out_i = 0;
@@ -259,10 +235,9 @@ namespace detail {
                 }
             }
             return out;
-        }
-        static constexpr std::array<int, unique_count> keys = make_keys();
+        }();
 
-        static POET_CPP20_CONSTEVAL auto make_indices() -> std::array<std::size_t, unique_count> {
+        static constexpr std::array<std::size_t, unique_count> indices = []() constexpr {
             std::array<std::size_t, unique_count> out{};
             if constexpr (value_count > 0) {
                 std::size_t out_i = 0;
@@ -274,8 +249,7 @@ namespace detail {
                 }
             }
             return out;
-        }
-        static constexpr std::array<std::size_t, unique_count> indices = make_indices();
+        }();
     };
 
     /// Sentinel value returned by sequence_runtime_lookup::find() on miss.
@@ -702,13 +676,11 @@ namespace detail {
 
         /// \brief Compute the index for a specific dimension from a flat index.
         template<std::size_t FlatIdx, std::size_t DimIdx, std::size_t... Dims> struct compute_dim_index {
-            static POET_CPP20_CONSTEVAL auto compute() -> std::size_t {
+            static constexpr std::size_t value = []() constexpr -> std::size_t {
                 constexpr std::array<std::size_t, sizeof...(Dims)> dimensions = { Dims... };
                 constexpr std::array<std::size_t, sizeof...(Dims)> strides = compute_strides(dimensions);
                 return FlatIdx / strides[DimIdx] % dimensions[DimIdx];
-            }
-
-            static constexpr std::size_t value = compute();
+            }();
         };
 
         /// \brief Extract the value for a specific dimension at compile-time.
@@ -920,25 +892,23 @@ namespace detail {
                 if constexpr (std::is_void_v<R>) {
                     table[idx](std::forward<Args>(args)...);
                     return;
-                } else {
-                    return table[idx](std::forward<Args>(args)...);
                 }
+                return table[idx](std::forward<Args>(args)...);
             } else {
                 auto &&fwd = std::forward<Functor>(functor);
                 if constexpr (std::is_void_v<R>) {
                     table[idx](std::addressof(static_cast<FunctorT &>(fwd)), std::forward<Args>(args)...);
                     return;
-                } else {
-                    return table[idx](std::addressof(static_cast<FunctorT &>(fwd)), std::forward<Args>(args)...);
                 }
-            }
-        } else {
-            if constexpr (ThrowOnNoMatch) {
-                throw std::runtime_error(k_no_match_error);
-            } else {
-                if constexpr (!std::is_void_v<R>) { return R{}; }
+                return table[idx](std::addressof(static_cast<FunctorT &>(fwd)), std::forward<Args>(args)...);
             }
         }
+        if constexpr (ThrowOnNoMatch) {
+            throw std::runtime_error(k_no_match_error);
+        } else if constexpr (!std::is_void_v<R>) {
+            return R{};
+        }
+        if constexpr (!std::is_void_v<R>) { POET_UNREACHABLE(); }
     }
 
     /// \brief N-D dispatch through a flattened function-pointer table.
@@ -963,25 +933,23 @@ namespace detail {
                 if constexpr (std::is_void_v<R>) {
                     table[flat_idx](std::forward<Args>(args)...);
                     return;
-                } else {
-                    return table[flat_idx](std::forward<Args>(args)...);
                 }
+                return table[flat_idx](std::forward<Args>(args)...);
             } else {
                 auto &&fwd = std::forward<Functor>(functor);
                 if constexpr (std::is_void_v<R>) {
                     table[flat_idx](std::addressof(static_cast<FunctorT &>(fwd)), std::forward<Args>(args)...);
                     return;
-                } else {
-                    return table[flat_idx](std::addressof(static_cast<FunctorT &>(fwd)), std::forward<Args>(args)...);
                 }
-            }
-        } else {
-            if constexpr (ThrowOnNoMatch) {
-                throw std::runtime_error(k_no_match_error);
-            } else {
-                if constexpr (!std::is_void_v<R>) { return R{}; }
+                return table[flat_idx](std::addressof(static_cast<FunctorT &>(fwd)), std::forward<Args>(args)...);
             }
         }
+        if constexpr (ThrowOnNoMatch) {
+            throw std::runtime_error(k_no_match_error);
+        } else if constexpr (!std::is_void_v<R>) {
+            return R{};
+        }
+        if constexpr (!std::is_void_v<R>) { POET_UNREACHABLE(); }
     }
 
     /// \brief Internal implementation for dispatch with compile-time error handling policy.
@@ -1027,12 +995,15 @@ namespace detail {
         constexpr std::size_t num_params = sizeof...(ParamIdx);
         auto all_refs = std::forward_as_tuple(std::forward<All>(all)...);
 
-        // Extract DispatchParams into dedicated tuple.
-        auto params = std::make_tuple(std::get<ParamIdx>(std::move(all_refs))...);
+        // Extract DispatchParams into dedicated tuple (copy — DispatchParam is trivially copyable).
+        auto params = std::make_tuple(std::get<ParamIdx>(all_refs)...);
 
-        // Forward remaining runtime arguments directly.
-        return dispatch_impl<ThrowOnNoMatch>(
-          std::forward<Functor>(functor), params, std::get<num_params + ArgIdx>(std::move(all_refs))...);
+        // Forward remaining runtime arguments preserving value category.
+        // std::move(all_refs) in a pack expansion only casts to rvalue ref; each get() accesses a disjoint index.
+        return dispatch_impl<ThrowOnNoMatch>(std::forward<Functor>(functor),
+          params,
+          std::get<num_params + ArgIdx>(
+            std::move(all_refs))...);// NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
     }
 
     template<bool ThrowOnNoMatch, typename Functor, typename FirstParam, typename... Rest>
@@ -1147,18 +1118,15 @@ namespace detail {
           TL{});
 
         if (matched) {
-            if constexpr (std::is_void_v<result_type>) {
-                return;
-            } else {
-                return out.get();
-            }
-        } else {
-            if constexpr (ThrowOnNoMatch) {
-                throw std::runtime_error("poet::dispatch_tuples: no matching compile-time tuple for runtime inputs");
-            } else {
-                if constexpr (!std::is_void_v<result_type>) { return result_type{}; }
-            }
+            if constexpr (std::is_void_v<result_type>) { return; }
+            return result_type(std::move(*out));
         }
+        if constexpr (ThrowOnNoMatch) {
+            throw std::runtime_error("poet::dispatch_tuples: no matching compile-time tuple for runtime inputs");
+        } else if constexpr (!std::is_void_v<result_type>) {
+            return result_type{};
+        }
+        if constexpr (!std::is_void_v<result_type>) { POET_UNREACHABLE(); }
     }
 }// namespace detail
 

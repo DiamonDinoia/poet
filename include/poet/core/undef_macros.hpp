@@ -18,9 +18,7 @@
 /// - POET_HOT_LOOP: Hot path optimization with aggressive inlining
 /// - POET_LIKELY / POET_UNLIKELY: Branch prediction hints
 /// - POET_ASSUME / POET_ASSUME_NOT_NULL: Compiler assumption hints
-/// - POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE: Scoped optimization control
 /// - POET_CPP20_CONSTEVAL / POET_CPP20_CONSTEXPR / POET_CPP23_CONSTEXPR: Feature detection
-/// - POET_HIGH_OPTIMIZATION: Optimization level detection (internal)
 /// - poet_count_trailing_zeros: (function, not macro — unaffected)
 ///
 /// **Usage with individual headers:**
@@ -88,32 +86,10 @@
 #endif
 
 // ============================================================================
-// Undefine POET_HIGH_OPTIMIZATION (internal optimization detection)
-// ============================================================================
-#ifdef POET_HIGH_OPTIMIZATION
-#undef POET_HIGH_OPTIMIZATION
-#endif
-
-// ============================================================================
 // Undefine POET_HOT_LOOP
 // ============================================================================
 #ifdef POET_HOT_LOOP
 #undef POET_HOT_LOOP
-#endif
-
-// ============================================================================
-// Undefine POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE / POET_DISABLE_PUSH_OPTIMIZE
-// ============================================================================
-#ifdef POET_PUSH_OPTIMIZE
-#undef POET_PUSH_OPTIMIZE
-#endif
-
-#ifdef POET_POP_OPTIMIZE
-#undef POET_POP_OPTIMIZE
-#endif
-
-#ifdef POET_DISABLE_PUSH_OPTIMIZE
-#undef POET_DISABLE_PUSH_OPTIMIZE
 #endif
 
 // ============================================================================

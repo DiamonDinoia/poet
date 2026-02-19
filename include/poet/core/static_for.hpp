@@ -123,7 +123,6 @@ namespace detail {
 ///                   to `detail::kMaxStaticLoopBlock` for large ranges).
 /// \tparam Func Callable type.
 /// \param func Callable instance invoked once per iteration.
-POET_PUSH_OPTIMIZE
 template<std::intmax_t Begin,
   std::intmax_t End,
   std::intmax_t Step = 1,
@@ -162,7 +161,6 @@ POET_FORCEINLINE constexpr void static_for(Func &&func) {
         }
     }
 }
-POET_POP_OPTIMIZE
 
 /// \brief Convenience overload for `static_for` iterating from 0 to `End`.
 ///
