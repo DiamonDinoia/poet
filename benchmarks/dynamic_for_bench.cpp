@@ -9,6 +9,7 @@
 #include <nanobench.h>
 
 #include <poet/core/dynamic_for.hpp>
+#include <poet/core/static_for.hpp>
 
 using namespace std::chrono_literals;
 
@@ -22,7 +23,6 @@ constexpr std::size_t default_unroll = 8;
 constexpr std::uint64_t salt_increment = 0x9e3779b97f4a7c15ULL;
 volatile std::uint64_t benchmark_salt = 1;
 
-// Hash function to generate pseudo-random workload per iteration
 static inline std::uint64_t splitmix64(std::uint64_t x) noexcept {
     x += 0x9e3779b97f4a7c15ULL;
     x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
@@ -30,11 +30,18 @@ static inline std::uint64_t splitmix64(std::uint64_t x) noexcept {
     return x ^ (x >> 31);
 }
 
-// Compute a workload with latency (FMA chain) - demonstrates ILP benefit when unrolled
+// Lightweight workload: just the hash, no FMA chain.
+// Used for loop-overhead benchmarks where the body is trivial.
+static inline double fast_work(std::size_t i) noexcept {
+    const std::uint64_t r = splitmix64(static_cast<std::uint64_t>(i));
+    return static_cast<double>(r) * 5.42101086242752217e-20;
+}
+
+// Heavy workload: 5-deep FMA chain.
+// Latency ~20 cycles per call; useful for ILP / accumulator benchmarks.
 static inline double compute_work(std::size_t i) noexcept {
     const std::uint64_t r = splitmix64(static_cast<std::uint64_t>(i));
     double x = static_cast<double>(r) * 5.42101086242752217e-20;
-    // Chain of FMAs creates latency bottleneck in serial execution
     x = std::fma(x, 1.0000001192092896, 0.3333333333333333);
     x = std::fma(x, 0.9999998807907104, 0.14285714285714285);
     x = std::fma(x, 1.0000000596046448, -0.0625);
@@ -43,35 +50,57 @@ static inline double compute_work(std::size_t i) noexcept {
     return x;
 }
 
-// Baseline: naive for loop with loop-carried dependency
-// Each iteration's accumulation depends on the previous sum -> limits ILP
+// ── Trivial-body variants (for loop-overhead section) ─────────────────────
+
+// Baseline: plain loop with trivial per-element work.
+double serial_loop_fast(std::size_t begin, std::size_t end, std::size_t salt) {
+    double sum = 0.0;
+    for (std::size_t i = begin; i < end; ++i) sum += fast_work(i + salt);
+    return sum;
+}
+
+// dynamic_for with trivial body: register pressure is low enough that
+// the by-reference `sum` stays in a register, so unrolling reduces loop overhead.
+template<std::size_t Unroll> double dynamic_for_loop_fast(std::size_t begin, std::size_t end, std::size_t salt) {
+    double sum = 0.0;
+    poet::dynamic_for<Unroll>(begin, end, [&sum, salt](std::size_t i) { sum += fast_work(i + salt); });
+    return sum;
+}
+
+// ── Heavy-body variants (for accumulator-ILP section) ─────────────────────
+
+// Naive reduction: captures `sum` by reference.
+// With compute_work (5 FMA constants + 8 lane accumulators), register
+// pressure forces `sum` to be spilled to the stack and reloaded every
+// Unroll iterations via store-to-load forwarding.  The unrolling adds
+// overhead instead of helping.
 double serial_loop(std::size_t begin, std::size_t end, std::size_t salt) {
     double sum = 0.0;
-    for (std::size_t i = begin; i < end; ++i) {
-        sum += compute_work(i + salt);// Dependency chain: sum_i = sum_{i-1} + work(i)
-    }
+    for (std::size_t i = begin; i < end; ++i) sum += compute_work(i + salt);
     return sum;
 }
 
-// Optimized: dynamic_for automatically unrolls to boost ILP
-// The unrolling breaks the dependency chain by exposing multiple independent operations
-// Compiler can interleave FMA chains from different iterations -> higher throughput
 template<std::size_t Unroll> double dynamic_for_loop(std::size_t begin, std::size_t end, std::size_t salt) {
     double sum = 0.0;
-    poet::dynamic_for<Unroll>(begin, end, [&sum, salt](std::size_t i) {
-        sum += compute_work(i + salt);// Same code, but unrolling enables parallel execution
-    });
+    poet::dynamic_for<Unroll>(begin, end, [&sum, salt](std::size_t i) { sum += compute_work(i + salt); });
     return sum;
 }
 
+// Serial multi-accumulator: separate sums per lane index.
+// Each `sums[i % NumAccs]` slot is independent, giving the compiler
+// room to pipeline the FMA chains.
 template<std::size_t NumAccs> double serial_loop_multi_acc(std::size_t begin, std::size_t end, std::size_t salt) {
     std::array<double, NumAccs> sums{};
-    for (std::size_t i = begin; i < end; ++i) { sums[i % NumAccs] += compute_work(i + salt); }
+    for (std::size_t i = begin; i < end; ++i) sums[i % NumAccs] += compute_work(i + salt);
     double total = 0.0;
-    for (double v : sums) { total += v; }
+    for (double v : sums) total += v;
     return total;
 }
 
+// dynamic_for lane callback with independent per-lane accumulators.
+// The `auto lane_c` callback provides a compile-time lane index so each
+// `sums[lane]` maps to a distinct register, eliminating the spill that
+// plagues the single-accumulator version.
 template<std::size_t Unroll, std::size_t NumAccs>
 double dynamic_for_loop_multi_acc(std::size_t begin, std::size_t end, std::size_t salt) {
     std::array<double, NumAccs> sums{};
@@ -81,8 +110,29 @@ double dynamic_for_loop_multi_acc(std::size_t begin, std::size_t end, std::size_
         sums[acc_idx] += compute_work(i + salt);
     });
     double total = 0.0;
-    for (double v : sums) { total += v; }
+    for (double v : sums) total += v;
     return total;
+}
+
+// Combined dynamic_for + static_for:
+// - dynamic_for<Unroll> with per-lane accumulation handles the runtime loop,
+//   keeping Unroll independent FMA chains alive simultaneously.
+// - static_for<0, NumAccs> handles the final reduction at compile time —
+//   fully unrolled, zero branch overhead, guaranteed register-to-register adds.
+//
+// NumAccs controls the parallelism / register pressure trade-off.
+// With compute_work (5 FMA constants), the XMM budget is:
+//   NumAccs accumulators + ~7 FMA/scale constants + scratch = NumAccs + ~9
+// On x86-64 (16 XMM regs): NumAccs <= 7.  NumAccs=4 is the empirical sweet spot
+// that keeps all accumulators and constants in registers (zero spills).
+template<std::size_t NumAccs> double dynamic_for_static_reduce(std::size_t begin, std::size_t end, std::size_t salt) {
+    std::array<double, NumAccs> accs{};
+    poet::dynamic_for<NumAccs>(begin, end, [&accs, salt](auto lane_c, std::size_t i) {
+        accs[decltype(lane_c)::value] += compute_work(i + salt);
+    });
+    double sum = 0.0;
+    poet::static_for<0, static_cast<std::intmax_t>(NumAccs)>([&](auto ic) { sum += accs[ic.value]; });
+    return sum;
 }
 
 inline std::uint64_t next_salt() noexcept {
@@ -110,20 +160,55 @@ void run_benchmark_case(ankerl::nanobench::Bench &bench,
     });
 }
 
-void benchmark_range(ankerl::nanobench::Bench &bench, std::size_t begin, std::size_t end, const std::string &label) {
-    run_benchmark_case(bench, begin, end, std::string("for loop ") + label, [](auto b, auto e, auto salt) {
-        return serial_loop(b, e, salt);
+// ── Loop overhead amortization ────────────────────────────────────────────
+// Body = fast_work (splitmix64 only).  Per-element compute is cheap so
+// branch/compare/increment overhead is a meaningful fraction of total cost.
+// dynamic_for<Unroll> reduces that overhead to 1/(Unroll) per element.
+void benchmark_loop_overhead(ankerl::nanobench::Bench &bench,
+  std::size_t begin,
+  std::size_t end,
+  const std::string &label) {
+    run_benchmark_case(
+      bench, begin, end, "for loop " + label, [](auto b, auto e, auto salt) { return serial_loop_fast(b, e, salt); });
+    run_benchmark_case(bench, begin, end, "dynamic_for<8> " + label, [](auto b, auto e, auto salt) {
+        return dynamic_for_loop_fast<8>(b, e, salt);
     });
-    run_benchmark_case(bench, begin, end, std::string("dynamic_for ") + label, [](auto b, auto e, auto salt) {
+    run_benchmark_case(bench, begin, end, "dynamic_for<4> " + label, [](auto b, auto e, auto salt) {
+        return dynamic_for_loop_fast<4>(b, e, salt);
+    });
+}
+
+// ── Accumulator / ILP comparison ─────────────────────────────────────────
+// Body = compute_work (5-deep FMA chain, ~20 cy latency).
+// Shows three patterns in order of ascending performance:
+//   1. Naive single-acc   — &sum forced to stack (memory spill)
+//   2. Serial multi-acc   — N independent slots, compiler may pipeline
+//   3. dynamic_for+static_for — Unroll live FMA chains + compile-time reduction
+void benchmark_range(ankerl::nanobench::Bench &bench, std::size_t begin, std::size_t end, const std::string &label) {
+    // ── 1. Naive single accumulator (reference-capture causes memory spill) ─
+    run_benchmark_case(
+      bench, begin, end, "for loop " + label, [](auto b, auto e, auto salt) { return serial_loop(b, e, salt); });
+    run_benchmark_case(bench, begin, end, "dynamic_for naive " + label, [](auto b, auto e, auto salt) {
         return dynamic_for_loop<default_unroll>(b, e, salt);
     });
-    run_benchmark_case(bench, begin, end, std::string("for loop multi-acc4 ") + label, [](auto b, auto e, auto salt) {
+
+    // ── 2. Serial multi-accumulator (compiler-visible independence, no unroll) ─
+    run_benchmark_case(bench, begin, end, "for loop multi-acc4 " + label, [](auto b, auto e, auto salt) {
         return serial_loop_multi_acc<4>(b, e, salt);
     });
-    run_benchmark_case(
-      bench, begin, end, std::string("dynamic_for lane multi-acc4 ") + label, [](auto b, auto e, auto salt) {
-          return dynamic_for_loop_multi_acc<default_unroll, 4>(b, e, salt);
-      });
+
+    // ── 3. dynamic_for lane acc + static_for reduce (full ILP, guaranteed unroll) ─
+    // NumAccs=4: fits all accumulators + FMA constants in 16 XMM registers (zero spills).
+    // NumAccs=8: exceeds register budget with compute_work, causes spills — shown for contrast.
+    run_benchmark_case(bench, begin, end, "dynamic_for+static_reduce<4> " + label, [](auto b, auto e, auto salt) {
+        return dynamic_for_static_reduce<4>(b, e, salt);
+    });
+    run_benchmark_case(bench, begin, end, "dynamic_for+static_reduce<8> " + label, [](auto b, auto e, auto salt) {
+        return dynamic_for_static_reduce<8>(b, e, salt);
+    });
+    run_benchmark_case(bench, begin, end, "dynamic_for lane multi-acc4 " + label, [](auto b, auto e, auto salt) {
+        return dynamic_for_loop_multi_acc<default_unroll, 4>(b, e, salt);
+    });
 }
 
 }// namespace
@@ -244,9 +329,13 @@ void benchmark_stride_comparison(ankerl::nanobench::Bench &bench) {
 
 int main() {
     ankerl::nanobench::Bench bench;
-    bench.title("dynamic_for: ILP boost via automatic unrolling");
     bench.minEpochTime(10ms);
 
+    bench.title("dynamic_for: loop overhead amortization (trivial body)");
+    benchmark_loop_overhead(bench, 0, small_count, std::string("small ") + std::to_string(small_count));
+    benchmark_loop_overhead(bench, 0, large_count, std::string("large ") + std::to_string(large_count));
+
+    bench.title("dynamic_for: accumulator patterns (heavy FMA-chain body)");
     benchmark_range(bench, 0, small_count, std::string("small ") + std::to_string(small_count));
     benchmark_range(bench, 0, large_count, std::string("large ") + std::to_string(large_count));
     benchmark_range(bench,
