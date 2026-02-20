@@ -250,10 +250,16 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 #ifndef POET_DISABLE_PUSH_OPTIMIZE
 #if defined(__GNUC__) && !defined(__clang__)
 #if POET_HIGH_OPTIMIZATION
-// At -O3: Apply IRA pressure tuning for hot paths
-#define POET_PUSH_OPTIMIZE                                                        \
-    _Pragma("GCC push_options") _Pragma("GCC optimize(\"-fira-hoist-pressure\")") \
-      _Pragma("GCC optimize(\"-fno-ira-share-spill-slots\")") _Pragma("GCC optimize(\"-frename-registers\")")
+// At -O3: Apply IRA pressure tuning + semantic-interposition removal for hot paths.
+// -fno-semantic-interposition: allow inlining/IPO across function boundaries
+//   (GCC default assumes exported symbols may be LD_PRELOAD-interposed, which
+//    blocks optimizations even within the same TU; safe for header-only POET).
+// -fvect-cost-model=cheap: allow vectorization even when GCC's cost model is
+//   uncertain (helps SLP-vectorize independent accumulator chains in static_for).
+#define POET_PUSH_OPTIMIZE                                                                                    \
+    _Pragma("GCC push_options") _Pragma("GCC optimize(\"-fira-hoist-pressure\")")                             \
+      _Pragma("GCC optimize(\"-fno-ira-share-spill-slots\")") _Pragma("GCC optimize(\"-frename-registers\")") \
+        _Pragma("GCC optimize(\"-fno-semantic-interposition\")") _Pragma("GCC optimize(\"-fvect-cost-model=cheap\")")
 #define POET_POP_OPTIMIZE _Pragma("GCC pop_options")
 #else
 // Without -O3: Enable -O3 for this section
