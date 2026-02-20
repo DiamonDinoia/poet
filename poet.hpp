@@ -253,7 +253,16 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 // ============================================================================
 // POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE
 // ============================================================================
-/// Scoped optimization control. Enabled by default.
+/// GCC register-allocator tuning for hot paths. Wrap performance-critical
+/// function groups in POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE pairs.
+///
+/// At -O3 (POET_HIGH_OPTIMIZATION=1) on GCC, enables IRA pressure flags
+/// (-fira-hoist-pressure, -fno-ira-share-spill-slots, -frename-registers)
+/// that improve register allocation in unrolled and isolated blocks.
+/// Without -O3, promotes the section to -O3.
+/// On MSVC, enables aggressive optimization (/Ogt).
+/// On Clang and others: no-op (Clang cannot enable optimizations via pragma).
+///
 /// Opt-out via -DPOET_DISABLE_PUSH_OPTIMIZE to preserve custom flags.
 #ifndef POET_DISABLE_PUSH_OPTIMIZE
 #if defined(__GNUC__) && !defined(__clang__)
@@ -687,7 +696,8 @@ namespace detail {
         static constexpr std::size_t len = sizeof...(Values);
 
         static POET_FORCEINLINE auto find(int value) -> std::size_t {
-            const auto idx = static_cast<std::size_t>(value - first);
+            const auto idx =
+              static_cast<std::size_t>(static_cast<unsigned int>(value) - static_cast<unsigned int>(first));
             if (POET_LIKELY(idx < len)) { return idx; }
             return dispatch_npos;
         }
@@ -770,7 +780,8 @@ namespace detail {
             using Seq = typename std::tuple_element_t<Idx, P>::seq_type;
             constexpr int first = sequence_first<Seq>::value;
             constexpr std::size_t len = sequence_size<Seq>::value;
-            const auto mapped = static_cast<std::size_t>(std::get<Idx>(params).runtime_val - first);
+            const auto mapped = static_cast<std::size_t>(
+              static_cast<unsigned int>(std::get<Idx>(params).runtime_val) - static_cast<unsigned int>(first));
             oob |= static_cast<std::size_t>(mapped >= len);
             return mapped * strides[Idx];
         }()) + ... + std::size_t{ 0 });
@@ -1298,6 +1309,8 @@ namespace detail {
     inline constexpr const char *k_no_match_error =
       "poet::dispatch: no matching compile-time combination for runtime inputs";
 
+    POET_PUSH_OPTIMIZE
+
     /// \brief 1D dispatch through a function-pointer table.
     /// O(1) for contiguous sequences, O(log N) for sparse — selected by sequence_runtime_lookup.
     template<bool ThrowOnNoMatch, typename R, typename Functor, typename ParamTuple, typename... Args>
@@ -1392,6 +1405,9 @@ namespace detail {
               std::forward<Functor>(functor), params, std::forward<Args>(args)...);
         }
     }
+
+    POET_POP_OPTIMIZE
+
 }// namespace detail
 
 // DispatchParam-based API is variadic:
@@ -1722,6 +1738,8 @@ POET_FORCEINLINE constexpr void static_loop_impl_block(Func &func, std::index_se
 /// register spills.  Each noinline block gets its own register allocation
 /// scope — the compiler fully optimises within the block but cannot
 /// interleave computations across block boundaries.
+POET_PUSH_OPTIMIZE
+
 template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t StartIndex, std::size_t... Is>
 POET_NOINLINE constexpr void static_loop_impl_block_isolated(Func &func, std::index_sequence<Is...> /*indices*/) {
     constexpr std::intmax_t Base = Begin + (Step * static_cast<std::intmax_t>(StartIndex));
@@ -1752,6 +1770,8 @@ POET_FORCEINLINE constexpr void emit_block_chunk_isolated(Func &func, std::index
        func, std::make_index_sequence<BlockSize>{}),
       ...);
 }
+
+POET_POP_OPTIMIZE
 
 template<typename Func,
   std::intmax_t Begin,
@@ -2109,6 +2129,8 @@ namespace detail {
         }
     };
 
+    POET_PUSH_OPTIMIZE
+
     template<typename FormTag, std::size_t Unroll, typename Callable, typename T>
     POET_FORCEINLINE void dispatch_tail(std::size_t count, Callable &callable, T index, T stride) {
         static_assert(Unroll > 1, "dispatch_tail requires Unroll > 1");
@@ -2134,6 +2156,8 @@ namespace detail {
           std::addressof(callable),
           c_index);
     }
+
+    POET_POP_OPTIMIZE
 
     // ========================================================================
     // Iteration count calculation
@@ -2206,6 +2230,8 @@ namespace detail {
     ///
     /// Handles all non-unit strides including negative, power-of-2, and general.
     /// The callable form is baked into the template parameter.
+    POET_PUSH_OPTIMIZE
+
     template<typename T, typename Callable, std::size_t Unroll, typename FormTag>
     POET_HOT_LOOP void
       dynamic_for_impl_general(const T begin, const T end, const T stride, Callable &callable, const FormTag tag) {
@@ -2285,6 +2311,8 @@ namespace detail {
             dispatch_tail_ct_stride<Step, FormTag, Unroll>(remaining, callable, index);
         }
     }
+
+    POET_POP_OPTIMIZE
 
 }// namespace detail
 
