@@ -55,6 +55,7 @@ jobs:
           vcvarsall: ${{ runner.os == 'Windows' }}
 
       - name: Configure
+        if: ${{ !matrix.multi_config }}
         shell: bash
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
@@ -63,15 +64,18 @@ jobs:
             export POET_ENABLE_SANITIZERS=OFF
           fi
           cmake -S . -B build/${{ matrix.build_type }} \
+            -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -DPOET_STRICT_WARNINGS=ON \
             -DPOET_ENABLE_SANITIZERS=${POET_ENABLE_SANITIZERS} \
             -DPOET_BUILD_BENCHMARKS=ON
 
       - name: Build
+        if: ${{ !matrix.multi_config }}
         run: cmake --build build/${{ matrix.build_type }}
 
       - name: Test
+        if: ${{ !matrix.multi_config }}
         run: ctest --output-on-failure --test-dir build/${{ matrix.build_type }}
 
       - name: Build Benchmarks
@@ -84,7 +88,8 @@ jobs:
         run: |
           ctest --output-on-failure --test-dir build/${{ matrix.build_type }} -L benchmarks
           cmake --build build/${{ matrix.build_type }} --target poet_run_benchmarks
-          if cmake --build build/${{ matrix.build_type }} --target help | grep -q 'poet_run_benchmarks_native'; then
+          targets=$(cmake --build build/${{ matrix.build_type }} --target help 2>&1 || true)
+          if echo "$targets" | grep -q 'poet_run_benchmarks_native'; then
             cmake --build build/${{ matrix.build_type }} --target poet_run_benchmarks_native
           fi
 
@@ -144,11 +149,12 @@ jobs:
       - name: Install tooling
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang clang-tidy cppcheck
+          sudo apt-get install -y clang clang-tidy cppcheck ninja-build
 
       - name: Configure analysis
         run: |
           cmake -S . -B build/analyze \
+            -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/install" \
             -DPOET_ENABLE_CLANG_TIDY=ON \
@@ -195,7 +201,7 @@ jobs:
           sudo apt-get install -y lcov
 
       - name: Configure (coverage)
-        run: cmake -S . -B build/coverage -DPOET_ENABLE_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug
+        run: cmake -S . -B build/coverage -G Ninja -DPOET_ENABLE_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug
 
       - name: Build coverage target
         run: cmake --build build/coverage --target coverage
