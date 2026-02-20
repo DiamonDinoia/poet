@@ -49,7 +49,9 @@ template<typename Fn> void run_case(ankerl::nanobench::Bench &bench, std::uint64
 template<typename Range, std::size_t N> int dispatch_1d_batch(const std::array<int, N> &values, int scale) {
     int total = 0;
     for (int value : values) {
-        auto param = std::make_tuple(poet::DispatchParam<Range>{ value });
+        auto v = value;
+        ankerl::nanobench::doNotOptimizeAway(v);
+        auto param = std::make_tuple(poet::DispatchParam<Range>{ v });
         total += poet::dispatch(simple_kernel{}, param, scale);
     }
     return total;
@@ -59,7 +61,11 @@ template<typename Range, std::size_t N>
 int dispatch_2d_batch(const std::array<std::pair<int, int>, N> &values, int scale) {
     int total = 0;
     for (auto [w, h] : values) {
-        auto params = std::make_tuple(poet::DispatchParam<Range>{ w }, poet::DispatchParam<Range>{ h });
+        auto vw = w;
+        auto vh = h;
+        ankerl::nanobench::doNotOptimizeAway(vw);
+        ankerl::nanobench::doNotOptimizeAway(vh);
+        auto params = std::make_tuple(poet::DispatchParam<Range>{ vw }, poet::DispatchParam<Range>{ vh });
         total += poet::dispatch(simple_kernel{}, params, scale);
     }
     return total;

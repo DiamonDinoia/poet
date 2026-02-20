@@ -337,22 +337,27 @@ namespace detail {
     /// \brief Fused speculative index computation for all-contiguous N-D dispatch.
     /// Computes all indices unconditionally and checks OOB once at the end,
     /// allowing the CPU to pipeline index computations across dimensions.
+    ///
+    /// Uses explicit arrays with pack-expansion in braced initializer lists to
+    /// avoid lambda/mutable-capture patterns that produce poor GCC codegen.
     template<typename ParamTuple, std::size_t... Idx>
     POET_FORCEINLINE auto extract_flat_index_fused_impl(const ParamTuple &params,
       const std::array<std::size_t, sizeof...(Idx)> &strides,
       std::index_sequence<Idx...> /*idxs*/) -> std::size_t {
         using P = std::decay_t<ParamTuple>;
-        std::size_t oob = 0;
 
-        const std::size_t flat = (([&]() -> std::size_t {
-            using Seq = typename std::tuple_element_t<Idx, P>::seq_type;
-            constexpr int first = sequence_first<Seq>::value;
-            constexpr std::size_t len = sequence_size<Seq>::value;
-            const auto mapped = static_cast<std::size_t>(
-              static_cast<unsigned int>(std::get<Idx>(params).runtime_val) - static_cast<unsigned int>(first));
-            oob |= static_cast<std::size_t>(mapped >= len);
-            return mapped * strides[Idx];
-        }()) + ... + std::size_t{ 0 });
+        // Step 1: per-dimension mapped indices (pure expansion, no lambdas)
+        const std::size_t mapped[sizeof...(Idx)] = { static_cast<std::size_t>(
+          static_cast<unsigned int>(std::get<Idx>(params).runtime_val)
+          - static_cast<unsigned int>(sequence_first<typename std::tuple_element_t<Idx, P>::seq_type>::value))... };
+
+        // Step 2: OOB check via fold-or (no mutable captures)
+        const std::size_t oob = (static_cast<std::size_t>(
+                                   mapped[Idx] >= sequence_size<typename std::tuple_element_t<Idx, P>::seq_type>::value)
+                                 | ...);
+
+        // Step 3: flat index via fold-add
+        const std::size_t flat = ((mapped[Idx] * strides[Idx]) + ...);
 
         return POET_LIKELY(oob == 0) ? flat : dispatch_npos;
     }

@@ -1,6 +1,5 @@
 #include <array>
 #include <chrono>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -37,16 +36,18 @@ static inline double fast_work(std::size_t i) noexcept {
     return static_cast<double>(r) * 5.42101086242752217e-20;
 }
 
-// Heavy workload: 5-deep FMA chain.
+// Heavy workload: 5-deep multiply-add chain.
 // Latency ~20 cycles per call; useful for ILP / accumulator benchmarks.
+// Written as x*a+b (not std::fma) so the compiler emits hardware FMA when
+// available (-mfma/-march=native) without falling back to a software libm call.
 static inline double compute_work(std::size_t i) noexcept {
     const std::uint64_t r = splitmix64(static_cast<std::uint64_t>(i));
     double x = static_cast<double>(r) * 5.42101086242752217e-20;
-    x = std::fma(x, 1.0000001192092896, 0.3333333333333333);
-    x = std::fma(x, 0.9999998807907104, 0.14285714285714285);
-    x = std::fma(x, 1.0000000596046448, -0.0625);
-    x = std::fma(x, 1.0000001192092896, 0.25);
-    x = std::fma(x, 0.9999998807907104, -0.125);
+    x = x * 1.0000001192092896 + 0.3333333333333333;
+    x = x * 0.9999998807907104 + 0.14285714285714285;
+    x = x * 1.0000000596046448 + -0.0625;
+    x = x * 1.0000001192092896 + 0.25;
+    x = x * 0.9999998807907104 + -0.125;
     return x;
 }
 
