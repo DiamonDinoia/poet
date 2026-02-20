@@ -267,10 +267,16 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 #ifndef POET_DISABLE_PUSH_OPTIMIZE
 #if defined(__GNUC__) && !defined(__clang__)
 #if POET_HIGH_OPTIMIZATION
-// At -O3: Apply IRA pressure tuning for hot paths
-#define POET_PUSH_OPTIMIZE                                                        \
-    _Pragma("GCC push_options") _Pragma("GCC optimize(\"-fira-hoist-pressure\")") \
-      _Pragma("GCC optimize(\"-fno-ira-share-spill-slots\")") _Pragma("GCC optimize(\"-frename-registers\")")
+// At -O3: Apply IRA pressure tuning + semantic-interposition removal for hot paths.
+// -fno-semantic-interposition: allow inlining/IPO across function boundaries
+//   (GCC default assumes exported symbols may be LD_PRELOAD-interposed, which
+//    blocks optimizations even within the same TU; safe for header-only POET).
+// -fvect-cost-model=cheap: allow vectorization even when GCC's cost model is
+//   uncertain (helps SLP-vectorize independent accumulator chains in static_for).
+#define POET_PUSH_OPTIMIZE                                                                                    \
+    _Pragma("GCC push_options") _Pragma("GCC optimize(\"-fira-hoist-pressure\")")                             \
+      _Pragma("GCC optimize(\"-fno-ira-share-spill-slots\")") _Pragma("GCC optimize(\"-frename-registers\")") \
+        _Pragma("GCC optimize(\"-fno-semantic-interposition\")") _Pragma("GCC optimize(\"-fvect-cost-model=cheap\")")
 #define POET_POP_OPTIMIZE _Pragma("GCC pop_options")
 #else
 // Without -O3: Enable -O3 for this section
@@ -746,24 +752,32 @@ namespace detail {
     /// \brief Combined index validation and flattening for N-D dispatch.
     /// Returns the flat index directly, or dispatch_npos on miss.
     /// Avoids std::optional overhead from extract_runtime_indices.
+    ///
+    /// Uses explicit arrays with pack-expansion in braced initializer lists to
+    /// avoid [&] lambda mutable-capture patterns that produce poor GCC codegen.
+    /// Step 1: all lookups (no captures, no mutation).
+    /// Step 2: miss check via fold-and (short-circuit is implicit in the check,
+    ///         but all lookups run unconditionally — acceptable for sparse paths
+    ///         because sequence_runtime_lookup is cheap).
+    /// Step 3: flat accumulation via fold-add (only reached on all-hit).
     template<typename ParamTuple, std::size_t... Idx>
     POET_FORCEINLINE auto extract_flat_index_impl(const ParamTuple &params,
       const std::array<std::size_t, sizeof...(Idx)> &strides,
       std::index_sequence<Idx...> /*idxs*/) -> std::size_t {
         using P = std::decay_t<ParamTuple>;
-        std::size_t flat = 0;
 
-        const bool all_matched = ([&]() -> bool {
-            using Seq = typename std::tuple_element_t<Idx, P>::seq_type;
-            const std::size_t mapped = sequence_runtime_lookup<Seq>::find(std::get<Idx>(params).runtime_val);
-            if (POET_LIKELY(mapped != dispatch_npos)) {
-                flat += mapped * strides[Idx];
-                return true;
-            }
-            return false;
-        }() && ...);
+        // Step 1: per-dimension mapped indices (pure expansion, no lambdas)
+        const std::size_t indices[sizeof...(Idx)] = {
+            sequence_runtime_lookup<typename std::tuple_element_t<Idx, P>::seq_type>::find(
+              std::get<Idx>(params).runtime_val)...
+        };
 
-        return all_matched ? flat : dispatch_npos;
+        // Step 2: miss check — any npos → early return
+        const bool all_hit = ((indices[Idx] != dispatch_npos) && ...);
+        if (POET_UNLIKELY(!all_hit)) return dispatch_npos;
+
+        // Step 3: flat index via fold-add (all hits guaranteed)
+        return ((indices[Idx] * strides[Idx]) + ...);
     }
 
     /// \brief Fused speculative index computation for all-contiguous N-D dispatch.
