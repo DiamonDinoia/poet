@@ -82,6 +82,8 @@ POET_FORCEINLINE constexpr void static_loop_impl_block(Func &func, std::index_se
 /// register spills.  Each noinline block gets its own register allocation
 /// scope — the compiler fully optimises within the block but cannot
 /// interleave computations across block boundaries.
+POET_PUSH_OPTIMIZE
+
 template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t StartIndex, std::size_t... Is>
 POET_NOINLINE constexpr void static_loop_impl_block_isolated(Func &func, std::index_sequence<Is...> /*indices*/) {
     constexpr std::intmax_t Base = Begin + (Step * static_cast<std::intmax_t>(StartIndex));
@@ -112,6 +114,8 @@ POET_FORCEINLINE constexpr void emit_block_chunk_isolated(Func &func, std::index
        func, std::make_index_sequence<BlockSize>{}),
       ...);
 }
+
+POET_POP_OPTIMIZE
 
 template<typename Func,
   std::intmax_t Begin,

@@ -218,6 +218,8 @@ namespace detail {
         }
     };
 
+    POET_PUSH_OPTIMIZE
+
     template<typename FormTag, std::size_t Unroll, typename Callable, typename T>
     POET_FORCEINLINE void dispatch_tail(std::size_t count, Callable &callable, T index, T stride) {
         static_assert(Unroll > 1, "dispatch_tail requires Unroll > 1");
@@ -243,6 +245,8 @@ namespace detail {
           std::addressof(callable),
           c_index);
     }
+
+    POET_POP_OPTIMIZE
 
     // ========================================================================
     // Iteration count calculation
@@ -315,6 +319,8 @@ namespace detail {
     ///
     /// Handles all non-unit strides including negative, power-of-2, and general.
     /// The callable form is baked into the template parameter.
+    POET_PUSH_OPTIMIZE
+
     template<typename T, typename Callable, std::size_t Unroll, typename FormTag>
     POET_HOT_LOOP void
       dynamic_for_impl_general(const T begin, const T end, const T stride, Callable &callable, const FormTag tag) {
@@ -394,6 +400,8 @@ namespace detail {
             dispatch_tail_ct_stride<Step, FormTag, Unroll>(remaining, callable, index);
         }
     }
+
+    POET_POP_OPTIMIZE
 
 }// namespace detail
 

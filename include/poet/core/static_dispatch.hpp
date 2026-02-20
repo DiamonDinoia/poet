@@ -264,7 +264,8 @@ namespace detail {
         static constexpr std::size_t len = sizeof...(Values);
 
         static POET_FORCEINLINE auto find(int value) -> std::size_t {
-            const auto idx = static_cast<std::size_t>(value - first);
+            const auto idx =
+              static_cast<std::size_t>(static_cast<unsigned int>(value) - static_cast<unsigned int>(first));
             if (POET_LIKELY(idx < len)) { return idx; }
             return dispatch_npos;
         }
@@ -347,7 +348,8 @@ namespace detail {
             using Seq = typename std::tuple_element_t<Idx, P>::seq_type;
             constexpr int first = sequence_first<Seq>::value;
             constexpr std::size_t len = sequence_size<Seq>::value;
-            const auto mapped = static_cast<std::size_t>(std::get<Idx>(params).runtime_val - first);
+            const auto mapped = static_cast<std::size_t>(
+              static_cast<unsigned int>(std::get<Idx>(params).runtime_val) - static_cast<unsigned int>(first));
             oob |= static_cast<std::size_t>(mapped >= len);
             return mapped * strides[Idx];
         }()) + ... + std::size_t{ 0 });
@@ -875,6 +877,8 @@ namespace detail {
     inline constexpr const char *k_no_match_error =
       "poet::dispatch: no matching compile-time combination for runtime inputs";
 
+    POET_PUSH_OPTIMIZE
+
     /// \brief 1D dispatch through a function-pointer table.
     /// O(1) for contiguous sequences, O(log N) for sparse — selected by sequence_runtime_lookup.
     template<bool ThrowOnNoMatch, typename R, typename Functor, typename ParamTuple, typename... Args>
@@ -969,6 +973,9 @@ namespace detail {
               std::forward<Functor>(functor), params, std::forward<Args>(args)...);
         }
     }
+
+    POET_POP_OPTIMIZE
+
 }// namespace detail
 
 // DispatchParam-based API is variadic:

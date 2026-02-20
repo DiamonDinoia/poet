@@ -236,7 +236,16 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 // ============================================================================
 // POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE
 // ============================================================================
-/// Scoped optimization control. Enabled by default.
+/// GCC register-allocator tuning for hot paths. Wrap performance-critical
+/// function groups in POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE pairs.
+///
+/// At -O3 (POET_HIGH_OPTIMIZATION=1) on GCC, enables IRA pressure flags
+/// (-fira-hoist-pressure, -fno-ira-share-spill-slots, -frename-registers)
+/// that improve register allocation in unrolled and isolated blocks.
+/// Without -O3, promotes the section to -O3.
+/// On MSVC, enables aggressive optimization (/Ogt).
+/// On Clang and others: no-op (Clang cannot enable optimizations via pragma).
+///
 /// Opt-out via -DPOET_DISABLE_PUSH_OPTIMIZE to preserve custom flags.
 #ifndef POET_DISABLE_PUSH_OPTIMIZE
 #if defined(__GNUC__) && !defined(__clang__)
