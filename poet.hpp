@@ -1315,15 +1315,17 @@ namespace detail {
                 if constexpr (std::is_void_v<R>) {
                     table[idx](std::forward<Args>(args)...);
                     return;
+                } else {
+                    return table[idx](std::forward<Args>(args)...);
                 }
-                return table[idx](std::forward<Args>(args)...);
             } else {
                 auto &&fwd = std::forward<Functor>(functor);
                 if constexpr (std::is_void_v<R>) {
                     table[idx](std::addressof(static_cast<FunctorT &>(fwd)), std::forward<Args>(args)...);
                     return;
+                } else {
+                    return table[idx](std::addressof(static_cast<FunctorT &>(fwd)), std::forward<Args>(args)...);
                 }
-                return table[idx](std::addressof(static_cast<FunctorT &>(fwd)), std::forward<Args>(args)...);
             }
         }
         if constexpr (ThrowOnNoMatch) {
@@ -1331,7 +1333,6 @@ namespace detail {
         } else if constexpr (!std::is_void_v<R>) {
             return R{};
         }
-        if constexpr (!std::is_void_v<R>) { POET_UNREACHABLE(); }
     }
 
     /// \brief N-D dispatch through a flattened function-pointer table.
@@ -1356,15 +1357,17 @@ namespace detail {
                 if constexpr (std::is_void_v<R>) {
                     table[flat_idx](std::forward<Args>(args)...);
                     return;
+                } else {
+                    return table[flat_idx](std::forward<Args>(args)...);
                 }
-                return table[flat_idx](std::forward<Args>(args)...);
             } else {
                 auto &&fwd = std::forward<Functor>(functor);
                 if constexpr (std::is_void_v<R>) {
                     table[flat_idx](std::addressof(static_cast<FunctorT &>(fwd)), std::forward<Args>(args)...);
                     return;
+                } else {
+                    return table[flat_idx](std::addressof(static_cast<FunctorT &>(fwd)), std::forward<Args>(args)...);
                 }
-                return table[flat_idx](std::addressof(static_cast<FunctorT &>(fwd)), std::forward<Args>(args)...);
             }
         }
         if constexpr (ThrowOnNoMatch) {
@@ -1372,7 +1375,6 @@ namespace detail {
         } else if constexpr (!std::is_void_v<R>) {
             return R{};
         }
-        if constexpr (!std::is_void_v<R>) { POET_UNREACHABLE(); }
     }
 
     /// \brief Internal implementation for dispatch with compile-time error handling policy.
@@ -1541,15 +1543,17 @@ namespace detail {
           TL{});
 
         if (matched) {
-            if constexpr (std::is_void_v<result_type>) { return; }
-            return result_type(std::move(*out));
+            if constexpr (std::is_void_v<result_type>) {
+                return;
+            } else {
+                return result_type(std::move(*out));
+            }
         }
         if constexpr (ThrowOnNoMatch) {
             throw std::runtime_error("poet::dispatch_tuples: no matching compile-time tuple for runtime inputs");
         } else if constexpr (!std::is_void_v<result_type>) {
             return result_type{};
         }
-        if constexpr (!std::is_void_v<result_type>) { POET_UNREACHABLE(); }
     }
 }// namespace detail
 
