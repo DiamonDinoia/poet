@@ -119,7 +119,7 @@
 // poet_count_trailing_zeros
 // ============================================================================
 /// Counts trailing zero bits. UB if value is 0.
-#if __cpp_lib_bitops >= 201907L
+#if __cplusplus >= 202002L
 #include <bit>
 
 constexpr auto poet_count_trailing_zeros(unsigned int value) noexcept -> unsigned int {
@@ -228,6 +228,17 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 #endif
 
 // ============================================================================
+// Optimization level detection
+// ============================================================================
+#if defined(__OPTIMIZE__) && !defined(__OPTIMIZE_SIZE__)
+#define POET_HIGH_OPTIMIZATION 1// NOLINT(cppcoreguidelines-macro-usage)
+#elif defined(_MSC_VER) && !defined(_DEBUG) && defined(NDEBUG)
+#define POET_HIGH_OPTIMIZATION 1// NOLINT(cppcoreguidelines-macro-usage)
+#else
+#define POET_HIGH_OPTIMIZATION 0// NOLINT(cppcoreguidelines-macro-usage)
+#endif
+
+// ============================================================================
 // POET_HOT_LOOP
 // ============================================================================
 /// Marks hot-path functions for aggressive optimization and inlining.
@@ -237,6 +248,38 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 #define POET_HOT_LOOP __forceinline
 #else
 #define POET_HOT_LOOP inline
+#endif
+
+// ============================================================================
+// POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE
+// ============================================================================
+/// Scoped optimization control. Enabled by default.
+/// Opt-out via -DPOET_DISABLE_PUSH_OPTIMIZE to preserve custom flags.
+#ifndef POET_DISABLE_PUSH_OPTIMIZE
+#if defined(__GNUC__) && !defined(__clang__)
+#if POET_HIGH_OPTIMIZATION
+// At -O3: Apply IRA pressure tuning for hot paths
+#define POET_PUSH_OPTIMIZE                                                        \
+    _Pragma("GCC push_options") _Pragma("GCC optimize(\"-fira-hoist-pressure\")") \
+      _Pragma("GCC optimize(\"-fno-ira-share-spill-slots\")") _Pragma("GCC optimize(\"-frename-registers\")")
+#define POET_POP_OPTIMIZE _Pragma("GCC pop_options")
+#else
+// Without -O3: Enable -O3 for this section
+#define POET_PUSH_OPTIMIZE _Pragma("GCC push_options") _Pragma("GCC optimize(\"-O3\")")
+#define POET_POP_OPTIMIZE _Pragma("GCC pop_options")
+#endif
+#elif defined(_MSC_VER)
+#define POET_PUSH_OPTIMIZE __pragma(optimize("gt", on))
+#define POET_POP_OPTIMIZE __pragma(optimize("", on))
+#else
+// Clang and others: no-op (Clang can only disable opts, not enable)
+#define POET_PUSH_OPTIMIZE
+#define POET_POP_OPTIMIZE
+#endif
+#else
+// User opted out: no-op to preserve their custom flags
+#define POET_PUSH_OPTIMIZE
+#define POET_POP_OPTIMIZE
 #endif
 
 // ============================================================================
