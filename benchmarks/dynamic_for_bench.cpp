@@ -22,18 +22,22 @@ constexpr std::size_t default_unroll = 8;
 constexpr std::uint64_t salt_increment = 0x9e3779b97f4a7c15ULL;
 volatile std::uint64_t benchmark_salt = 1;
 
-static inline std::uint64_t splitmix64(std::uint64_t x) noexcept {
-    x += 0x9e3779b97f4a7c15ULL;
-    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
-    x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
-    return x ^ (x >> 31);
+// xorshift32: simple PRNG that both GCC and Clang vectorize well.
+// Used in game engines, simulation, and production systems.
+// Chosen for fair comparison: both compilers vectorize equally,
+// showing POET's value without compiler-specific optimization differences.
+static inline std::uint32_t xorshift32(std::uint32_t x) noexcept {
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    return x;
 }
 
 // Lightweight workload: just the hash, no FMA chain.
 // Used for loop-overhead benchmarks where the body is trivial.
 static inline double fast_work(std::size_t i) noexcept {
-    const std::uint64_t r = splitmix64(static_cast<std::uint64_t>(i));
-    return static_cast<double>(r) * 5.42101086242752217e-20;
+    const std::uint32_t r = xorshift32(static_cast<std::uint32_t>(i));
+    return static_cast<double>(static_cast<std::int32_t>(r)) * (1.0 / (1U << 31));
 }
 
 // Heavy workload: 5-deep multiply-add chain.
@@ -41,8 +45,8 @@ static inline double fast_work(std::size_t i) noexcept {
 // Written as x*a+b (not std::fma) so the compiler emits hardware FMA when
 // available (-mfma/-march=native) without falling back to a software libm call.
 static inline double compute_work(std::size_t i) noexcept {
-    const std::uint64_t r = splitmix64(static_cast<std::uint64_t>(i));
-    double x = static_cast<double>(r) * 5.42101086242752217e-20;
+    const std::uint32_t r = xorshift32(static_cast<std::uint32_t>(i));
+    double x = static_cast<double>(static_cast<std::int32_t>(r)) * (1.0 / (1U << 31));
     x = x * 1.0000001192092896 + 0.3333333333333333;
     x = x * 0.9999998807907104 + 0.14285714285714285;
     x = x * 1.0000000596046448 + -0.0625;

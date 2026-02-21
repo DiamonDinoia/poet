@@ -4,15 +4,15 @@ namespace poet_bench::static_for_support {
 
 namespace {
 
-    template<std::intmax_t N, std::size_t BlockSize> double static_for_dependent_ops_blocked(std::uint64_t s) {
-        double acc = 0.0;
+    template<std::intmax_t N, std::size_t BlockSize> double static_for_dependent_ops_blocked(std::uint32_t s) {
+        std::uint64_t acc = 0;
         poet::static_for<0, N, 1, BlockSize>(dependent_ops_functor{ acc, s });
-        return acc;
+        return static_cast<double>(acc);
     }
 
 }// namespace
 
-void run_static_for_bench_blocksize(std::uint64_t s) {
+void run_static_for_bench_blocksize(std::uint32_t s) {
     ankerl::nanobench::Bench bench;
     bench.title("4. BlockSize tuning: register pressure vs call overhead");
     bench.minEpochTime(std::chrono::milliseconds{ 10 });

@@ -39,6 +39,9 @@ set(DYNAMIC_FOR_HEAVY_TEST_SRCS
 set(STATIC_FOR_TEST_SRCS
   static_for_tests.cpp
 )
+set(REGISTER_INFO_TEST_SRCS
+  register_info_tests.cpp
+)
 set(DISPATCH_TEST_SRCS
   static_dispatch_basic_tests.cpp
   static_dispatch_throw_tests.cpp
@@ -124,6 +127,7 @@ macro(add_poet_tests_suite suite_target cxx_feature)
     ${suite_target}_headers
     ${suite_target}_dynamic_for
     ${suite_target}_static_for
+    ${suite_target}_register_info
     ${suite_target}_dispatch
     ${suite_target}_heavy_array1d
     ${suite_target}_heavy_arraynd
@@ -137,6 +141,7 @@ macro(add_poet_tests_suite suite_target cxx_feature)
     target_sources(${suite_target}_dynamic_for PRIVATE ${DYNAMIC_FOR_HEAVY_TEST_SRCS})
   endif()
   add_poet_test_exec(${suite_target}_static_for ${cxx_feature} ${STATIC_FOR_TEST_SRCS})
+  add_poet_test_exec(${suite_target}_register_info ${cxx_feature} ${REGISTER_INFO_TEST_SRCS})
   add_poet_test_exec(${suite_target}_dispatch ${cxx_feature} ${DISPATCH_TEST_SRCS})
 
   # Heavy tests: split by category to reduce peak memory usage during linking

@@ -2,7 +2,7 @@
 
 namespace poet_bench::static_for_support {
 
-void run_static_for_bench_simple(std::uint64_t s) {
+void run_static_for_bench_simple(std::uint32_t s) {
     ankerl::nanobench::Bench bench;
     bench.title("2. Simple accumulation (baseline - compiler can auto-unroll both)");
     bench.minEpochTime(std::chrono::milliseconds{ 10 });

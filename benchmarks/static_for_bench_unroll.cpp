@@ -2,7 +2,7 @@
 
 namespace poet_bench::static_for_support {
 
-void run_static_for_bench_unroll(std::uint64_t s) {
+void run_static_for_bench_unroll(std::uint32_t s) {
     constexpr std::intmax_t num_iters = 64;
     ankerl::nanobench::Bench bench;
     bench.title("3. Effect of unrolling on ILP (64 iterations)");

@@ -2,7 +2,7 @@
 
 namespace poet_bench::static_for_support {
 
-void run_static_for_bench_dependent(std::uint64_t s) {
+void run_static_for_bench_dependent(std::uint32_t s) {
     ankerl::nanobench::Bench bench;
     bench.title("1. Compile-time dependent operations (different constants per iteration)");
     bench.minEpochTime(std::chrono::milliseconds{ 10 });
