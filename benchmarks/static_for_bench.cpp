@@ -123,7 +123,7 @@ int main() {
     // ════════════════════════════════════════════════════════════════════════
     {
         ankerl::nanobench::Bench b;
-        b.minEpochTime(20ms).relative(true);
+        b.minEpochTime(50ms).relative(true);
         b.title("Map: static_for tuned vs default (N=" + std::to_string(kSweepN) + ", heavy body)");
 
         run(b, kSweepN, "for loop", [salt] {
@@ -155,7 +155,7 @@ int main() {
     // ════════════════════════════════════════════════════════════════════════
     {
         ankerl::nanobench::Bench b;
-        b.minEpochTime(20ms).relative(true);
+        b.minEpochTime(50ms).relative(true);
         b.title("Multi-acc: static_for tuned vs default (N=" + std::to_string(kSweepN) + ", heavy body)");
 
         run(b, kSweepN, "for loop", [salt] {

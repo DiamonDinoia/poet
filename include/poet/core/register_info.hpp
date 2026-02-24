@@ -1,5 +1,4 @@
-#ifndef POET_CORE_REGISTER_INFO_HPP
-#define POET_CORE_REGISTER_INFO_HPP
+#pragma once
 
 #include <cstddef>
 
@@ -276,5 +275,3 @@ POET_CPP20_CONSTEVAL size_t vector_lanes_64bit() noexcept { return available_reg
 POET_CPP20_CONSTEVAL size_t vector_lanes_32bit() noexcept { return available_registers().lanes_32bit; }
 
 }// namespace poet
-
-#endif// POET_CORE_REGISTER_INFO_HPP

@@ -1,5 +1,4 @@
-#ifndef POET_CORE_STATIC_DISPATCH_HPP
-#define POET_CORE_STATIC_DISPATCH_HPP
+#pragma once
 
 /// \file static_dispatch.hpp
 /// \brief Runtime-to-compile-time dispatch via function pointer tables.
@@ -1214,5 +1213,3 @@ auto dispatch(throw_on_no_match_t /*tag*/, Functor &&functor, ParamTuple const &
 }
 
 }// namespace poet
-
-#endif// POET_CORE_STATIC_DISPATCH_HPP

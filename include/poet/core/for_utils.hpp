@@ -1,5 +1,4 @@
-#ifndef POET_CORE_FOR_UTILS_HPP
-#define POET_CORE_FOR_UTILS_HPP
+#pragma once
 
 /// \file for_utils.hpp
 /// \brief Internal utilities for compile-time loop unrolling and range computation.
@@ -85,7 +84,8 @@ POET_FORCEINLINE constexpr void static_loop_impl_block(Func &func, std::index_se
 POET_PUSH_OPTIMIZE
 
 template<typename Func, std::intmax_t Begin, std::intmax_t Step, std::size_t StartIndex, std::size_t... Is>
-POET_NOINLINE constexpr void static_loop_impl_block_isolated(Func &func, std::index_sequence<Is...> /*indices*/) {
+POET_NOINLINE_FLATTEN constexpr void static_loop_impl_block_isolated(Func &func,
+  std::index_sequence<Is...> /*indices*/) {
     constexpr std::intmax_t Base = Begin + (Step * static_cast<std::intmax_t>(StartIndex));
     (func(std::integral_constant<std::intmax_t, Base + (Step * static_cast<std::intmax_t>(Is))>{}), ...);
 }
@@ -165,5 +165,3 @@ template<typename Functor> struct template_static_loop_invoker {
 };
 
 }// namespace poet::detail
-
-#endif// POET_CORE_FOR_UTILS_HPP

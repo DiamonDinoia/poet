@@ -1,5 +1,4 @@
-#ifndef POET_POET_HPP
-#define POET_POET_HPP
+#pragma once
 
 /// \file poet.hpp
 /// \brief Umbrella header aggregating the public POET API surface.
@@ -19,4 +18,3 @@
 #include <poet/core/undef_macros.hpp>
 // NOLINTEND(llvm-include-order)
 // clang-format on
-#endif// POET_POET_HPP

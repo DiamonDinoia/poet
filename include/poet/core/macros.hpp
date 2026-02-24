@@ -89,6 +89,30 @@
 #endif
 
 // ============================================================================
+// POET_NOINLINE_FLATTEN
+// ============================================================================
+/// Prevents a function from being inlined into its caller (register isolation)
+/// while forcing all functions it calls to be inlined into it.
+///
+/// This is critical for GCC codegen in static_for isolated blocks: without
+/// flatten, GCC's ISRA pass extracts each functor operator() instantiation
+/// into a separate out-of-line clone, causing redundant constant reloads
+/// from .rodata on every call (5 FMA constants * 32 iterations = 160
+/// wasted loads per block).  With flatten, GCC inlines all functor calls
+/// within the block so constants are hoisted into registers once at block
+/// entry — matching Clang's default behavior.
+///
+/// Clang already inlines everything within noinline blocks, so flatten is
+/// harmless but included for consistency.
+#ifdef _MSC_VER
+#define POET_NOINLINE_FLATTEN __declspec(noinline)
+#elif defined(__GNUC__) || defined(__clang__)
+#define POET_NOINLINE_FLATTEN __attribute__((noinline, flatten))
+#else
+#define POET_NOINLINE_FLATTEN
+#endif
+
+// ============================================================================
 // POET_LIKELY / POET_UNLIKELY
 // ============================================================================
 /// Branch prediction hints. Use for conditions true/false >95% of the time.
@@ -104,6 +128,10 @@
 // poet_count_trailing_zeros
 // ============================================================================
 /// Counts trailing zero bits. UB if value is 0.
+/// Guarded separately so it is defined only once even when macros.hpp is
+/// re-included after undef_macros.hpp.
+#ifndef POET_COUNT_TRAILING_ZEROS_DEFINED
+#define POET_COUNT_TRAILING_ZEROS_DEFINED
 #if __cplusplus >= 202002L
 #include <bit>
 
@@ -211,6 +239,7 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 }
 
 #endif
+#endif// POET_COUNT_TRAILING_ZEROS_DEFINED
 
 // ============================================================================
 // Optimization level detection
@@ -269,8 +298,15 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 #define POET_POP_OPTIMIZE _Pragma("GCC pop_options")
 #endif
 #elif defined(_MSC_VER)
+// In Debug builds, /RTC1 (runtime checks) is incompatible with /O2.
+// Only enable optimization pragma in non-debug MSVC builds.
+#ifndef _DEBUG
 #define POET_PUSH_OPTIMIZE __pragma(optimize("gt", on))
 #define POET_POP_OPTIMIZE __pragma(optimize("", on))
+#else
+#define POET_PUSH_OPTIMIZE
+#define POET_POP_OPTIMIZE
+#endif
 #else
 // Clang and others: no-op (Clang can only disable opts, not enable)
 #define POET_PUSH_OPTIMIZE

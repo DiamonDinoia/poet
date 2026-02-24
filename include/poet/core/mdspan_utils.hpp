@@ -1,5 +1,4 @@
-#ifndef POET_CORE_MDSPAN_UTILS_HPP
-#define POET_CORE_MDSPAN_UTILS_HPP
+#pragma once
 
 /// \file mdspan_utils.hpp
 /// \brief Multidimensional index utilities for N-D dispatch table generation.
@@ -34,5 +33,3 @@ POET_FORCEINLINE POET_CPP23_CONSTEXPR auto compute_strides(const std::array<std:
 }
 
 }// namespace poet::detail
-
-#endif// POET_CORE_MDSPAN_UTILS_HPP

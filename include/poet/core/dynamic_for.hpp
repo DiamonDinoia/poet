@@ -1,5 +1,4 @@
-#ifndef POET_CORE_DYNAMIC_FOR_HPP
-#define POET_CORE_DYNAMIC_FOR_HPP
+#pragma once
 
 /// \file dynamic_for.hpp
 /// \brief Provides runtime loop execution with compile-time unrolling.
@@ -588,5 +587,3 @@ template<std::size_t U, typename F> constexpr auto make_dynamic_for(F &&f) -> dy
 
 }// namespace poet
 #endif// __cplusplus >= 202002L
-
-#endif// POET_CORE_DYNAMIC_FOR_HPP

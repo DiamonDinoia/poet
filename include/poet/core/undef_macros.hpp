@@ -36,11 +36,20 @@
 /// #include <poet/core/undef_macros.hpp>
 /// ```
 ///
+/// **Re-include to restore macros:**
+/// After this header is included, re-including <poet/core/macros.hpp> will
+/// redefine all POET macros.
+///
 /// **Important Notes:**
 /// 1. Include this header ONLY after all code that uses POET macros.
-/// 2. Once macros are undefined, you cannot use them again unless you re-include the POET headers.
-/// 3. The poet_count_trailing_zeros function remains available (it's not a macro).
-/// 4. Template-based POET utilities (static_for, dynamic_for, dispatch) are unaffected.
+/// 2. The poet_count_trailing_zeros function remains available (it's not a macro).
+/// 3. Template-based POET utilities (static_for, dynamic_for, dispatch) are unaffected.
+
+// Re-arm macros.hpp so a subsequent #include <poet/core/macros.hpp> redefines
+// everything.
+#ifdef POET_CORE_MACROS_HPP
+#undef POET_CORE_MACROS_HPP
+#endif
 
 // ============================================================================
 // Undefine POET_UNREACHABLE

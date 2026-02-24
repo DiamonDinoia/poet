@@ -1,5 +1,4 @@
-#ifndef POET_CORE_STATIC_FOR_HPP
-#define POET_CORE_STATIC_FOR_HPP
+#pragma once
 
 /// \file static_for.hpp
 /// \brief Provides a compile-time loop unrolling utility.
@@ -66,8 +65,8 @@ namespace detail {
         constexpr auto count = detail::compute_range_count<Begin, End, Step>();
         if constexpr (count == 0) {
             return 1;
-        } else if constexpr (count > detail::kMaxStaticLoopBlock) {
-            return detail::kMaxStaticLoopBlock;
+        } else if constexpr (count > kMaxStaticLoopBlock) {
+            return kMaxStaticLoopBlock;
         } else {
             return count;
         }
@@ -202,5 +201,3 @@ template<std::intmax_t End, typename Func> POET_FORCEINLINE constexpr void stati
 }
 
 }// namespace poet
-
-#endif// POET_CORE_STATIC_FOR_HPP
