@@ -14,11 +14,12 @@
 /// POET defines several utility macros for portability and optimization:
 /// - POET_UNREACHABLE: Marks unreachable code paths
 /// - POET_FORCEINLINE: Forces function inlining
-/// - POET_NOINLINE: Prevents function inlining
+/// - POET_NOINLINE_FLATTEN: noinline+flatten for register-isolated blocks
 /// - POET_HOT_LOOP: Hot path optimization with aggressive inlining
 /// - POET_LIKELY / POET_UNLIKELY: Branch prediction hints
-/// - POET_ASSUME / POET_ASSUME_NOT_NULL: Compiler assumption hints
-/// - POET_CPP20_CONSTEVAL / POET_CPP20_CONSTEXPR / POET_CPP23_CONSTEXPR: Feature detection
+/// - POET_ASSUME: Compiler assumption hint
+/// - POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE: GCC register-allocator tuning
+/// - POET_CPP20_CONSTEVAL: Feature detection
 /// - poet_count_trailing_zeros: (function, not macro — unaffected)
 ///
 /// **Usage with individual headers:**
@@ -66,10 +67,10 @@
 #endif
 
 // ============================================================================
-// Undefine POET_NOINLINE
+// Undefine POET_NOINLINE_FLATTEN
 // ============================================================================
-#ifdef POET_NOINLINE
-#undef POET_NOINLINE
+#ifdef POET_NOINLINE_FLATTEN
+#undef POET_NOINLINE_FLATTEN
 #endif
 
 // ============================================================================
@@ -84,14 +85,10 @@
 #endif
 
 // ============================================================================
-// Undefine POET_ASSUME / POET_ASSUME_NOT_NULL
+// Undefine POET_ASSUME
 // ============================================================================
 #ifdef POET_ASSUME
 #undef POET_ASSUME
-#endif
-
-#ifdef POET_ASSUME_NOT_NULL
-#undef POET_ASSUME_NOT_NULL
 #endif
 
 // ============================================================================
@@ -102,18 +99,21 @@
 #endif
 
 // ============================================================================
+// Undefine POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE
+// ============================================================================
+#ifdef POET_PUSH_OPTIMIZE
+#undef POET_PUSH_OPTIMIZE
+#endif
+
+#ifdef POET_POP_OPTIMIZE
+#undef POET_POP_OPTIMIZE
+#endif
+
+// ============================================================================
 // Undefine C++20/C++23 feature detection macros
 // ============================================================================
 #ifdef POET_CPP20_CONSTEVAL
 #undef POET_CPP20_CONSTEVAL
-#endif
-
-#ifdef POET_CPP20_CONSTEXPR
-#undef POET_CPP20_CONSTEXPR
-#endif
-
-#ifdef POET_CPP23_CONSTEXPR
-#undef POET_CPP23_CONSTEXPR
 #endif
 
 #endif// POET_UNDEF_MACROS_HPP

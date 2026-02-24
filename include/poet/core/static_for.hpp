@@ -9,7 +9,6 @@
 /// at compile-time.
 
 #include <cstddef>
-#include <cstdint>
 #include <type_traits>
 #include <utility>
 
@@ -20,56 +19,36 @@ namespace poet {
 namespace detail {
 
     template<typename Callable,
-      std::intmax_t Begin,
-      std::intmax_t Step,
+      std::ptrdiff_t Begin,
+      std::ptrdiff_t Step,
       std::size_t BlockSize,
       std::size_t FullBlocks,
-      std::size_t Remainder,
-      bool Isolate>
+      std::size_t Remainder>
     POET_FORCEINLINE constexpr void static_loop_run_blocks(Callable &callable) {
         if constexpr (FullBlocks > 0) {
-            // When BlockSize is explicitly tuned, use register-isolated (noinline)
-            // blocks for multi-block loops.  This prevents the compiler from
-            // interleaving computations across blocks, which would cause excessive
-            // register spills on x86-64.
-            //
-            // When BlockSize is the default (Isolate == false), always inline —
-            // the user hasn't opted into register-pressure tuning, so prefer
-            // maximum inlining to let the compiler optimise freely.
-            if constexpr (Isolate && FullBlocks > 1) {
-                emit_all_blocks_isolated<Callable, Begin, Step, BlockSize, 0, FullBlocks>(callable);
+            // Use register-isolated (noinline) blocks for multi-block loops to
+            // prevent the compiler from interleaving computations across blocks,
+            // which would cause excessive register spills on x86-64.
+            // Single-block loops are always inlined.
+            if constexpr (FullBlocks > 1) {
+                emit_blocks_isolated<Callable, Begin, Step, BlockSize>(
+                  callable, std::make_index_sequence<FullBlocks>{});
             } else {
-                emit_all_blocks<Callable, Begin, Step, BlockSize, 0, FullBlocks>(callable);
+                emit_blocks<Callable, Begin, Step, BlockSize>(callable, std::make_index_sequence<FullBlocks>{});
             }
         }
 
         if constexpr (Remainder > 0) {
-            // Remainder is always small (< BlockSize), so always inline it.
-            static_loop_impl_block<Callable, Begin, Step, FullBlocks * BlockSize>(
-              callable, std::make_index_sequence<Remainder>{});
+            run_block<Callable, Begin, Step, FullBlocks * BlockSize>(callable, std::make_index_sequence<Remainder>{});
         }
     }
 
-    /// \brief Computes a safe default block size for loop unrolling.
-    ///
-    /// - For small loops, returns the total iteration count.
-    /// - For large loops, clamps the size to `kMaxStaticLoopBlock` to prevent
-    ///   massive symbol names and excessive compile times.
-    ///
-    /// \tparam Begin Range start.
-    /// \tparam End Range end.
-    /// \tparam Step Range step.
-    /// \return Optimized block size.
-    template<std::intmax_t Begin, std::intmax_t End, std::intmax_t Step>
+    /// \brief Returns the default block size for loop unrolling: the total
+    /// iteration count, or 1 for empty ranges (BlockSize must be > 0).
+    template<std::ptrdiff_t Begin, std::ptrdiff_t End, std::ptrdiff_t Step>
     POET_CPP20_CONSTEVAL auto compute_default_static_loop_block_size() noexcept -> std::size_t {
         constexpr auto count = detail::compute_range_count<Begin, End, Step>();
-        if constexpr (count == 0) {
-            return 1;
-        } else if constexpr (count > kMaxStaticLoopBlock) {
-            return kMaxStaticLoopBlock;
-        } else {
-            return count;
-        }
+        return count == 0 ? 1 : count;
     }
 
 }// namespace detail
@@ -81,17 +60,16 @@ namespace detail {
 /// into blocks of `BlockSize` elements to manage template instantiation depth.
 ///
 /// Callables are supported in two forms:
-/// - A callable that accepts a `std::integral_constant<std::intmax_t, I>`
+/// - A callable that accepts a `std::integral_constant<std::ptrdiff_t, I>`
 ///   argument. This form is constexpr-friendly and lets the implementation
 ///   forward the index as a compile-time value.
 /// - A functor exposing `template <auto I>` call operators. In this case,
 ///   `static_for` internally adapts the functor to the integral-constant based
-///   machinery.
+///   machinery./cle
 ///
-/// The default `BlockSize` spans the entire range, clamped to the internal
-/// `detail::kMaxStaticLoopBlock` cap (currently `256`), to balance unrolling
-/// with compile-time cost.  With the default block size, **all iterations are
-/// fully inlined** so the compiler can optimise freely across the entire loop.
+/// The default `BlockSize` spans the entire range, so with the default block
+/// size **all iterations are fully inlined** as a single block and the compiler
+/// can optimise freely across the entire loop.
 /// Lvalue callables are preserved by reference, while rvalues are copied into
 /// a local instance for the duration of the loop.
 ///
@@ -111,41 +89,18 @@ namespace detail {
 ///   poet::static_for<0, 64, 1, 8>(func);
 /// \endcode
 ///
-/// GCC vectorizes the loop body `lanes_64`-wide: each vector group packs
-/// `lanes_64` iterations into one SIMD register, plus the FMA chain needs
-/// ~`fma_depth + 1` constant/temporary registers as shared overhead.  The
-/// spill-free limit is therefore:
 ///
-///   `max_bs = (vec_regs − (fma_depth + 1)) × lanes_64`
-///
-/// Measured spill cliffs (GCC 15, -O3, 5-deep FMA chain):
-///
-///   | ISA     | vec_regs | lanes_64 | spill-free max | first spills |
-///   |---------|----------|----------|----------------|--------------|
-///   | SSE2    |    16    |    2     | >128 (scalar)  | N/A          |
-///   | AVX2    |    16    |    4     |  40 accs       | 44 accs      |
-///   | AVX-512 |    32    |    8     | >256 (batched) | N/A          |
-///
-/// In practice icache pressure caps the useful block size well below the
-/// spill limit.  A good starting point:
-///
-///   `optimal_bs ≈ vec_regs × lanes_64 / 2`
-///   SSE2 → 16,  AVX2 → 32,  AVX-512 → 128
-///
-/// Use the `poet_bench_static_for_native` benchmark to measure the effect
-/// of different block sizes on your workload.
 ///
 /// \tparam Begin Initial value of the range.
 /// \tparam End Exclusive terminator of the range.
 /// \tparam Step Increment applied between iterations (defaults to `1`).
 /// \tparam BlockSize Number of iterations expanded per block (defaults to the
-///                   total iteration count, clamped to `1` for empty ranges and
-///                   to `detail::kMaxStaticLoopBlock` for large ranges).
+///                   total iteration count, or `1` for empty ranges).
 /// \tparam Func Callable type.
 /// \param func Callable instance invoked once per iteration.
-template<std::intmax_t Begin,
-  std::intmax_t End,
-  std::intmax_t Step = 1,
+template<std::ptrdiff_t Begin,
+  std::ptrdiff_t End,
+  std::ptrdiff_t Step = 1,
   std::size_t BlockSize = detail::compute_default_static_loop_block_size<Begin, End, Step>(),
   typename Func>
 POET_FORCEINLINE constexpr void static_for(Func &&func) {
@@ -157,35 +112,27 @@ POET_FORCEINLINE constexpr void static_for(Func &&func) {
     constexpr auto full_blocks = count / BlockSize;
     constexpr auto remainder = count % BlockSize;
 
-    // Register isolation is only applied when the user explicitly tuned
-    // BlockSize.  The default path fully inlines everything to let the
-    // compiler optimise without artificial register-scope boundaries.
-    constexpr bool isolate = (BlockSize != detail::compute_default_static_loop_block_size<Begin, End, Step>());
-
     // Callable storage is handled inline (rather than via a helper) to
     // avoid introducing an indirection that compilers may refuse to
     // inline across the block emission pipeline.
     using callable_t = std::remove_reference_t<Func>;
 
-    if constexpr (std::is_invocable_v<Func, std::integral_constant<std::intmax_t, Begin>>) {
+    if constexpr (std::is_invocable_v<callable_t &, std::integral_constant<std::ptrdiff_t, Begin>>) {
         if constexpr (std::is_lvalue_reference_v<Func>) {
-            detail::static_loop_run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder, isolate>(func);
+            detail::static_loop_run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(func);
         } else {
             callable_t callable(std::forward<Func>(func));
-            detail::static_loop_run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder, isolate>(
-              callable);
+            detail::static_loop_run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(callable);
         }
     } else {
-        using invoker_t = detail::template_static_loop_invoker<callable_t>;
+        using invoker_t = detail::template_invoker<callable_t>;
         if constexpr (std::is_lvalue_reference_v<Func>) {
-            const invoker_t invoker{ &func };
-            detail::static_loop_run_blocks<const invoker_t, Begin, Step, BlockSize, full_blocks, remainder, isolate>(
-              invoker);
+            invoker_t invoker{ func };
+            detail::static_loop_run_blocks<invoker_t, Begin, Step, BlockSize, full_blocks, remainder>(invoker);
         } else {
             callable_t callable(std::forward<Func>(func));
-            const invoker_t invoker{ &callable };
-            detail::static_loop_run_blocks<const invoker_t, Begin, Step, BlockSize, full_blocks, remainder, isolate>(
-              invoker);
+            invoker_t invoker{ callable };
+            detail::static_loop_run_blocks<invoker_t, Begin, Step, BlockSize, full_blocks, remainder>(invoker);
         }
     }
 }
@@ -196,7 +143,7 @@ POET_FORCEINLINE constexpr void static_for(Func &&func) {
 ///
 /// \tparam End Exclusive upper bound of the range.
 /// \param func Callable instance invoked once per iteration.
-template<std::intmax_t End, typename Func> POET_FORCEINLINE constexpr void static_for(Func &&func) {
+template<std::ptrdiff_t End, typename Func> POET_FORCEINLINE constexpr void static_for(Func &&func) {
     static_for<0, End>(std::forward<Func>(func));
 }
 

@@ -84,7 +84,6 @@
 /// - `Unroll=1` compiles to a plain loop with no dispatch overhead.
 
 #include <cstddef>
-#include <cstdint>
 #include <limits>
 #include <type_traits>
 #include <utility>
@@ -157,8 +156,8 @@ namespace detail {
         T base;
         T stride;
 
-        template<std::intmax_t Value>
-        POET_FORCEINLINE constexpr void operator()(std::integral_constant<std::intmax_t, Value> /*ic*/) const {
+        template<std::ptrdiff_t Value>
+        POET_FORCEINLINE constexpr void operator()(std::integral_constant<std::ptrdiff_t, Value> /*ic*/) const {
             invoke_lane<static_cast<std::size_t>(Value)>(FormTag{}, callable, base + static_cast<T>(Value) * stride);
         }
     };
@@ -168,12 +167,12 @@ namespace detail {
     /// The stride is baked into the template parameter, so per-lane
     /// multiplication uses compile-time constants (including Step=1
     /// where `Value * 1` is constant-folded away).
-    template<std::intmax_t Step, typename FormTag, typename Callable, typename T> struct block_invoker_ct_stride {
+    template<std::ptrdiff_t Step, typename FormTag, typename Callable, typename T> struct block_invoker_ct_stride {
         Callable &callable;
         T base;
 
-        template<std::intmax_t Value>
-        POET_FORCEINLINE constexpr void operator()(std::integral_constant<std::intmax_t, Value> /*ic*/) const {
+        template<std::ptrdiff_t Value>
+        POET_FORCEINLINE constexpr void operator()(std::integral_constant<std::ptrdiff_t, Value> /*ic*/) const {
             invoke_lane<static_cast<std::size_t>(Value)>(FormTag{}, callable, base + static_cast<T>(Value * Step));
         }
     };
@@ -184,24 +183,23 @@ namespace detail {
 
     /// \brief Executes an unrolled block with runtime stride.
     template<typename FormTag, typename Callable, typename T, std::size_t Count>
-    POET_FORCEINLINE constexpr void execute_block([[maybe_unused]] FormTag /*tag*/,
+    POET_FORCEINLINE constexpr void execute_block(FormTag /*tag*/,
       [[maybe_unused]] Callable &callable,
       [[maybe_unused]] T base,
       [[maybe_unused]] T stride) {
         if constexpr (Count > 0) {
             block_invoker<FormTag, Callable, T> invoker{ callable, base, stride };
-            static_for<0, static_cast<std::intmax_t>(Count)>(invoker);
+            static_for<0, static_cast<std::ptrdiff_t>(Count)>(invoker);
         }
     }
 
     /// \brief Executes an unrolled block with compile-time stride.
-    template<std::intmax_t Step, typename FormTag, typename Callable, typename T, std::size_t Count>
-    POET_FORCEINLINE constexpr void execute_block_ct_stride([[maybe_unused]] FormTag /*tag*/,
-      [[maybe_unused]] Callable &callable,
-      [[maybe_unused]] T base) {
+    template<std::ptrdiff_t Step, typename FormTag, typename Callable, typename T, std::size_t Count>
+    POET_FORCEINLINE constexpr void
+      execute_block_ct_stride(FormTag /*tag*/, [[maybe_unused]] Callable &callable, [[maybe_unused]] T base) {
         if constexpr (Count > 0) {
             block_invoker_ct_stride<Step, FormTag, Callable, T> invoker{ callable, base };
-            static_for<0, static_cast<std::intmax_t>(Count)>(invoker);
+            static_for<0, static_cast<std::ptrdiff_t>(Count)>(invoker);
         }
     }
 
@@ -226,7 +224,7 @@ namespace detail {
     ///
     /// The stride is baked into the functor type, eliminating the stride
     /// argument from the dispatch table entries.
-    template<std::intmax_t Step, typename FormTag, typename Callable, typename T>
+    template<std::ptrdiff_t Step, typename FormTag, typename Callable, typename T>
     struct tail_dispatch_functor_ct_stride {
         template<int N> POET_FORCEINLINE void operator()(Callable *callable, T index) const {
             if constexpr (N > 0) {
@@ -243,25 +241,22 @@ namespace detail {
         static_assert(Unroll > 1, "dispatch_tail requires Unroll > 1");
         if (count == 0) { return; }
         const tail_dispatch_functor<FormTag, Callable, T> functor{};
-        const T c_index = index;
-        const T c_stride = stride;
         poet::dispatch(functor,
           poet::DispatchParam<poet::make_range<1, static_cast<int>(Unroll - 1)>>{ static_cast<int>(count) },
           std::addressof(callable),
-          c_index,
-          c_stride);
+          index,
+          stride);
     }
 
-    template<std::intmax_t Step, typename FormTag, std::size_t Unroll, typename Callable, typename T>
+    template<std::ptrdiff_t Step, typename FormTag, std::size_t Unroll, typename Callable, typename T>
     POET_FORCEINLINE void dispatch_tail_ct_stride(std::size_t count, Callable &callable, T index) {
         static_assert(Unroll > 1, "dispatch_tail_ct_stride requires Unroll > 1");
         if (count == 0) { return; }
         const tail_dispatch_functor_ct_stride<Step, FormTag, Callable, T> functor{};
-        const T c_index = index;
         poet::dispatch(functor,
           poet::DispatchParam<poet::make_range<1, static_cast<int>(Unroll - 1)>>{ static_cast<int>(count) },
           std::addressof(callable),
-          c_index);
+          index);
     }
 
     POET_POP_OPTIMIZE
@@ -313,7 +308,7 @@ namespace detail {
     /// Uses `if constexpr` on the sign of Step to eliminate runtime branches
     /// for stride direction. The compiler can also constant-fold power-of-2
     /// divisions since the stride is a template parameter.
-    template<std::intmax_t Step, typename T>
+    template<std::ptrdiff_t Step, typename T>
     POET_FORCEINLINE constexpr auto calculate_iteration_count_ct(T begin, T end) -> std::size_t {
         static_assert(Step != 0, "Step must be non-zero");
         if constexpr (Step > 0) {
@@ -387,7 +382,7 @@ namespace detail {
     /// The runtime stride=1 fast path also routes here (as Step=1), where
     /// `Value * 1` is constant-folded, producing identical codegen to a
     /// hand-written stride-1 loop.
-    template<std::intmax_t Step, typename T, typename Callable, std::size_t Unroll, typename FormTag>
+    template<std::ptrdiff_t Step, typename T, typename Callable, std::size_t Unroll, typename FormTag>
     POET_HOT_LOOP void dynamic_for_impl_ct_stride(const T begin, const T end, Callable &callable, const FormTag tag) {
         std::size_t count = calculate_iteration_count_ct<Step>(begin, end);
         if (POET_UNLIKELY(count == 0)) { return; }
@@ -408,7 +403,7 @@ namespace detail {
                 return;
             }
 
-            constexpr T stride_times_unroll = static_cast<T>(static_cast<std::intmax_t>(Unroll) * Step);
+            constexpr T stride_times_unroll = static_cast<T>(static_cast<std::ptrdiff_t>(Unroll) * Step);
             while (remaining >= Unroll) {
                 execute_block_ct_stride<Step, FormTag, Callable, T, Unroll>(tag, callable, index);
                 index += stride_times_unroll;
@@ -447,8 +442,6 @@ namespace detail {
 template<std::size_t Unroll, typename T1, typename T2, typename T3, typename Func>
 POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, T3 step, Func &&func) {
     static_assert(Unroll > 0, "dynamic_for requires Unroll > 0");
-    static_assert(
-      Unroll <= detail::kMaxStaticLoopBlock, "dynamic_for supports unroll factors up to kMaxStaticLoopBlock");
 
     using T = std::common_type_t<T1, T2, T3>;
     const T s = static_cast<T>(step);
@@ -491,12 +484,10 @@ POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, T3 step, Func &&fu
 /// \param begin Inclusive start bound.
 /// \param end Exclusive end bound.
 /// \param func Callable invoked for each iteration.
-template<std::size_t Unroll, std::intmax_t Step, typename T1, typename T2, typename Func>
+template<std::size_t Unroll, std::ptrdiff_t Step, typename T1, typename T2, typename Func>
 POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, Func &&func) {
     static_assert(Unroll > 0, "dynamic_for requires Unroll > 0");
     static_assert(Step != 0, "dynamic_for requires Step != 0");
-    static_assert(
-      Unroll <= detail::kMaxStaticLoopBlock, "dynamic_for supports unroll factors up to kMaxStaticLoopBlock");
 
     using T = std::common_type_t<T1, T2>;
 

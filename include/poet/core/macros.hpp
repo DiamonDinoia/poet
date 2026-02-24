@@ -54,41 +54,6 @@
 #endif
 
 // ============================================================================
-// POET_ASSUME_NOT_NULL
-// ============================================================================
-/// Tells compiler that pointer is non-null. UB if null at runtime.
-/// Use on pointers derived from references or after null checks.
-#if __has_cpp_attribute(assume)
-#define POET_ASSUME_NOT_NULL(ptr) [[assume((ptr) != nullptr)]]// NOLINT(cppcoreguidelines-macro-usage)
-#elif defined(__clang__)
-#define POET_ASSUME_NOT_NULL(ptr) __builtin_assume((ptr) != nullptr)// NOLINT(cppcoreguidelines-macro-usage)
-#elif defined(__GNUC__)
-// GCC doesn't have __builtin_assume, use __builtin_unreachable() with guard
-#define POET_ASSUME_NOT_NULL(ptr)       \
-    do {                                \
-        if (!(ptr)) POET_UNREACHABLE(); \
-    } while (false)// NOLINT(cppcoreguidelines-macro-usage)
-#elif defined(_MSC_VER)
-#define POET_ASSUME_NOT_NULL(ptr) __assume((ptr) != nullptr)// NOLINT(cppcoreguidelines-macro-usage)
-#else
-#define POET_ASSUME_NOT_NULL(ptr) \
-    do {                          \
-    } while (false)// NOLINT(cppcoreguidelines-macro-usage)
-#endif
-
-// ============================================================================
-// POET_NOINLINE
-// ============================================================================
-/// Prevents function inlining. Use to reduce code bloat or control I-cache.
-#ifdef _MSC_VER
-#define POET_NOINLINE __declspec(noinline)
-#elif defined(__GNUC__) || defined(__clang__)
-#define POET_NOINLINE __attribute__((noinline))
-#else
-#define POET_NOINLINE
-#endif
-
-// ============================================================================
 // POET_NOINLINE_FLATTEN
 // ============================================================================
 /// Prevents a function from being inlined into its caller (register isolation)
@@ -319,37 +284,13 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 #endif
 
 // ============================================================================
-// POET_UNROLL_DISABLE
-// ============================================================================
-/// Suppresses compiler loop unrolling on the immediately following loop.
-/// Place directly before `for` or `while` when the loop body is already
-/// explicitly unrolled (e.g. via static_for) and further unrolling would
-/// cause register spills.
-#if defined(__clang__)
-#define POET_UNROLL_DISABLE _Pragma("clang loop unroll(disable)")
-#elif defined(__GNUC__)
-#define POET_UNROLL_DISABLE _Pragma("GCC unroll 1")
-#else
-#define POET_UNROLL_DISABLE
-#endif
-
-// ============================================================================
 // C++20/C++23 Feature Detection
 // ============================================================================
 /// Use `consteval` for C++20+, fallback to `constexpr` for C++17.
 #if __cplusplus >= 202002L
 #define POET_CPP20_CONSTEVAL consteval
-#define POET_CPP20_CONSTEXPR constexpr
 #else
 #define POET_CPP20_CONSTEVAL constexpr
-#define POET_CPP20_CONSTEXPR constexpr
-#endif
-
-/// Use the stronger C++23 `constexpr` guarantees when available.
-#if __cplusplus >= 202302L
-#define POET_CPP23_CONSTEXPR constexpr
-#else
-#define POET_CPP23_CONSTEXPR POET_CPP20_CONSTEXPR
 #endif
 
 #endif// POET_CORE_MACROS_HPP
