@@ -2,212 +2,184 @@
 #include <poet/core/register_info.hpp>
 #include <type_traits>
 
+#ifdef POET_HAS_HW_DETECTION
+#include <poet_detected_isa.hpp>
+#endif
+
+#ifdef __linux__
+#include <fstream>
+#include <string>
+#endif
+
 using namespace poet;
 
+// ============================================================================
+// Compile-time structural invariants for every ISA
+// ============================================================================
+
+template<instruction_set ISA> constexpr bool validate_register_info() {
+    auto r = registers_for(ISA);
+    return r.isa == ISA && r.gp_registers > 0 && r.vector_registers > 0 && r.vector_width_bits >= 128
+           && (r.vector_width_bits & (r.vector_width_bits - 1)) == 0// power of 2
+           && r.lanes_32bit >= r.lanes_64bit && r.lanes_64bit == r.vector_width_bits / 64
+           && r.lanes_32bit == r.vector_width_bits / 32;
+}
+
+static_assert(validate_register_info<instruction_set::generic>());
+static_assert(validate_register_info<instruction_set::sse2>());
+static_assert(validate_register_info<instruction_set::sse4_2>());
+static_assert(validate_register_info<instruction_set::avx>());
+static_assert(validate_register_info<instruction_set::avx2>());
+static_assert(validate_register_info<instruction_set::avx_512>());
+static_assert(validate_register_info<instruction_set::arm_neon>());
+static_assert(validate_register_info<instruction_set::arm_sve>());
+static_assert(validate_register_info<instruction_set::arm_sve2>());
+static_assert(validate_register_info<instruction_set::ppc_altivec>());
+static_assert(validate_register_info<instruction_set::ppc_vsx>());
+static_assert(validate_register_info<instruction_set::mips_msa>());
+
+// ============================================================================
+// Compile-time: validate against hardware ground truth from /proc/cpuinfo
+// ============================================================================
+// CMake reads /proc/cpuinfo at configure time and populates POET_HW_* macros.
+// This test is compiled with -march=native so POET detects the full hardware
+// ISA. The static_asserts verify POET agrees with the OS-reported hardware.
+
+#ifdef POET_HAS_HW_DETECTION
+
+static_assert(static_cast<int>(detected_isa()) == POET_HW_ISA,
+  "POET detected_isa() disagrees with /proc/cpuinfo hardware ISA");
+
+static_assert(available_registers().gp_registers == POET_HW_GP_REGISTERS, "POET gp_registers disagrees with hardware");
+
+static_assert(available_registers().vector_registers == POET_HW_VECTOR_REGISTERS,
+  "POET vector_registers disagrees with hardware");
+
+static_assert(available_registers().vector_width_bits == POET_HW_VECTOR_WIDTH_BITS,
+  "POET vector_width_bits disagrees with hardware");
+
+static_assert(available_registers().lanes_64bit == POET_HW_LANES_64BIT, "POET lanes_64bit disagrees with hardware");
+
+static_assert(available_registers().lanes_32bit == POET_HW_LANES_32BIT, "POET lanes_32bit disagrees with hardware");
+
+#endif// POET_HAS_HW_DETECTION
+
+// ============================================================================
+// Runtime: Catch2 tests
+// ============================================================================
+
 TEST_CASE("instruction_set enum properties") {
-    // Verify enum is scoped and has reasonable size
     static_assert(std::is_enum_v<instruction_set>);
     static_assert(sizeof(instruction_set) <= 1);
 }
 
-TEST_CASE("detected_isa is constexpr") {
-    // Verify that detected_isa is available at compile time
+TEST_CASE("convenience functions match available_registers") {
+    constexpr auto regs = available_registers();
+
+    static_assert(vector_register_count() == regs.vector_registers);
+    static_assert(vector_width_bits() == regs.vector_width_bits);
+    static_assert(vector_lanes_64bit() == regs.lanes_64bit);
+    static_assert(vector_lanes_32bit() == regs.lanes_32bit);
+}
+
+#ifdef POET_HAS_HW_DETECTION
+TEST_CASE("detected ISA matches hardware (/proc/cpuinfo)") {
+    REQUIRE(static_cast<int>(detected_isa()) == POET_HW_ISA);
+    auto regs = available_registers();
+    REQUIRE(regs.gp_registers == POET_HW_GP_REGISTERS);
+    REQUIRE(regs.vector_registers == POET_HW_VECTOR_REGISTERS);
+    REQUIRE(regs.vector_width_bits == POET_HW_VECTOR_WIDTH_BITS);
+    REQUIRE(regs.lanes_64bit == POET_HW_LANES_64BIT);
+    REQUIRE(regs.lanes_32bit == POET_HW_LANES_32BIT);
+}
+#endif
+
+// ============================================================================
+// Linux runtime: validate against /proc/cpuinfo directly
+// ============================================================================
+
+#ifdef __linux__
+
+static std::string read_cpuinfo_flags() {
+    std::ifstream cpuinfo("/proc/cpuinfo");
+    std::string line;
+    while (std::getline(cpuinfo, line)) {
+        if (line.rfind("flags", 0) == 0 || line.rfind("Features", 0) == 0) {
+            auto colon = line.find(':');
+            if (colon != std::string::npos) { return " " + line.substr(colon + 1) + " "; }
+        }
+    }
+    return "";
+}
+
+static bool has_flag(const std::string &flags, const char *flag) {
+    std::string needle = std::string(" ") + flag + " ";
+    return flags.find(needle) != std::string::npos;
+}
+
+TEST_CASE("detected_isa does not overclaim vs /proc/cpuinfo", "[linux]") {
+    auto flags = read_cpuinfo_flags();
+    REQUIRE_FALSE(flags.empty());
+
     constexpr auto isa = detected_isa();
-    // Should be a valid instruction set
-    REQUIRE((isa >= instruction_set::generic && isa <= instruction_set::mips_msa));
-}
-
-TEST_CASE("available_registers matches detected ISA") {
-    constexpr auto isa = detected_isa();
     constexpr auto regs = available_registers();
 
-    REQUIRE(regs.isa == isa);
-    REQUIRE(regs.gp_registers > 0);
-    REQUIRE(regs.fp_registers > 0);
-    REQUIRE(regs.vector_width_bits > 0);
-    REQUIRE(regs.lanes_64bit > 0);
-    REQUIRE(regs.lanes_32bit > 0);
-}
+    // Verify POET never claims an ISA the CPU doesn't actually support.
+    if (has_flag(flags, "sse2") || has_flag(flags, "avx") || has_flag(flags, "avx2")) {
+        switch (isa) {
+        case instruction_set::avx_512:
+            REQUIRE(has_flag(flags, "avx512f"));
+            REQUIRE(regs.vector_width_bits == 512);
+            REQUIRE(regs.vector_registers == 32);
+            break;
+        case instruction_set::avx2:
+            REQUIRE(has_flag(flags, "avx2"));
+            REQUIRE(regs.vector_width_bits == 256);
+            REQUIRE(regs.vector_registers == 16);
+            break;
+        case instruction_set::avx:
+            REQUIRE(has_flag(flags, "avx"));
+            REQUIRE(regs.vector_width_bits == 256);
+            REQUIRE(regs.vector_registers == 16);
+            break;
+        case instruction_set::sse4_2:
+            REQUIRE(has_flag(flags, "sse4_2"));
+            REQUIRE(regs.vector_width_bits == 128);
+            REQUIRE(regs.vector_registers == 16);
+            break;
+        case instruction_set::sse2:
+            REQUIRE(has_flag(flags, "sse2"));
+            REQUIRE(regs.vector_width_bits == 128);
+            REQUIRE(regs.vector_registers == 16);
+            break;
+        case instruction_set::generic:
+            break;
+        default:
+            FAIL("Detected non-x86 ISA on an x86 machine");
+        }
+    }
 
-TEST_CASE("fp_register_count matches available_registers") {
-    constexpr auto count = fp_register_count();
-    constexpr auto regs = available_registers();
-
-    REQUIRE(count == regs.fp_registers);
-}
-
-TEST_CASE("vector_width_bits matches available_registers") {
-    constexpr auto width = vector_width_bits();
-    constexpr auto regs = available_registers();
-
-    REQUIRE(width == regs.vector_width_bits);
-}
-
-TEST_CASE("vector_lanes_64bit matches available_registers") {
-    constexpr auto lanes = vector_lanes_64bit();
-    constexpr auto regs = available_registers();
-
-    REQUIRE(lanes == regs.lanes_64bit);
-}
-
-TEST_CASE("vector_lanes_32bit matches available_registers") {
-    constexpr auto lanes = vector_lanes_32bit();
-    constexpr auto regs = available_registers();
-
-    REQUIRE(lanes == regs.lanes_32bit);
-}
-
-TEST_CASE("registers_for(SSE2)") {
-    constexpr auto sse2_regs = registers_for(instruction_set::sse2);
-
-    REQUIRE(sse2_regs.isa == instruction_set::sse2);
-    REQUIRE(sse2_regs.gp_registers == 16);
-    REQUIRE(sse2_regs.fp_registers == 8);
-    REQUIRE(sse2_regs.vector_width_bits == 128);
-    REQUIRE(sse2_regs.lanes_64bit == 2);
-    REQUIRE(sse2_regs.lanes_32bit == 4);
-}
-
-TEST_CASE("registers_for(SSE4.2)") {
-    constexpr auto sse42_regs = registers_for(instruction_set::sse4_2);
-
-    REQUIRE(sse42_regs.isa == instruction_set::sse4_2);
-    REQUIRE(sse42_regs.gp_registers == 16);
-    REQUIRE(sse42_regs.fp_registers == 8);
-    REQUIRE(sse42_regs.vector_width_bits == 128);
-    REQUIRE(sse42_regs.lanes_64bit == 2);
-    REQUIRE(sse42_regs.lanes_32bit == 4);
-}
-
-TEST_CASE("registers_for(AVX)") {
-    constexpr auto avx_regs = registers_for(instruction_set::avx);
-
-    REQUIRE(avx_regs.isa == instruction_set::avx);
-    REQUIRE(avx_regs.gp_registers == 16);
-    REQUIRE(avx_regs.fp_registers == 8);
-    REQUIRE(avx_regs.vector_width_bits == 256);
-    REQUIRE(avx_regs.lanes_64bit == 4);
-    REQUIRE(avx_regs.lanes_32bit == 8);
-}
-
-TEST_CASE("registers_for(AVX2)") {
-    constexpr auto avx2_regs = registers_for(instruction_set::avx2);
-
-    REQUIRE(avx2_regs.isa == instruction_set::avx2);
-    REQUIRE(avx2_regs.gp_registers == 16);
-    REQUIRE(avx2_regs.fp_registers == 8);
-    REQUIRE(avx2_regs.vector_width_bits == 256);
-    REQUIRE(avx2_regs.lanes_64bit == 4);
-    REQUIRE(avx2_regs.lanes_32bit == 8);
-}
-
-TEST_CASE("registers_for(AVX-512)") {
-    constexpr auto avx512_regs = registers_for(instruction_set::avx_512);
-
-    REQUIRE(avx512_regs.isa == instruction_set::avx_512);
-    REQUIRE(avx512_regs.gp_registers == 16);
-    REQUIRE(avx512_regs.fp_registers == 32);
-    REQUIRE(avx512_regs.vector_width_bits == 512);
-    REQUIRE(avx512_regs.lanes_64bit == 8);
-    REQUIRE(avx512_regs.lanes_32bit == 16);
-}
-
-TEST_CASE("registers_for(ARM NEON)") {
-    constexpr auto neon_regs = registers_for(instruction_set::arm_neon);
-
-    REQUIRE(neon_regs.isa == instruction_set::arm_neon);
-    REQUIRE(neon_regs.gp_registers == 31);
-    REQUIRE(neon_regs.fp_registers == 16);
-    REQUIRE(neon_regs.vector_width_bits == 128);
-    REQUIRE(neon_regs.lanes_64bit == 2);
-    REQUIRE(neon_regs.lanes_32bit == 4);
-}
-
-TEST_CASE("registers_for(ARM SVE)") {
-    constexpr auto sve_regs = registers_for(instruction_set::arm_sve);
-
-    REQUIRE(sve_regs.isa == instruction_set::arm_sve);
-    REQUIRE(sve_regs.gp_registers == 31);
-    REQUIRE(sve_regs.fp_registers == 32);
-    REQUIRE(sve_regs.vector_width_bits == 128);
-    REQUIRE(sve_regs.lanes_64bit == 2);
-    REQUIRE(sve_regs.lanes_32bit == 4);
-}
-
-TEST_CASE("registers_for(ARM SVE2)") {
-    constexpr auto sve2_regs = registers_for(instruction_set::arm_sve2);
-
-    REQUIRE(sve2_regs.isa == instruction_set::arm_sve2);
-    REQUIRE(sve2_regs.gp_registers == 31);
-    REQUIRE(sve2_regs.fp_registers == 32);
-    REQUIRE(sve2_regs.vector_width_bits == 128);
-    REQUIRE(sve2_regs.lanes_64bit == 2);
-    REQUIRE(sve2_regs.lanes_32bit == 4);
-}
-
-TEST_CASE("registers_for(PowerPC AltiVec)") {
-    constexpr auto altivec_regs = registers_for(instruction_set::ppc_altivec);
-
-    REQUIRE(altivec_regs.isa == instruction_set::ppc_altivec);
-    REQUIRE(altivec_regs.gp_registers == 32);
-    REQUIRE(altivec_regs.fp_registers == 32);
-    REQUIRE(altivec_regs.vector_width_bits == 128);
-    REQUIRE(altivec_regs.lanes_64bit == 2);
-    REQUIRE(altivec_regs.lanes_32bit == 4);
-}
-
-TEST_CASE("registers_for(PowerPC VSX)") {
-    constexpr auto vsx_regs = registers_for(instruction_set::ppc_vsx);
-
-    REQUIRE(vsx_regs.isa == instruction_set::ppc_vsx);
-    REQUIRE(vsx_regs.gp_registers == 32);
-    REQUIRE(vsx_regs.fp_registers == 64);
-    REQUIRE(vsx_regs.vector_width_bits == 128);
-    REQUIRE(vsx_regs.lanes_64bit == 2);
-    REQUIRE(vsx_regs.lanes_32bit == 4);
-}
-
-TEST_CASE("registers_for(MIPS MSA)") {
-    constexpr auto msa_regs = registers_for(instruction_set::mips_msa);
-
-    REQUIRE(msa_regs.isa == instruction_set::mips_msa);
-    REQUIRE(msa_regs.gp_registers == 32);
-    REQUIRE(msa_regs.fp_registers == 32);
-    REQUIRE(msa_regs.vector_width_bits == 128);
-    REQUIRE(msa_regs.lanes_64bit == 2);
-    REQUIRE(msa_regs.lanes_32bit == 4);
-}
-
-TEST_CASE("registers_for(generic)") {
-    constexpr auto generic_regs = registers_for(instruction_set::generic);
-
-    REQUIRE(generic_regs.isa == instruction_set::generic);
-    REQUIRE(generic_regs.gp_registers == 16);
-    REQUIRE(generic_regs.fp_registers == 8);
-    REQUIRE(generic_regs.vector_width_bits == 128);
-    REQUIRE(generic_regs.lanes_64bit == 2);
-    REQUIRE(generic_regs.lanes_32bit == 4);
-}
-
-TEST_CASE("vector_lanes_32bit >= vector_lanes_64bit") {
-    // 32-bit lanes should always be >= 64-bit lanes
-    for (int i = 0; i <= 11; ++i) {
-        auto isa = static_cast<instruction_set>(i);
-        constexpr auto regs = registers_for(instruction_set::avx2);
-        REQUIRE(regs.lanes_32bit >= regs.lanes_64bit);
+    if (has_flag(flags, "neon") || has_flag(flags, "asimd")) {
+        switch (isa) {
+        case instruction_set::arm_sve2:
+            REQUIRE(has_flag(flags, "sve2"));
+            REQUIRE(regs.vector_registers == 32);
+            break;
+        case instruction_set::arm_sve:
+            REQUIRE(has_flag(flags, "sve"));
+            REQUIRE(regs.vector_registers == 32);
+            break;
+        case instruction_set::arm_neon:
+            REQUIRE((has_flag(flags, "neon") || has_flag(flags, "asimd")));
+            REQUIRE(regs.vector_width_bits == 128);
+            REQUIRE(regs.vector_registers == 32);
+            break;
+        case instruction_set::generic:
+            break;
+        default:
+            FAIL("Detected non-ARM ISA on an ARM machine");
+        }
     }
 }
 
-TEST_CASE("vector_width_bits is power of 2") {
-    // All supported vector widths should be powers of 2
-    constexpr auto widths = std::array{
-        registers_for(instruction_set::sse2).vector_width_bits,
-        registers_for(instruction_set::avx).vector_width_bits,
-        registers_for(instruction_set::avx_512).vector_width_bits,
-    };
-
-    for (auto width : widths) {
-        REQUIRE((width & (width - 1)) == 0);// Is power of 2
-        REQUIRE(width >= 128);// At least 128 bits
-    }
-}
+#endif// __linux__

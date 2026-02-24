@@ -17,6 +17,81 @@ if(Catch2_SOURCE_DIR)
 endif()
 
 include(Catch)
+# ── Hardware ISA detection from /proc/cpuinfo ──────────────────────────────
+# Reads the host CPU flags to determine the actual ISA and register layout.
+# This is the ground truth that POET's compile-time API is validated against.
+# Only enabled on Linux (non-cross-compile) where /proc/cpuinfo is available.
+
+set(POET_HW_DETECTION_AVAILABLE OFF)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_CROSSCOMPILING AND EXISTS "/proc/cpuinfo")
+  file(READ "/proc/cpuinfo" _cpuinfo)
+
+  # Extract the first "flags" line (x86) or "Features" line (ARM)
+  string(REGEX MATCH "(flags|Features)[^\n]*" _flagline "${_cpuinfo}")
+  string(REGEX REPLACE "^[^:]*:" "" _flags "${_flagline}")
+
+  # Detect highest x86 ISA
+  if(_flags MATCHES " avx512f ")
+    set(POET_HW_ISA 5)  # avx_512
+    set(POET_HW_VECTOR_REGISTERS 32)
+    set(POET_HW_VECTOR_WIDTH_BITS 512)
+    set(POET_HW_GP_REGISTERS 16)
+  elseif(_flags MATCHES " avx2 ")
+    set(POET_HW_ISA 4)  # avx2
+    set(POET_HW_VECTOR_REGISTERS 16)
+    set(POET_HW_VECTOR_WIDTH_BITS 256)
+    set(POET_HW_GP_REGISTERS 16)
+  elseif(_flags MATCHES " avx ")
+    set(POET_HW_ISA 3)  # avx
+    set(POET_HW_VECTOR_REGISTERS 16)
+    set(POET_HW_VECTOR_WIDTH_BITS 256)
+    set(POET_HW_GP_REGISTERS 16)
+  elseif(_flags MATCHES " sse4_2 ")
+    set(POET_HW_ISA 2)  # sse4_2
+    set(POET_HW_VECTOR_REGISTERS 16)
+    set(POET_HW_VECTOR_WIDTH_BITS 128)
+    set(POET_HW_GP_REGISTERS 16)
+  elseif(_flags MATCHES " sse2 ")
+    set(POET_HW_ISA 1)  # sse2
+    set(POET_HW_VECTOR_REGISTERS 16)
+    set(POET_HW_VECTOR_WIDTH_BITS 128)
+    set(POET_HW_GP_REGISTERS 16)
+  # ARM detection
+  elseif(_flags MATCHES " sve2 ")
+    set(POET_HW_ISA 8)  # arm_sve2
+    set(POET_HW_VECTOR_REGISTERS 32)
+    set(POET_HW_VECTOR_WIDTH_BITS 128)  # minimum guaranteed
+    set(POET_HW_GP_REGISTERS 31)
+  elseif(_flags MATCHES " sve ")
+    set(POET_HW_ISA 7)  # arm_sve
+    set(POET_HW_VECTOR_REGISTERS 32)
+    set(POET_HW_VECTOR_WIDTH_BITS 128)
+    set(POET_HW_GP_REGISTERS 31)
+  elseif(_flags MATCHES " asimd " OR _flags MATCHES " neon ")
+    set(POET_HW_ISA 6)  # arm_neon
+    set(POET_HW_VECTOR_REGISTERS 32)
+    set(POET_HW_VECTOR_WIDTH_BITS 128)
+    set(POET_HW_GP_REGISTERS 31)
+  endif()
+
+  if(DEFINED POET_HW_ISA)
+    set(POET_HW_LANES_64BIT "${POET_HW_VECTOR_WIDTH_BITS}")
+    math(EXPR POET_HW_LANES_64BIT "${POET_HW_VECTOR_WIDTH_BITS} / 64")
+    set(POET_HW_LANES_32BIT "${POET_HW_VECTOR_WIDTH_BITS}")
+    math(EXPR POET_HW_LANES_32BIT "${POET_HW_VECTOR_WIDTH_BITS} / 32")
+
+    set(POET_HW_DETECTION_AVAILABLE ON)
+    message(STATUS "POET: detected hardware ISA ${POET_HW_ISA} "
+      "(${POET_HW_VECTOR_REGISTERS} vec regs, ${POET_HW_VECTOR_WIDTH_BITS}-bit)")
+
+    configure_file(
+      "${CMAKE_CURRENT_SOURCE_DIR}/poet_detected_isa.hpp.in"
+      "${CMAKE_CURRENT_BINARY_DIR}/poet_detected_isa.hpp"
+      @ONLY
+    )
+  endif()
+endif()
 
 # Disable LTO/IPO for test targets to reduce memory usage during compilation.
 # Template-heavy test instantiations can cause excessive memory consumption with IPO enabled.
@@ -76,6 +151,9 @@ macro(_configure_poet_test target_name cxx_feature)
     target_precompile_headers(${target_name} PRIVATE
       "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/test_pch.hpp>")
   endif()
+
+  # Include generated headers (poet_detected_isa.hpp)
+  target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 
   target_link_libraries(${target_name} PRIVATE Catch2::Catch2WithMain poet)
 
@@ -142,6 +220,12 @@ macro(add_poet_tests_suite suite_target cxx_feature)
   endif()
   add_poet_test_exec(${suite_target}_static_for ${cxx_feature} ${STATIC_FOR_TEST_SRCS})
   add_poet_test_exec(${suite_target}_register_info ${cxx_feature} ${REGISTER_INFO_TEST_SRCS})
+  # Compile register_info tests with -march=native so POET detects the full
+  # hardware ISA, then validate against the /proc/cpuinfo ground truth.
+  if(POET_HW_DETECTION_AVAILABLE)
+    target_compile_options(${suite_target}_register_info PRIVATE -march=native)
+    target_compile_definitions(${suite_target}_register_info PRIVATE POET_HAS_HW_DETECTION)
+  endif()
   add_poet_test_exec(${suite_target}_dispatch ${cxx_feature} ${DISPATCH_TEST_SRCS})
 
   # Heavy tests: split by category to reduce peak memory usage during linking

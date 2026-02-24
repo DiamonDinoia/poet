@@ -33,8 +33,8 @@ struct register_info {
     /// Number of general-purpose integer registers available
     size_t gp_registers;
 
-    /// Number of floating-point or SIMD vector registers available
-    size_t fp_registers;
+    /// Number of SIMD/vector registers available
+    size_t vector_registers;
 
     /// Vector width in bits (e.g., 128 for SSE2, 256 for AVX, 512 for AVX-512)
     size_t vector_width_bits;
@@ -127,11 +127,10 @@ namespace detail {
 
         case instruction_set::sse2:
         case instruction_set::sse4_2:
-            // x86-64: 16 GP regs, 8 XMM regs (128-bit each)
-            // Historically 8 regs on x86-32, extended to 16 on x86-64
+            // x86-64: 16 GP regs, 16 XMM regs (128-bit each)
             return register_info{
                 .gp_registers = 16,
-                .fp_registers = 8,// XMM0-XMM7 (can use YMM with AVX)
+                .vector_registers = 16,// XMM0-XMM15 (128-bit)
                 .vector_width_bits = 128,
                 .lanes_64bit = 2,
                 .lanes_32bit = 4,
@@ -140,12 +139,11 @@ namespace detail {
 
         case instruction_set::avx:
         case instruction_set::avx2:
-            // AVX/AVX2: same register layout (256-bit, 8 regs on x86-64)
-            // AVX extends XMM to YMM (256-bit)
+            // AVX/AVX2: 16 YMM registers (256-bit each)
             // AVX2 adds integer vector ops but same register count
             return register_info{
                 .gp_registers = 16,
-                .fp_registers = 8,// YMM0-YMM7 (256-bit)
+                .vector_registers = 16,// YMM0-YMM15 (256-bit)
                 .vector_width_bits = 256,
                 .lanes_64bit = 4,
                 .lanes_32bit = 8,
@@ -157,7 +155,7 @@ namespace detail {
             // Also includes 8 mask registers (k0-k7), but we count vector regs
             return register_info{
                 .gp_registers = 16,
-                .fp_registers = 32,// ZMM0-ZMM31 (512-bit AVX-512)
+                .vector_registers = 32,// ZMM0-ZMM31 (512-bit AVX-512)
                 .vector_width_bits = 512,
                 .lanes_64bit = 8,
                 .lanes_32bit = 16,
@@ -169,25 +167,15 @@ namespace detail {
             // ────────────────────────────────────────────────────────────────────
 
         case instruction_set::arm_neon:
-            // ARM NEON: 16 Q registers (128-bit), or 32 D registers (64-bit each)
+        case instruction_set::arm_sve:
+        case instruction_set::arm_sve2:
+            // AArch64 NEON: 32 V registers (128-bit each, V0-V31)
+            // ARM SVE/SVE2: 32 Z registers (scalable, min 128-bit)
+            // Conservative estimate uses 128-bit minimum for SVE.
             // Also 31 general-purpose registers on ARM64 (x0-x30)
             return register_info{
                 .gp_registers = 31,
-                .fp_registers = 16,// Q0-Q15 or D0-D31 (128-bit nominal)
-                .vector_width_bits = 128,
-                .lanes_64bit = 2,
-                .lanes_32bit = 4,
-                .isa = isa,
-            };
-
-        case instruction_set::arm_sve:
-        case instruction_set::arm_sve2:
-            // ARM SVE/SVE2: implementation-defined scalable vectors
-            // Typical implementations: 128, 256, or 512-bit vectors
-            // Conservative estimate: 128-bit minimum, 32 Z registers (z0-z31)
-            return register_info{
-                .gp_registers = 31,
-                .fp_registers = 32,// Z0-Z31 (scalable, min 128-bit)
+                .vector_registers = 32,// V0-V31 / Z0-Z31
                 .vector_width_bits = 128,// Minimum guaranteed
                 .lanes_64bit = 2,
                 .lanes_32bit = 4,
@@ -203,7 +191,7 @@ namespace detail {
             // Also 32 general-purpose registers
             return register_info{
                 .gp_registers = 32,
-                .fp_registers = 32,// V0-V31 (128-bit AltiVec registers)
+                .vector_registers = 32,// V0-V31 (128-bit AltiVec registers)
                 .vector_width_bits = 128,
                 .lanes_64bit = 2,
                 .lanes_32bit = 4,
@@ -215,7 +203,7 @@ namespace detail {
             // or 32 registers with doubled width (256-bit nominal)
             return register_info{
                 .gp_registers = 32,
-                .fp_registers = 64,// VSX0-VSX63 (128-bit per register)
+                .vector_registers = 64,// VSX0-VSX63 (128-bit per register)
                 .vector_width_bits = 128,
                 .lanes_64bit = 2,
                 .lanes_32bit = 4,
@@ -231,7 +219,7 @@ namespace detail {
             // Also 32 general-purpose registers
             return register_info{
                 .gp_registers = 32,
-                .fp_registers = 32,// W0-W31 (128-bit MSA registers)
+                .vector_registers = 32,// W0-W31 (128-bit MSA registers)
                 .vector_width_bits = 128,
                 .lanes_64bit = 2,
                 .lanes_32bit = 4,
@@ -244,10 +232,10 @@ namespace detail {
 
         case instruction_set::generic:
         default:
-            // Conservative fallback: assume SSE2-like 8 registers
+            // Conservative fallback: assume x86-64 SSE2-like baseline
             return register_info{
                 .gp_registers = 16,
-                .fp_registers = 8,
+                .vector_registers = 16,
                 .vector_width_bits = 128,
                 .lanes_64bit = 2,
                 .lanes_32bit = 4,
@@ -275,8 +263,8 @@ POET_CPP20_CONSTEVAL register_info registers_for(instruction_set isa) noexcept {
     return detail::get_register_info(isa);
 }
 
-/// Number of floating-point/SIMD registers available.
-POET_CPP20_CONSTEVAL size_t fp_register_count() noexcept { return available_registers().fp_registers; }
+/// Number of SIMD/vector registers available.
+POET_CPP20_CONSTEVAL size_t vector_register_count() noexcept { return available_registers().vector_registers; }
 
 /// Vector width in bits for the detected instruction set.
 POET_CPP20_CONSTEVAL size_t vector_width_bits() noexcept { return available_registers().vector_width_bits; }

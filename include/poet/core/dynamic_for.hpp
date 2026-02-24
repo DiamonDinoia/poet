@@ -55,6 +55,25 @@
 /// - **Inline callable materialization**: Rvalue callables are materialized
 ///   directly in the public API without lambda indirection.
 ///
+/// ## When to use dynamic_for vs a plain for loop
+///
+/// `dynamic_for` is designed for **multi-accumulator patterns** where
+/// compile-time lane indices enable independent chains that break serial
+/// dependencies.  Use the lane-by-value callable form
+/// (`func(lane_constant, index)`) with separate per-lane accumulators —
+/// this is where `dynamic_for` **outperforms** a naive for loop.
+///
+/// For simple **index-only** element-wise work (`out[i] = f(i)`), a plain
+/// `for` loop is typically faster.  `dynamic_for` expands each block via
+/// `static_for` template expansion, which on GCC can cause the SLP
+/// vectorizer to over-allocate vector registers and spill on wide ISAs
+/// (AVX2/AVX-512).  A plain `for` loop avoids this because the compiler's
+/// loop vectorizer handles packing naturally with a single index register.
+///
+/// `dynamic_for` also does **not** help with serial dependency chains
+/// (`acc += work(i)`).  Unrolling a serial chain adds instructions without
+/// improving ILP.  Use lane callbacks with separate accumulators instead.
+///
 /// ## Choosing the Unroll Factor
 ///
 /// `Unroll` is a required template parameter. Larger values increase code size
@@ -161,29 +180,29 @@ namespace detail {
     };
 
     // ========================================================================
-    // Block execution — delegates to static_for for register-aware unrolling
+    // Block execution — delegates to static_for for compile-time unrolling
     // ========================================================================
 
-    /// \brief Executes an unrolled block via static_for with runtime stride.
-    template<typename FormTag, typename Callable, typename T, std::size_t BlockSize>
+    /// \brief Executes an unrolled block with runtime stride.
+    template<typename FormTag, typename Callable, typename T, std::size_t Count>
     POET_FORCEINLINE constexpr void execute_block([[maybe_unused]] FormTag /*tag*/,
       [[maybe_unused]] Callable &callable,
       [[maybe_unused]] T base,
       [[maybe_unused]] T stride) {
-        if constexpr (BlockSize > 0) {
+        if constexpr (Count > 0) {
             block_invoker<FormTag, Callable, T> invoker{ callable, base, stride };
-            static_for<0, static_cast<std::intmax_t>(BlockSize), 1, BlockSize>(invoker);
+            static_for<0, static_cast<std::intmax_t>(Count)>(invoker);
         }
     }
 
-    /// \brief Executes an unrolled block via static_for with compile-time stride.
-    template<std::intmax_t Step, typename FormTag, typename Callable, typename T, std::size_t BlockSize>
+    /// \brief Executes an unrolled block with compile-time stride.
+    template<std::intmax_t Step, typename FormTag, typename Callable, typename T, std::size_t Count>
     POET_FORCEINLINE constexpr void execute_block_ct_stride([[maybe_unused]] FormTag /*tag*/,
       [[maybe_unused]] Callable &callable,
       [[maybe_unused]] T base) {
-        if constexpr (BlockSize > 0) {
+        if constexpr (Count > 0) {
             block_invoker_ct_stride<Step, FormTag, Callable, T> invoker{ callable, base };
-            static_for<0, static_cast<std::intmax_t>(BlockSize), 1, BlockSize>(invoker);
+            static_for<0, static_cast<std::intmax_t>(Count)>(invoker);
         }
     }
 
@@ -516,7 +535,7 @@ POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, Func &&func) {
 /// This overload iterates over the range `[0, count)`.
 template<std::size_t Unroll, typename Func>
 POET_FORCEINLINE constexpr void dynamic_for(std::size_t count, Func &&func) {
-    dynamic_for<Unroll>(static_cast<std::size_t>(0), count, std::forward<Func>(func));
+    dynamic_for<Unroll>(static_cast<std::size_t>(0), count, std::size_t{ 1 }, std::forward<Func>(func));
 }
 
 }// namespace poet

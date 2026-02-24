@@ -25,18 +25,22 @@ namespace detail {
       std::intmax_t Step,
       std::size_t BlockSize,
       std::size_t FullBlocks,
-      std::size_t Remainder>
+      std::size_t Remainder,
+      bool Isolate>
     POET_FORCEINLINE constexpr void static_loop_run_blocks(Callable &callable) {
         if constexpr (FullBlocks > 0) {
-            // When there are multiple blocks, use register-isolated (noinline) blocks.
-            // This prevents the compiler from interleaving computations across blocks,
-            // which would cause excessive register spills on x86-64.
-            // Single-block loops (FullBlocks == 1 && Remainder == 0) are handled by
-            // the always-inline path — no overhead, full inlining.
-            if constexpr (FullBlocks == 1 && Remainder == 0) {
-                emit_all_blocks<Callable, Begin, Step, BlockSize, 0, FullBlocks>(callable);
-            } else {
+            // When BlockSize is explicitly tuned, use register-isolated (noinline)
+            // blocks for multi-block loops.  This prevents the compiler from
+            // interleaving computations across blocks, which would cause excessive
+            // register spills on x86-64.
+            //
+            // When BlockSize is the default (Isolate == false), always inline —
+            // the user hasn't opted into register-pressure tuning, so prefer
+            // maximum inlining to let the compiler optimise freely.
+            if constexpr (Isolate && FullBlocks > 1) {
                 emit_all_blocks_isolated<Callable, Begin, Step, BlockSize, 0, FullBlocks>(callable);
+            } else {
+                emit_all_blocks<Callable, Begin, Step, BlockSize, 0, FullBlocks>(callable);
             }
         }
 
@@ -87,33 +91,50 @@ namespace detail {
 ///
 /// The default `BlockSize` spans the entire range, clamped to the internal
 /// `detail::kMaxStaticLoopBlock` cap (currently `256`), to balance unrolling
-/// with compile-time cost. Lvalue callables are preserved by reference, while
-/// rvalues are copied into a local instance for the duration of the loop.
+/// with compile-time cost.  With the default block size, **all iterations are
+/// fully inlined** so the compiler can optimise freely across the entire loop.
+/// Lvalue callables are preserved by reference, while rvalues are copied into
+/// a local instance for the duration of the loop.
 ///
 /// ## Tuning `BlockSize` for register pressure
 ///
-/// By default every iteration is unrolled into a single block.  When the
+/// By default every iteration is fully inlined into the caller.  When the
 /// per-iteration body is heavy (hashing, FP chains, etc.) this can cause
 /// the compiler to interleave many iterations and spill registers.  Passing
-/// a smaller `BlockSize` partitions the loop into noinline blocks, each
+/// an explicit `BlockSize` partitions the loop into noinline blocks, each
 /// with its own register-allocation scope:
 ///
 /// \code
-///   // Default: all 64 iterations in one block (maximum unrolling)
+///   // Default: all 64 iterations fully inlined (compiler optimises freely)
 ///   poet::static_for<0, 64>(func);
 ///
 ///   // Tuned: 8 noinline blocks of 8 (reduces register spills)
 ///   poet::static_for<0, 64, 1, 8>(func);
 /// \endcode
 ///
-/// Empirical guidelines (x86-64, GCC 15, -O3):
-///   - `BlockSize ≤ 4`  — zero register spills, highest call overhead
-///   - `BlockSize = 8`   — zero spill stores/loads, good sweet-spot
-///   - `BlockSize = 16`  — mild spill pressure starts appearing
-///   - `BlockSize ≥ 32`  — significant spill traffic
+/// GCC vectorizes the loop body `lanes_64`-wide: each vector group packs
+/// `lanes_64` iterations into one SIMD register, plus the FMA chain needs
+/// ~`fma_depth + 1` constant/temporary registers as shared overhead.  The
+/// spill-free limit is therefore:
 ///
-/// Use the `poet_bench_static_for_native` benchmark (section 4) to measure
-/// the effect of different block sizes on your workload.
+///   `max_bs = (vec_regs − (fma_depth + 1)) × lanes_64`
+///
+/// Measured spill cliffs (GCC 15, -O3, 5-deep FMA chain):
+///
+///   | ISA     | vec_regs | lanes_64 | spill-free max | first spills |
+///   |---------|----------|----------|----------------|--------------|
+///   | SSE2    |    16    |    2     | >128 (scalar)  | N/A          |
+///   | AVX2    |    16    |    4     |  40 accs       | 44 accs      |
+///   | AVX-512 |    32    |    8     | >256 (batched) | N/A          |
+///
+/// In practice icache pressure caps the useful block size well below the
+/// spill limit.  A good starting point:
+///
+///   `optimal_bs ≈ vec_regs × lanes_64 / 2`
+///   SSE2 → 16,  AVX2 → 32,  AVX-512 → 128
+///
+/// Use the `poet_bench_static_for_native` benchmark to measure the effect
+/// of different block sizes on your workload.
 ///
 /// \tparam Begin Initial value of the range.
 /// \tparam End Exclusive terminator of the range.
@@ -137,6 +158,11 @@ POET_FORCEINLINE constexpr void static_for(Func &&func) {
     constexpr auto full_blocks = count / BlockSize;
     constexpr auto remainder = count % BlockSize;
 
+    // Register isolation is only applied when the user explicitly tuned
+    // BlockSize.  The default path fully inlines everything to let the
+    // compiler optimise without artificial register-scope boundaries.
+    constexpr bool isolate = (BlockSize != detail::compute_default_static_loop_block_size<Begin, End, Step>());
+
     // Callable storage is handled inline (rather than via a helper) to
     // avoid introducing an indirection that compilers may refuse to
     // inline across the block emission pipeline.
@@ -144,20 +170,23 @@ POET_FORCEINLINE constexpr void static_for(Func &&func) {
 
     if constexpr (std::is_invocable_v<Func, std::integral_constant<std::intmax_t, Begin>>) {
         if constexpr (std::is_lvalue_reference_v<Func>) {
-            detail::static_loop_run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(func);
+            detail::static_loop_run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder, isolate>(func);
         } else {
             callable_t callable(std::forward<Func>(func));
-            detail::static_loop_run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(callable);
+            detail::static_loop_run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder, isolate>(
+              callable);
         }
     } else {
         using invoker_t = detail::template_static_loop_invoker<callable_t>;
         if constexpr (std::is_lvalue_reference_v<Func>) {
             const invoker_t invoker{ &func };
-            detail::static_loop_run_blocks<const invoker_t, Begin, Step, BlockSize, full_blocks, remainder>(invoker);
+            detail::static_loop_run_blocks<const invoker_t, Begin, Step, BlockSize, full_blocks, remainder, isolate>(
+              invoker);
         } else {
             callable_t callable(std::forward<Func>(func));
             const invoker_t invoker{ &callable };
-            detail::static_loop_run_blocks<const invoker_t, Begin, Step, BlockSize, full_blocks, remainder>(invoker);
+            detail::static_loop_run_blocks<const invoker_t, Begin, Step, BlockSize, full_blocks, remainder, isolate>(
+              invoker);
         }
     }
 }

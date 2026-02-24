@@ -281,6 +281,21 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 #endif
 
 // ============================================================================
+// POET_UNROLL_DISABLE
+// ============================================================================
+/// Suppresses compiler loop unrolling on the immediately following loop.
+/// Place directly before `for` or `while` when the loop body is already
+/// explicitly unrolled (e.g. via static_for) and further unrolling would
+/// cause register spills.
+#if defined(__clang__)
+#define POET_UNROLL_DISABLE _Pragma("clang loop unroll(disable)")
+#elif defined(__GNUC__)
+#define POET_UNROLL_DISABLE _Pragma("GCC unroll 1")
+#else
+#define POET_UNROLL_DISABLE
+#endif
+
+// ============================================================================
 // C++20/C++23 Feature Detection
 // ============================================================================
 /// Use `consteval` for C++20+, fallback to `constexpr` for C++17.

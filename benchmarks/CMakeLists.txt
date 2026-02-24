@@ -19,12 +19,10 @@ else()
   set(_poet_nanobench_target nanobench)
 endif()
 
-# Check if -march=native is supported by the compiler
 include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag("-march=native" COMPILER_SUPPORTS_MARCH_NATIVE)
-check_cxx_compiler_flag("-ffast-math" COMPILER_SUPPORTS_FAST_MATH)
+check_cxx_compiler_flag("-mavx512f" COMPILER_SUPPORTS_AVX512F)
 
-# Helper function to create benchmark executables
 function(_poet_configure_benchmark_target TARGET_NAME)
   add_executable(${TARGET_NAME} ${ARGN})
   target_link_libraries(${TARGET_NAME}
@@ -32,85 +30,93 @@ function(_poet_configure_benchmark_target TARGET_NAME)
       poet::poet
       ${_poet_nanobench_target}
   )
+  if(cxx_std_23 IN_LIST CMAKE_CXX_COMPILE_FEATURES)
+    target_compile_features(${TARGET_NAME} PRIVATE cxx_std_23)
+  else()
+    target_compile_features(${TARGET_NAME} PRIVATE cxx_std_20)
+  endif()
   poet_enable_warnings(${TARGET_NAME})
   poet_enable_sanitizers(${TARGET_NAME})
-  if (COMPILER_SUPPORTS_FAST_MATH)
-    target_compile_options(${TARGET_NAME} PRIVATE -ffast-math)
-  endif()
-endfunction()
-
-function(add_poet_benchmark NAME)
-  set(source_files ${ARGN})
-  set(base_target poet_bench_${NAME})
-  _poet_configure_benchmark_target(${base_target} ${source_files})
-
-  if(COMPILER_SUPPORTS_MARCH_NATIVE)
-    set(native_target ${base_target}_native)
-    _poet_configure_benchmark_target(${native_target} ${source_files})
-    target_compile_options(${native_target} PRIVATE -march=native)
-  endif()
-endfunction()
-
-# Create separate benchmark executables by category (each has its own main())
-add_poet_benchmark(
-  static_for
-  "static_for_bench_main.cpp"
-  "static_for_bench_dependent.cpp"
-  "static_for_bench_simple.cpp"
-  "static_for_bench_unroll.cpp"
-  "static_for_bench_blocksize.cpp")
-add_poet_benchmark(dynamic_for "dynamic_for_bench.cpp")
-add_poet_benchmark(static_dispatch "static_dispatch_bench.cpp")
-
-if(COMPILER_SUPPORTS_MARCH_NATIVE)
-  message(STATUS "POET: -march=native is supported, building native benchmark versions")
-endif()
-
-function(add_poet_run_target NAME)
-  add_custom_target(poet_run_bench_${NAME}
-    COMMAND $<TARGET_FILE:poet_bench_${NAME}>
-    DEPENDS poet_bench_${NAME}
-    USES_TERMINAL
-    COMMENT "Running ${NAME} benchmarks"
+  # Benchmarks always need full optimization regardless of build type
+  target_compile_options(${TARGET_NAME} PRIVATE
+    $<$<CXX_COMPILER_ID:GNU>:-O3>
+    $<$<CXX_COMPILER_ID:Clang>:-O3>
+    $<$<CXX_COMPILER_ID:AppleClang>:-O3>
+    $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<NOT:$<CONFIG:Release>>>:/O2>
   )
 endfunction()
 
-# Custom targets to run benchmarks by category
-add_poet_run_target(static_for)
-add_poet_run_target(dynamic_for)
-add_poet_run_target(static_dispatch)
+# ── Dispatch benchmark ─────────────────────────────────────────────────────
+_poet_configure_benchmark_target(poet_dispatch_bench dispatch_bench.cpp)
 
-add_custom_target(poet_benchmarks
-  DEPENDS poet_bench_static_for poet_bench_dynamic_for poet_bench_static_dispatch
-  COMMENT "Build all POET benchmark executables"
-)
+# ── Register-tuned benchmarks (default ISA) ────────────────────────────────
+_poet_configure_benchmark_target(poet_static_for_bench static_for_bench.cpp)
+_poet_configure_benchmark_target(poet_dynamic_for_bench dynamic_for_bench.cpp)
 
-add_custom_target(poet_run_benchmarks
-  COMMAND $<TARGET_FILE:poet_bench_static_for>
-  COMMAND $<TARGET_FILE:poet_bench_dynamic_for>
-  COMMAND $<TARGET_FILE:poet_bench_static_dispatch>
-  DEPENDS poet_bench_static_for poet_bench_dynamic_for poet_bench_static_dispatch
+# ── Register-tuned benchmarks (-march=native) ─────────────────────────────
+if(COMPILER_SUPPORTS_MARCH_NATIVE)
+  _poet_configure_benchmark_target(poet_static_for_bench_native static_for_bench.cpp)
+  target_compile_options(poet_static_for_bench_native PRIVATE -march=native)
+
+  _poet_configure_benchmark_target(poet_dynamic_for_bench_native dynamic_for_bench.cpp)
+  target_compile_options(poet_dynamic_for_bench_native PRIVATE -march=native)
+
+  message(STATUS "POET: building native benchmarks (poet_*_bench_native)")
+endif()
+
+# ── Register-tuned benchmarks (-mavx512f, gated on hardware) ───────────────
+if(COMPILER_SUPPORTS_AVX512F)
+  # Check if the host CPU actually supports AVX-512
+  set(_poet_host_has_avx512 FALSE)
+  if(EXISTS "/proc/cpuinfo")
+    file(READ "/proc/cpuinfo" _poet_cpuinfo)
+    string(FIND "${_poet_cpuinfo}" "avx512f" _poet_avx512_pos)
+    if(NOT _poet_avx512_pos EQUAL -1)
+      set(_poet_host_has_avx512 TRUE)
+    endif()
+  endif()
+
+  if(_poet_host_has_avx512)
+    _poet_configure_benchmark_target(poet_static_for_bench_avx512 static_for_bench.cpp)
+    target_compile_options(poet_static_for_bench_avx512 PRIVATE -mavx512f)
+
+    _poet_configure_benchmark_target(poet_dynamic_for_bench_avx512 dynamic_for_bench.cpp)
+    target_compile_options(poet_dynamic_for_bench_avx512 PRIVATE -mavx512f)
+
+    message(STATUS "POET: building AVX-512 benchmarks (poet_*_bench_avx512)")
+  else()
+    message(STATUS "POET: skipping AVX-512 benchmarks (host CPU lacks avx512f)")
+  endif()
+endif()
+
+# ── Run targets ────────────────────────────────────────────────────────────
+add_custom_target(poet_run_bench
+  COMMAND $<TARGET_FILE:poet_dispatch_bench>
+  COMMAND $<TARGET_FILE:poet_static_for_bench>
+  COMMAND $<TARGET_FILE:poet_dynamic_for_bench>
+  DEPENDS poet_dispatch_bench poet_static_for_bench poet_dynamic_for_bench
   USES_TERMINAL
-  COMMENT "Running all POET benchmarks"
+  COMMENT "Running POET benchmarks"
 )
 
 if(COMPILER_SUPPORTS_MARCH_NATIVE)
-  add_custom_target(poet_run_benchmarks_native
-    COMMAND $<TARGET_FILE:poet_bench_static_for_native>
-    COMMAND $<TARGET_FILE:poet_bench_dynamic_for_native>
-    COMMAND $<TARGET_FILE:poet_bench_static_dispatch_native>
-    DEPENDS poet_bench_static_for_native poet_bench_dynamic_for_native poet_bench_static_dispatch_native
+  add_custom_target(poet_run_bench_native
+    COMMAND $<TARGET_FILE:poet_dispatch_bench>
+    COMMAND $<TARGET_FILE:poet_static_for_bench_native>
+    COMMAND $<TARGET_FILE:poet_dynamic_for_bench_native>
+    DEPENDS poet_dispatch_bench poet_static_for_bench_native poet_dynamic_for_bench_native
     USES_TERMINAL
-    COMMENT "Running all POET benchmarks (with -march=native)"
+    COMMENT "Running POET benchmarks (-march=native)"
   )
 endif()
 
-option(POET_REGISTER_BENCHMARKS_AS_TESTS "Register benchmarks as CTest tests" OFF)
-
-if(POET_BUILD_TESTS AND POET_REGISTER_BENCHMARKS_AS_TESTS)
-  add_test(NAME poet.bench.static_for COMMAND $<TARGET_FILE:poet_bench_static_for>)
-  add_test(NAME poet.bench.dynamic_for COMMAND $<TARGET_FILE:poet_bench_dynamic_for>)
-  add_test(NAME poet.bench.static_dispatch COMMAND $<TARGET_FILE:poet_bench_static_dispatch>)
-  set_tests_properties(poet.bench.static_for poet.bench.dynamic_for poet.bench.static_dispatch
-    PROPERTIES LABELS benchmarks)
+if(POET_BUILD_TESTS)
+  option(POET_REGISTER_BENCHMARKS_AS_TESTS "Register benchmarks as CTest tests" OFF)
+  if(POET_REGISTER_BENCHMARKS_AS_TESTS)
+    add_test(NAME poet.bench.dispatch COMMAND $<TARGET_FILE:poet_dispatch_bench>)
+    add_test(NAME poet.bench.static_for COMMAND $<TARGET_FILE:poet_static_for_bench>)
+    add_test(NAME poet.bench.dynamic_for COMMAND $<TARGET_FILE:poet_dynamic_for_bench>)
+    set_tests_properties(poet.bench.dispatch poet.bench.static_for poet.bench.dynamic_for
+      PROPERTIES LABELS benchmarks)
+  endif()
 endif()
