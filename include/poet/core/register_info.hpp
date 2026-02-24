@@ -129,12 +129,12 @@ namespace detail {
         case instruction_set::sse4_2:
             // x86-64: 16 GP regs, 16 XMM regs (128-bit each)
             return register_info{
-                .gp_registers = 16,
-                .vector_registers = 16,// XMM0-XMM15 (128-bit)
-                .vector_width_bits = 128,
-                .lanes_64bit = 2,
-                .lanes_32bit = 4,
-                .isa = isa,
+                16,// gp_registers
+                16,// vector_registers: XMM0-XMM15 (128-bit)
+                128,// vector_width_bits
+                2,// lanes_64bit
+                4,// lanes_32bit
+                isa,
             };
 
         case instruction_set::avx:
@@ -142,24 +142,24 @@ namespace detail {
             // AVX/AVX2: 16 YMM registers (256-bit each)
             // AVX2 adds integer vector ops but same register count
             return register_info{
-                .gp_registers = 16,
-                .vector_registers = 16,// YMM0-YMM15 (256-bit)
-                .vector_width_bits = 256,
-                .lanes_64bit = 4,
-                .lanes_32bit = 8,
-                .isa = isa,
+                16,// gp_registers
+                16,// vector_registers: YMM0-YMM15 (256-bit)
+                256,// vector_width_bits
+                4,// lanes_64bit
+                8,// lanes_32bit
+                isa,
             };
 
         case instruction_set::avx_512:
             // AVX-512: 32 ZMM registers (512-bit each)
             // Also includes 8 mask registers (k0-k7), but we count vector regs
             return register_info{
-                .gp_registers = 16,
-                .vector_registers = 32,// ZMM0-ZMM31 (512-bit AVX-512)
-                .vector_width_bits = 512,
-                .lanes_64bit = 8,
-                .lanes_32bit = 16,
-                .isa = isa,
+                16,// gp_registers
+                32,// vector_registers: ZMM0-ZMM31 (512-bit AVX-512)
+                512,// vector_width_bits
+                8,// lanes_64bit
+                16,// lanes_32bit
+                isa,
             };
 
             // ────────────────────────────────────────────────────────────────────
@@ -174,12 +174,12 @@ namespace detail {
             // Conservative estimate uses 128-bit minimum for SVE.
             // Also 31 general-purpose registers on ARM64 (x0-x30)
             return register_info{
-                .gp_registers = 31,
-                .vector_registers = 32,// V0-V31 / Z0-Z31
-                .vector_width_bits = 128,// Minimum guaranteed
-                .lanes_64bit = 2,
-                .lanes_32bit = 4,
-                .isa = isa,
+                31,// gp_registers
+                32,// vector_registers: V0-V31 / Z0-Z31
+                128,// vector_width_bits: minimum guaranteed
+                2,// lanes_64bit
+                4,// lanes_32bit
+                isa,
             };
 
             // ────────────────────────────────────────────────────────────────────
@@ -190,24 +190,24 @@ namespace detail {
             // PowerPC AltiVec: 32 vector registers (128-bit each)
             // Also 32 general-purpose registers
             return register_info{
-                .gp_registers = 32,
-                .vector_registers = 32,// V0-V31 (128-bit AltiVec registers)
-                .vector_width_bits = 128,
-                .lanes_64bit = 2,
-                .lanes_32bit = 4,
-                .isa = isa,
+                32,// gp_registers
+                32,// vector_registers: V0-V31 (128-bit AltiVec registers)
+                128,// vector_width_bits
+                2,// lanes_64bit
+                4,// lanes_32bit
+                isa,
             };
 
         case instruction_set::ppc_vsx:
             // PowerPC VSX: extends AltiVec with 64 vector registers (128-bit each)
             // or 32 registers with doubled width (256-bit nominal)
             return register_info{
-                .gp_registers = 32,
-                .vector_registers = 64,// VSX0-VSX63 (128-bit per register)
-                .vector_width_bits = 128,
-                .lanes_64bit = 2,
-                .lanes_32bit = 4,
-                .isa = isa,
+                32,// gp_registers
+                64,// vector_registers: VSX0-VSX63 (128-bit per register)
+                128,// vector_width_bits
+                2,// lanes_64bit
+                4,// lanes_32bit
+                isa,
             };
 
             // ────────────────────────────────────────────────────────────────────
@@ -218,12 +218,12 @@ namespace detail {
             // MIPS MSA: 32 vector registers (128-bit each)
             // Also 32 general-purpose registers
             return register_info{
-                .gp_registers = 32,
-                .vector_registers = 32,// W0-W31 (128-bit MSA registers)
-                .vector_width_bits = 128,
-                .lanes_64bit = 2,
-                .lanes_32bit = 4,
-                .isa = isa,
+                32,// gp_registers
+                32,// vector_registers: W0-W31 (128-bit MSA registers)
+                128,// vector_width_bits
+                2,// lanes_64bit
+                4,// lanes_32bit
+                isa,
             };
 
             // ────────────────────────────────────────────────────────────────────
@@ -234,12 +234,12 @@ namespace detail {
         default:
             // Conservative fallback: assume x86-64 SSE2-like baseline
             return register_info{
-                .gp_registers = 16,
-                .vector_registers = 16,
-                .vector_width_bits = 128,
-                .lanes_64bit = 2,
-                .lanes_32bit = 4,
-                .isa = instruction_set::generic,
+                16,// gp_registers
+                16,// vector_registers
+                128,// vector_width_bits
+                2,// lanes_64bit
+                4,// lanes_32bit
+                instruction_set::generic,
             };
         }
     }

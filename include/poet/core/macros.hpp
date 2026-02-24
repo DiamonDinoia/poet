@@ -34,7 +34,9 @@
 // POET_ASSUME
 // ============================================================================
 /// Generic assumption hint. UB if expression is false at runtime.
-#if __cplusplus >= 202302L
+/// Uses [[assume(expr)]] when the compiler reports support via __has_cpp_attribute
+/// (GCC >= 13, Clang >= 19), otherwise falls back to compiler builtins.
+#if __has_cpp_attribute(assume)
 #define POET_ASSUME(expr) [[assume(expr)]]// NOLINT(cppcoreguidelines-macro-usage)
 #elif defined(__clang__)
 #define POET_ASSUME(expr) __builtin_assume(expr)// NOLINT(cppcoreguidelines-macro-usage)
@@ -56,7 +58,7 @@
 // ============================================================================
 /// Tells compiler that pointer is non-null. UB if null at runtime.
 /// Use on pointers derived from references or after null checks.
-#if __cplusplus >= 202302L
+#if __has_cpp_attribute(assume)
 #define POET_ASSUME_NOT_NULL(ptr) [[assume((ptr) != nullptr)]]// NOLINT(cppcoreguidelines-macro-usage)
 #elif defined(__clang__)
 #define POET_ASSUME_NOT_NULL(ptr) __builtin_assume((ptr) != nullptr)// NOLINT(cppcoreguidelines-macro-usage)
