@@ -158,7 +158,7 @@ namespace detail {
 
         template<std::ptrdiff_t Value>
         POET_FORCEINLINE constexpr void operator()(std::integral_constant<std::ptrdiff_t, Value> /*ic*/) const {
-            invoke_lane<static_cast<std::size_t>(Value)>(FormTag{}, callable, base + static_cast<T>(Value) * stride);
+            invoke_lane<static_cast<std::size_t>(Value)>(FormTag{}, callable, base + (static_cast<T>(Value) * stride));
         }
     };
 
@@ -444,30 +444,30 @@ POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, T3 step, Func &&fu
     static_assert(Unroll > 0, "dynamic_for requires Unroll > 0");
 
     using T = std::common_type_t<T1, T2, T3>;
-    const T s = static_cast<T>(step);
+    const T stride = static_cast<T>(step);
 
     if constexpr (std::is_lvalue_reference_v<Func>) {
         using callable_t = std::remove_reference_t<Func>;
         using form_tag = detail::callable_form_t<callable_t, T>;
 
-        if (s == static_cast<T>(1)) {
+        if (stride == static_cast<T>(1)) {
             detail::dynamic_for_impl_ct_stride<1, T, callable_t, Unroll>(
               static_cast<T>(begin), static_cast<T>(end), func, form_tag{});
         } else {
             detail::dynamic_for_impl_general<T, callable_t, Unroll>(
-              static_cast<T>(begin), static_cast<T>(end), s, func, form_tag{});
+              static_cast<T>(begin), static_cast<T>(end), stride, func, form_tag{});
         }
     } else {
         std::remove_reference_t<Func> callable(std::forward<Func>(func));
         using callable_t = std::remove_reference_t<Func>;
         using form_tag = detail::callable_form_t<callable_t, T>;
 
-        if (s == static_cast<T>(1)) {
+        if (stride == static_cast<T>(1)) {
             detail::dynamic_for_impl_ct_stride<1, T, callable_t, Unroll>(
               static_cast<T>(begin), static_cast<T>(end), callable, form_tag{});
         } else {
             detail::dynamic_for_impl_general<T, callable_t, Unroll>(
-              static_cast<T>(begin), static_cast<T>(end), s, callable, form_tag{});
+              static_cast<T>(begin), static_cast<T>(end), stride, callable, form_tag{});
         }
     }
 }

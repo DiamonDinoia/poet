@@ -8,13 +8,10 @@
 
 namespace {
 using poet::detail::compute_range_count;
-using poet::detail::kMaxStaticLoopBlock;
-using poet::detail::compute_default_static_loop_block_size;
+using poet::detail::default_block_size;
 
 constexpr std::size_t kForwardBlockSize = 2;
-static_assert(kForwardBlockSize <= kMaxStaticLoopBlock, "Tests should not request block sizes above the cap");
 constexpr std::size_t kRemainderBlockSize = 3;
-static_assert(kRemainderBlockSize <= kMaxStaticLoopBlock, "Tests should not request block sizes above the cap");
 
 static_assert(compute_range_count<0, 0, 1>() == 0, "Zero-length ranges should not iterate");
 static_assert(compute_range_count<0, 4, 1>() == 4, "Positive ranges compute the expected count");
@@ -23,20 +20,9 @@ static_assert(compute_range_count<5, 5, -1>() == 0, "Zero-length negative ranges
 static_assert(compute_range_count<5, 1, -1>() == 4, "Negative ranges compute the expected count");
 static_assert(compute_range_count<8, -1, -3>() == 3, "Negative ranges honour custom steps");
 
-static_assert(compute_default_static_loop_block_size<0, 0, 1>() == 1,
-  "Empty ranges clamp the default block size to one");
-static_assert(compute_default_static_loop_block_size<0, 4, 1>() == 4,
-  "The default block size spans the entire positive range");
-static_assert(compute_default_static_loop_block_size<5, 1, -1>() == 4,
-  "The default block size spans the entire negative range");
-static_assert(compute_default_static_loop_block_size<0, kMaxStaticLoopBlock, 1>() == kMaxStaticLoopBlock,
-  "Ranges matching the cap use the maximum default block size");
-static_assert(compute_default_static_loop_block_size<0, kMaxStaticLoopBlock + 10, 1>() == kMaxStaticLoopBlock,
-  "Large ranges clamp the default block size to the inclusive maximum");
-static_assert(compute_default_static_loop_block_size<0, 4096, 1>() == kMaxStaticLoopBlock,
-  "Very large ranges clamp the default block size to kMaxStaticLoopBlock");
-static_assert(compute_default_static_loop_block_size<kMaxStaticLoopBlock + 5, 0, -1>() == kMaxStaticLoopBlock,
-  "Descending ranges clamp the default block size to the maximum");
+static_assert(default_block_size<0, 0, 1>() == 1, "Empty ranges clamp the default block size to one");
+static_assert(default_block_size<0, 4, 1>() == 4, "The default block size spans the entire positive range");
+static_assert(default_block_size<5, 1, -1>() == 4, "The default block size spans the entire negative range");
 
 constexpr std::array<int, 4> enumerate_forward() {
     std::array<int, 4> values{};
@@ -110,13 +96,6 @@ constexpr auto compute_squares_custom_unroll() {
     return values;
 }
 
-constexpr auto compute_squares_clamped_default() {
-    std::array<int, kMaxStaticLoopBlock + 10> values{};
-    poet::static_for<0, kMaxStaticLoopBlock + 10>(square_functor<std::array<int, kMaxStaticLoopBlock + 10>>{ &values });
-    return values;
-}
-
-
 constexpr auto default_squares = compute_squares_default_unroll();
 static_assert(default_squares[0] == 0);
 static_assert(default_squares[1] == 1);
@@ -135,12 +114,6 @@ static_assert(custom_squares[1] == 1);
 static_assert(custom_squares[2] == 4);
 static_assert(custom_squares[3] == 9);
 static_assert(custom_squares[4] == 16);
-
-constexpr auto clamped_default_squares = compute_squares_clamped_default();
-static_assert(clamped_default_squares.front() == 0);
-static_assert(
-  clamped_default_squares.back() == static_cast<int>((kMaxStaticLoopBlock + 9) * (kMaxStaticLoopBlock + 9)));
-
 
 struct vector_accumulator {
     std::vector<int> *values;
@@ -220,15 +193,9 @@ TEST_CASE("static_for dispatches template functors", "[static_for][dispatch]") {
 }
 
 TEST_CASE("static_for handles large iteration counts", "[static_for][limits]") {
-    // Keep the iteration span modest to avoid excessive template instantiations
-    // while still covering multiple blocks.
-#ifdef _WIN32
-    constexpr auto kSpan = kMaxStaticLoopBlock + 4;
-#else
-    constexpr auto kSpan = 2 * kMaxStaticLoopBlock;
-#endif
+    constexpr auto kSpan = 32;
     std::array<int, kSpan> values{};
-    poet::static_for<0, kSpan, 1>(square_functor<std::array<int, kSpan>>{ &values });
+    poet::static_for<0, kSpan, 1, 8>(square_functor<std::array<int, kSpan>>{ &values });
 
     REQUIRE(values.front() == 0);
     REQUIRE(values.back() == (kSpan - 1) * (kSpan - 1));

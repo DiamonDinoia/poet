@@ -107,10 +107,6 @@ set(DYNAMIC_FOR_TEST_SRCS
   dynamic_for_advanced_tests.cpp
   dynamic_for_ranges_tests.cpp
 )
-option(POET_ENABLE_HEAVY_DYNAMIC_FOR_TESTS "Enable expensive dynamic_for max-unroll stress tests" OFF)
-set(DYNAMIC_FOR_HEAVY_TEST_SRCS
-  dynamic_for_heavy_unroll_tests.cpp
-)
 set(STATIC_FOR_TEST_SRCS
   static_for_tests.cpp
 )
@@ -215,9 +211,6 @@ macro(add_poet_tests_suite suite_target cxx_feature)
   # Create separate executables for each test category to enable parallel compilation
   add_poet_test_exec(${suite_target}_headers ${cxx_feature} ${HEADERS_TEST_SRCS})
   add_poet_test_exec(${suite_target}_dynamic_for ${cxx_feature} ${DYNAMIC_FOR_TEST_SRCS})
-  if(POET_ENABLE_HEAVY_DYNAMIC_FOR_TESTS AND "${suite_target}" STREQUAL "poet_tests_std23")
-    target_sources(${suite_target}_dynamic_for PRIVATE ${DYNAMIC_FOR_HEAVY_TEST_SRCS})
-  endif()
   add_poet_test_exec(${suite_target}_static_for ${cxx_feature} ${STATIC_FOR_TEST_SRCS})
   add_poet_test_exec(${suite_target}_register_info ${cxx_feature} ${REGISTER_INFO_TEST_SRCS})
   # Compile register_info tests with -march=native so POET detects the full

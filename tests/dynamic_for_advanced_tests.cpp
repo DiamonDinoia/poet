@@ -7,7 +7,6 @@
 #include <utility>
 #include <vector>
 
-#include "dynamic_for_test_support.hpp"
 
 TEST_CASE("dynamic_for with Unroll=1 comprehensive", "[dynamic_for][unroll-1]") {
     std::vector<int> visited;

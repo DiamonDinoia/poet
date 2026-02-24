@@ -220,7 +220,7 @@ namespace detail {
             return count;
         }();
 
-        static constexpr std::array<int, unique_count> keys = []() constexpr {
+        static constexpr std::array<int, unique_count> keys = []() constexpr -> std::array<int, unique_count> {
             std::array<int, unique_count> out{};
             if constexpr (value_count > 0) {
                 std::size_t out_i = 0;
@@ -234,7 +234,8 @@ namespace detail {
             return out;
         }();
 
-        static constexpr std::array<std::size_t, unique_count> indices = []() constexpr {
+        static constexpr std::array<std::size_t, unique_count> indices =
+          []() constexpr -> std::array<std::size_t, unique_count> {
             std::array<std::size_t, unique_count> out{};
             if constexpr (value_count > 0) {
                 std::size_t out_i = 0;
@@ -262,7 +263,7 @@ namespace detail {
         static constexpr bool ascending = (first == std::min({ Values... }));
 
         static POET_FORCEINLINE auto find(int value) -> std::size_t {
-            std::size_t idx;
+            std::size_t idx = 0;
             if constexpr (ascending) {
                 idx = static_cast<std::size_t>(static_cast<unsigned int>(value) - static_cast<unsigned int>(first));
             } else {
@@ -279,9 +280,9 @@ namespace detail {
         using sparse_data = sparse_sequence_index_data<seq_type>;
 
         static POET_FORCEINLINE auto find(int value) -> std::size_t {
-            const auto it = std::lower_bound(sparse_data::keys.begin(), sparse_data::keys.end(), value);
-            if (it != sparse_data::keys.end() && *it == value) {
-                return sparse_data::indices[static_cast<std::size_t>(it - sparse_data::keys.begin())];
+            const auto pos = std::lower_bound(sparse_data::keys.begin(), sparse_data::keys.end(), value);
+            if (pos != sparse_data::keys.end() && *pos == value) {
+                return sparse_data::indices[static_cast<std::size_t>(pos - sparse_data::keys.begin())];
             }
             return dispatch_npos;
         }
@@ -331,12 +332,13 @@ namespace detail {
         constexpr auto strides = compute_strides(extract_dimensions<P>());
 
         // Step 1: per-dimension mapped indices (pure expansion, no lambdas)
-        const std::size_t indices[sizeof...(Idx)] = { seq_lookup<typename std::tuple_element_t<Idx, P>::seq_type>::find(
-          std::get<Idx>(params).runtime_val)... };
+        const std::array<std::size_t, sizeof...(Idx)> indices = {
+            seq_lookup<typename std::tuple_element_t<Idx, P>::seq_type>::find(std::get<Idx>(params).runtime_val)...
+        };
 
         // Step 2: miss check — any npos → early return
         const bool all_hit = ((indices[Idx] != dispatch_npos) && ...);
-        if (POET_UNLIKELY(!all_hit)) return dispatch_npos;
+        if (POET_UNLIKELY(!all_hit)) { return dispatch_npos; }
 
         // Step 3: flat index via fold-add (all hits guaranteed)
         return ((indices[Idx] * strides[Idx]) + ...);
@@ -367,8 +369,9 @@ namespace detail {
         constexpr auto strides = compute_strides(extract_dimensions<P>());
 
         // Step 1: per-dimension mapped indices (pure expansion, no lambdas)
-        const std::size_t mapped[sizeof...(Idx)] = { contiguous_offset<typename std::tuple_element_t<Idx, P>::seq_type>(
-          std::get<Idx>(params).runtime_val)... };
+        const std::array<std::size_t, sizeof...(Idx)> mapped = {
+            contiguous_offset<typename std::tuple_element_t<Idx, P>::seq_type>(std::get<Idx>(params).runtime_val)...
+        };
 
         // Step 2: OOB check via fold-or (no mutable captures)
         const std::size_t oob = (static_cast<std::size_t>(
@@ -382,11 +385,11 @@ namespace detail {
     }
 
     template<typename ParamTuple> POET_FORCEINLINE auto extract_flat_index(const ParamTuple &params) -> std::size_t {
-        constexpr std::size_t N = std::tuple_size_v<std::decay_t<ParamTuple>>;
+        constexpr std::size_t num_dims = std::tuple_size_v<std::decay_t<ParamTuple>>;
         if constexpr (all_contiguous_v<ParamTuple>) {
-            return extract_flat_index_fused_impl(params, std::make_index_sequence<N>{});
+            return extract_flat_index_fused_impl(params, std::make_index_sequence<num_dims>{});
         } else {
-            return extract_flat_index_impl(params, std::make_index_sequence<N>{});
+            return extract_flat_index_impl(params, std::make_index_sequence<num_dims>{});
         }
     }
 
@@ -491,17 +494,17 @@ namespace detail {
         template<typename F,
           typename U,
           typename = decltype(std::declval<F>().template operator()<V>(std::declval<U>()))>
-        static std::true_type test_template(int);
+        static auto test_template(int) -> std::true_type;
 
-        template<typename F, typename U> static std::false_type test_template(...);
+        template<typename F, typename U> static auto test_template(...) -> std::false_type;
 
         // Test value form: Functor::operator()(integral_constant<int, V>, U)
         template<typename F,
           typename U,
           typename = decltype(std::declval<F>()(std::integral_constant<int, V>{}, std::declval<U>()))>
-        static std::true_type test_value(int);
+        static auto test_value(int) -> std::true_type;
 
-        template<typename F, typename U> static std::false_type test_value(...);
+        template<typename F, typename U> static auto test_value(...) -> std::false_type;
 
         static constexpr bool value =
           is_candidate
@@ -526,17 +529,17 @@ namespace detail {
         template<typename F,
           typename U,
           typename = decltype(std::declval<F>().template operator()<Vs...>(std::declval<U>()))>
-        static std::true_type test_template(int);
+        static auto test_template(int) -> std::true_type;
 
-        template<typename F, typename U> static std::false_type test_template(...);
+        template<typename F, typename U> static auto test_template(...) -> std::false_type;
 
         // Test value form: Functor::operator()(integral_constant<int, Vs>..., U)
         template<typename F,
           typename U,
           typename = decltype(std::declval<F>()(std::integral_constant<int, Vs>{}..., std::declval<U>()))>
-        static std::true_type test_value(int);
+        static auto test_value(int) -> std::true_type;
 
-        template<typename F, typename U> static std::false_type test_value(...);
+        template<typename F, typename U> static auto test_value(...) -> std::false_type;
 
         static constexpr bool value =
           is_candidate

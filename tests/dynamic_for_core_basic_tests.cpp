@@ -4,7 +4,6 @@
 #include <type_traits>
 #include <vector>
 
-#include "dynamic_for_test_support.hpp"
 
 TEST_CASE("dynamic_for handles divisible counts", "[dynamic_for]") {
     std::vector<std::size_t> visited;

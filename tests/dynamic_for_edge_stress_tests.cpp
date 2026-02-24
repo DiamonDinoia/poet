@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <vector>
 
-#include "dynamic_for_test_support.hpp"
 
 TEST_CASE("dynamic_for supports unsigned backward iteration with wrapped step", "[dynamic_for]") {
     std::vector<unsigned> visited;

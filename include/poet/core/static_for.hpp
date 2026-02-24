@@ -24,15 +24,14 @@ namespace detail {
       std::size_t BlockSize,
       std::size_t FullBlocks,
       std::size_t Remainder>
-    POET_FORCEINLINE constexpr void static_loop_run_blocks(Callable &callable) {
+    POET_FORCEINLINE constexpr void run_blocks(Callable &callable) {
         if constexpr (FullBlocks > 0) {
             // Use register-isolated (noinline) blocks for multi-block loops to
             // prevent the compiler from interleaving computations across blocks,
             // which would cause excessive register spills on x86-64.
             // Single-block loops are always inlined.
             if constexpr (FullBlocks > 1) {
-                emit_blocks_isolated<Callable, Begin, Step, BlockSize>(
-                  callable, std::make_index_sequence<FullBlocks>{});
+                emit_blocks_iso<Callable, Begin, Step, BlockSize>(callable, std::make_index_sequence<FullBlocks>{});
             } else {
                 emit_blocks<Callable, Begin, Step, BlockSize>(callable, std::make_index_sequence<FullBlocks>{});
             }
@@ -43,10 +42,9 @@ namespace detail {
         }
     }
 
-    /// \brief Returns the default block size for loop unrolling: the total
-    /// iteration count, or 1 for empty ranges (BlockSize must be > 0).
+    /// \brief Default block size: total iteration count, or 1 for empty ranges.
     template<std::ptrdiff_t Begin, std::ptrdiff_t End, std::ptrdiff_t Step>
-    POET_CPP20_CONSTEVAL auto compute_default_static_loop_block_size() noexcept -> std::size_t {
+    POET_CPP20_CONSTEVAL auto default_block_size() noexcept -> std::size_t {
         constexpr auto count = detail::compute_range_count<Begin, End, Step>();
         return count == 0 ? 1 : count;
     }
@@ -101,7 +99,7 @@ namespace detail {
 template<std::ptrdiff_t Begin,
   std::ptrdiff_t End,
   std::ptrdiff_t Step = 1,
-  std::size_t BlockSize = detail::compute_default_static_loop_block_size<Begin, End, Step>(),
+  std::size_t BlockSize = detail::default_block_size<Begin, End, Step>(),
   typename Func>
 POET_FORCEINLINE constexpr void static_for(Func &&func) {
     static_assert(BlockSize > 0, "static_for requires BlockSize > 0");
@@ -119,20 +117,20 @@ POET_FORCEINLINE constexpr void static_for(Func &&func) {
 
     if constexpr (std::is_invocable_v<callable_t &, std::integral_constant<std::ptrdiff_t, Begin>>) {
         if constexpr (std::is_lvalue_reference_v<Func>) {
-            detail::static_loop_run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(func);
+            detail::run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(func);
         } else {
             callable_t callable(std::forward<Func>(func));
-            detail::static_loop_run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(callable);
+            detail::run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(callable);
         }
     } else {
         using invoker_t = detail::template_invoker<callable_t>;
         if constexpr (std::is_lvalue_reference_v<Func>) {
             invoker_t invoker{ func };
-            detail::static_loop_run_blocks<invoker_t, Begin, Step, BlockSize, full_blocks, remainder>(invoker);
+            detail::run_blocks<invoker_t, Begin, Step, BlockSize, full_blocks, remainder>(invoker);
         } else {
             callable_t callable(std::forward<Func>(func));
             invoker_t invoker{ callable };
-            detail::static_loop_run_blocks<invoker_t, Begin, Step, BlockSize, full_blocks, remainder>(invoker);
+            detail::run_blocks<invoker_t, Begin, Step, BlockSize, full_blocks, remainder>(invoker);
         }
     }
 }

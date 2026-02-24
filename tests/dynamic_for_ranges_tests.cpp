@@ -8,7 +8,6 @@
 #include <utility>
 #include <vector>
 
-#include "dynamic_for_test_support.hpp"
 
 TEST_CASE("dynamic_for vs ranges (C++20)", "[dynamic_for][ranges][cpp20]") {
     std::vector<int> via_ranges;

@@ -21,7 +21,7 @@ template<std::ptrdiff_t Begin, std::ptrdiff_t End, std::ptrdiff_t Step>
         static_assert(Begin >= End, "static_for with a negative step requires Begin >= End");
     }
     if constexpr (Begin == End) { return 0; }
-    constexpr auto abs = [](auto x) { return x < 0 ? -x : x; };
+    constexpr auto abs = [](auto x) -> decltype(x) { return x < 0 ? -x : x; };
     constexpr auto distance = abs(End - Begin);
     constexpr auto magnitude = abs(Step);
     return static_cast<std::size_t>((distance + magnitude - 1) / magnitude);
@@ -29,7 +29,7 @@ template<std::ptrdiff_t Begin, std::ptrdiff_t End, std::ptrdiff_t Step>
 
 /// \brief Executes one unrolled block of iterations (always-inline).
 template<typename Func, std::ptrdiff_t Begin, std::ptrdiff_t Step, std::size_t StartIndex, std::size_t... Is>
-POET_FORCEINLINE constexpr void run_block(Func &func, std::index_sequence<Is...> /*unused*/) {
+POET_FORCEINLINE constexpr auto run_block(Func &func, std::index_sequence<Is...> /*seq*/) -> void {
     constexpr std::ptrdiff_t Base = Begin + (Step * static_cast<std::ptrdiff_t>(StartIndex));
     (func(std::integral_constant<std::ptrdiff_t, Base + (Step * static_cast<std::ptrdiff_t>(Is))>{}), ...);
 }
@@ -41,21 +41,21 @@ POET_FORCEINLINE constexpr void run_block(Func &func, std::index_sequence<Is...>
 POET_PUSH_OPTIMIZE
 
 template<typename Func, std::ptrdiff_t Begin, std::ptrdiff_t Step, std::size_t StartIndex, std::size_t... Is>
-POET_NOINLINE_FLATTEN constexpr void run_block_isolated(Func &func, std::index_sequence<Is...> /*unused*/) {
+POET_NOINLINE_FLATTEN constexpr auto run_block_iso(Func &func, std::index_sequence<Is...> /*seq*/) -> void {
     constexpr std::ptrdiff_t Base = Begin + (Step * static_cast<std::ptrdiff_t>(StartIndex));
     (func(std::integral_constant<std::ptrdiff_t, Base + (Step * static_cast<std::ptrdiff_t>(Is))>{}), ...);
 }
 
 /// \brief Emits N full blocks, inline.
 template<typename Func, std::ptrdiff_t Begin, std::ptrdiff_t Step, std::size_t BlockSize, std::size_t... Is>
-POET_FORCEINLINE constexpr void emit_blocks(Func &func, std::index_sequence<Is...> /*unused*/) {
+POET_FORCEINLINE constexpr auto emit_blocks(Func &func, std::index_sequence<Is...> /*seq*/) -> void {
     (run_block<Func, Begin, Step, Is * BlockSize>(func, std::make_index_sequence<BlockSize>{}), ...);
 }
 
 /// \brief Emits N full blocks, each noinline-isolated.
 template<typename Func, std::ptrdiff_t Begin, std::ptrdiff_t Step, std::size_t BlockSize, std::size_t... Is>
-POET_FORCEINLINE constexpr void emit_blocks_isolated(Func &func, std::index_sequence<Is...> /*unused*/) {
-    (run_block_isolated<Func, Begin, Step, Is * BlockSize>(func, std::make_index_sequence<BlockSize>{}), ...);
+POET_FORCEINLINE constexpr auto emit_blocks_iso(Func &func, std::index_sequence<Is...> /*seq*/) -> void {
+    (run_block_iso<Func, Begin, Step, Is * BlockSize>(func, std::make_index_sequence<BlockSize>{}), ...);
 }
 
 POET_POP_OPTIMIZE
@@ -68,7 +68,7 @@ template<typename Functor> struct template_invoker {
     Functor &functor;
 
     template<std::ptrdiff_t Value>
-    POET_FORCEINLINE constexpr void operator()(std::integral_constant<std::ptrdiff_t, Value> /*unused*/) const {
+    POET_FORCEINLINE constexpr auto operator()(std::integral_constant<std::ptrdiff_t, Value> /*ic*/) const -> void {
         functor.template operator()<Value>();
     }
 };

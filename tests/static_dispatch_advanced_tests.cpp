@@ -52,6 +52,32 @@ TEST_CASE("dispatch handles contiguous descending sequence", "[static_dispatch][
     REQUIRE(values == std::vector<int>{ 65, 55, 45, 35, 25, 15, 5 });
 }
 
+TEST_CASE("dispatch 1D descending contiguous sequence (seq_lookup path)", "[static_dispatch][contiguous-descending]") {
+    using Desc = std::integer_sequence<int, 5, 4, 3, 2, 1>;
+    int total = 0;
+    for (int v : { 5, 4, 3, 2, 1 }) { dispatch(accumulating_dispatcher{ &total }, DispatchParam<Desc>{ v }, 0); }
+    REQUIRE(total == 1 + 2 + 3 + 4 + 5);
+}
+
+TEST_CASE("dispatch 1D descending out-of-range returns default", "[static_dispatch][contiguous-descending]") {
+    using Desc = std::integer_sequence<int, 5, 4, 3, 2, 1>;
+    bool invoked = false;
+    dispatch(guard_dispatcher{ &invoked }, DispatchParam<Desc>{ 0 }, 0);
+    REQUIRE_FALSE(invoked);
+    dispatch(guard_dispatcher{ &invoked }, DispatchParam<Desc>{ 6 }, 0);
+    REQUIRE_FALSE(invoked);
+}
+
+TEST_CASE("dispatch 2D both-descending contiguous sequences (fused path)", "[static_dispatch][contiguous-descending]") {
+    std::vector<int> values;
+    using D1 = std::integer_sequence<int, 3, 2, 1>;
+    using D2 = std::integer_sequence<int, 2, 1, 0>;
+    auto params = std::make_tuple(DispatchParam<D1>{ 2 }, DispatchParam<D2>{ 1 });
+    dispatch(vector_dispatcher{ &values }, params, 0);
+    // Width=2, Height=1, scale=0: 0 + 2*10 + 1 = 21
+    REQUIRE(values == std::vector<int>{ 21 });
+}
+
 TEST_CASE("dispatch preserved non-throwing behavior with nothrow_on_no_match (non-void)",
   "[static_dispatch][nothrow]") {
     bool invoked = false;

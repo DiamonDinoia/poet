@@ -3,7 +3,6 @@
 #include <numeric>
 #include <vector>
 
-#include "dynamic_for_test_support.hpp"
 
 TEST_CASE("dynamic_for supports step > 1", "[dynamic_for]") {
     std::vector<int> visited;

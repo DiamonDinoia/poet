@@ -57,59 +57,59 @@ namespace detail {
 
     /// Detect the highest-level instruction set available at compile time.
     /// This is automatically detected from compiler defines.
-    POET_CPP20_CONSTEVAL instruction_set detect_instruction_set() noexcept {
+    POET_CPP20_CONSTEVAL auto detect_instruction_set() noexcept -> instruction_set {
         // AVX-512 (highest priority - includes F, CD, BW, DQ extensions)
-#if defined(__AVX512F__)
+#ifdef __AVX512F__
         return instruction_set::avx_512;
 #endif
 
         // AVX2 (includes AVX)
-#if defined(__AVX2__)
+#ifdef __AVX2__
         return instruction_set::avx2;
 #endif
 
         // AVX
-#if defined(__AVX__)
+#ifdef __AVX__
         return instruction_set::avx;
 #endif
 
         // SSE4.2
-#if defined(__SSE4_2__)
+#ifdef __SSE4_2__
         return instruction_set::sse4_2;
 #endif
 
         // SSE2
-#if defined(__SSE2__)
+#ifdef __SSE2__
         return instruction_set::sse2;
 #endif
 
         // ARM NEON (auto-enabled on ARM64)
-#if defined(__ARM_NEON__)
+#ifdef __ARM_NEON__
         return instruction_set::arm_neon;
 #endif
 
         // ARM SVE2 (newer scalable vectors)
-#if defined(__ARM_FEATURE_SVE2__)
+#ifdef __ARM_FEATURE_SVE2__
         return instruction_set::arm_sve2;
 #endif
 
         // ARM SVE (scalable vectors)
-#if defined(__ARM_FEATURE_SVE__)
+#ifdef __ARM_FEATURE_SVE__
         return instruction_set::arm_sve;
 #endif
 
         // PowerPC VSX
-#if defined(__VSX__)
+#ifdef __VSX__
         return instruction_set::ppc_vsx;
 #endif
 
         // PowerPC AltiVec
-#if defined(__ALTIVEC__)
+#ifdef __ALTIVEC__
         return instruction_set::ppc_altivec;
 #endif
 
         // MIPS MSA
-#if defined(__mips_msa)
+#ifdef __mips_msa
         return instruction_set::mips_msa;
 #endif
 
@@ -118,7 +118,7 @@ namespace detail {
     }
 
     /// Retrieve register information for a specific instruction set.
-    POET_CPP20_CONSTEVAL register_info get_register_info(instruction_set isa) noexcept {
+    POET_CPP20_CONSTEVAL auto get_register_info(instruction_set isa) noexcept -> register_info {
         switch (isa) {
             // ────────────────────────────────────────────────────────────────────
             // x86-64 Family
@@ -251,27 +251,29 @@ namespace detail {
 
 /// Detect the instruction set available at compile time.
 /// This is a compile-time constant determined from compiler defines.
-POET_CPP20_CONSTEVAL instruction_set detected_isa() noexcept { return detail::detect_instruction_set(); }
+POET_CPP20_CONSTEVAL auto detected_isa() noexcept -> instruction_set { return detail::detect_instruction_set(); }
 
 /// Get register information for the detected instruction set.
 /// This is a compile-time constant based on the host compiler's target.
-POET_CPP20_CONSTEVAL register_info available_registers() noexcept { return detail::get_register_info(detected_isa()); }
+POET_CPP20_CONSTEVAL auto available_registers() noexcept -> register_info {
+    return detail::get_register_info(detected_isa());
+}
 
 /// Get register information for a specific instruction set.
-POET_CPP20_CONSTEVAL register_info registers_for(instruction_set isa) noexcept {
+POET_CPP20_CONSTEVAL auto registers_for(instruction_set isa) noexcept -> register_info {
     return detail::get_register_info(isa);
 }
 
 /// Number of SIMD/vector registers available.
-POET_CPP20_CONSTEVAL size_t vector_register_count() noexcept { return available_registers().vector_registers; }
+POET_CPP20_CONSTEVAL auto vector_register_count() noexcept -> size_t { return available_registers().vector_registers; }
 
 /// Vector width in bits for the detected instruction set.
-POET_CPP20_CONSTEVAL size_t vector_width_bits() noexcept { return available_registers().vector_width_bits; }
+POET_CPP20_CONSTEVAL auto vector_width_bits() noexcept -> size_t { return available_registers().vector_width_bits; }
 
 /// Number of 64-bit lanes in a vector for the detected instruction set.
-POET_CPP20_CONSTEVAL size_t vector_lanes_64bit() noexcept { return available_registers().lanes_64bit; }
+POET_CPP20_CONSTEVAL auto vector_lanes_64bit() noexcept -> size_t { return available_registers().lanes_64bit; }
 
 /// Number of 32-bit lanes in a vector for the detected instruction set.
-POET_CPP20_CONSTEVAL size_t vector_lanes_32bit() noexcept { return available_registers().lanes_32bit; }
+POET_CPP20_CONSTEVAL auto vector_lanes_32bit() noexcept -> size_t { return available_registers().lanes_32bit; }
 
 }// namespace poet
