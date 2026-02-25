@@ -221,6 +221,68 @@ TEST_CASE("dispatch sparse 1D miss between values", "[static_dispatch][sparse]")
 }
 
 // ============================================================================
+// Sparse 1D dispatch — strided (equal-gap) path
+// ============================================================================
+
+TEST_CASE("dispatch strided sparse 1D hits all values", "[static_dispatch][sparse][strided]") {
+    // {0, 10, 20}: stride=10 → is_strided=true → O(1) lookup
+    using StridedSeq = std::integer_sequence<int, 0, 10, 20>;
+    for (int val : { 0, 10, 20 }) {
+        bool invoked = false;
+        const auto result = dispatch(guard_dispatcher{ &invoked }, DispatchParam<StridedSeq>{ val }, 0);
+        REQUIRE(result == val);
+        REQUIRE(invoked);
+    }
+}
+
+TEST_CASE("dispatch strided sparse 1D miss cases", "[static_dispatch][sparse][strided]") {
+    using StridedSeq = std::integer_sequence<int, 0, 10, 20>;
+    // negative diff (below first)
+    {
+        bool inv = false;
+        REQUIRE(dispatch(guard_dispatcher{ &inv }, DispatchParam<StridedSeq>{ -5 }, 0) == 0);
+        REQUIRE_FALSE(inv);
+    }
+    // in range but not a multiple of stride
+    {
+        bool inv = false;
+        REQUIRE(dispatch(guard_dispatcher{ &inv }, DispatchParam<StridedSeq>{ 5 }, 0) == 0);
+        REQUIRE_FALSE(inv);
+    }
+    // beyond last element (idx >= unique_count)
+    {
+        bool inv = false;
+        REQUIRE(dispatch(guard_dispatcher{ &inv }, DispatchParam<StridedSeq>{ 30 }, 0) == 0);
+        REQUIRE_FALSE(inv);
+    }
+}
+
+// ============================================================================
+// Sparse 1D dispatch — non-strided (unequal-gap) path: loop detects mismatch
+// ============================================================================
+
+TEST_CASE("dispatch non-strided sparse 1D hits all values", "[static_dispatch][sparse][non-strided]") {
+    // {1, 3, 7}: stride0=2 but 7-3=4 ≠ 2 → is_strided=false → binary search
+    using UnequalSeq = std::integer_sequence<int, 1, 3, 7>;
+    for (int val : { 1, 3, 7 }) {
+        bool invoked = false;
+        const auto result = dispatch(guard_dispatcher{ &invoked }, DispatchParam<UnequalSeq>{ val }, 0);
+        REQUIRE(result == val);
+        REQUIRE(invoked);
+    }
+}
+
+TEST_CASE("dispatch non-strided sparse 1D miss cases", "[static_dispatch][sparse][non-strided]") {
+    using UnequalSeq = std::integer_sequence<int, 1, 3, 7>;
+    for (int val : { 0, 2, 4, 5, 6, 8 }) {
+        bool invoked = false;
+        const auto result = dispatch(guard_dispatcher{ &invoked }, DispatchParam<UnequalSeq>{ val }, 0);
+        REQUIRE(result == 0);
+        REQUIRE_FALSE(invoked);
+    }
+}
+
+// ============================================================================
 // Stateful functor preserves state across dispatch calls
 // ============================================================================
 
