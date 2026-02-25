@@ -21,7 +21,7 @@ endif()
 
 include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag("-march=native" COMPILER_SUPPORTS_MARCH_NATIVE)
-check_cxx_compiler_flag("-mavx512f" COMPILER_SUPPORTS_AVX512F)
+
 
 function(_poet_configure_benchmark_target TARGET_NAME)
   add_executable(${TARGET_NAME} ${ARGN})
@@ -63,30 +63,6 @@ if(COMPILER_SUPPORTS_MARCH_NATIVE)
   message(STATUS "POET: building native benchmarks (poet_*_bench_native)")
 endif()
 
-# ── Register-tuned benchmarks (-mavx512f, gated on hardware) ───────────────
-if(COMPILER_SUPPORTS_AVX512F)
-  # Check if the host CPU actually supports AVX-512
-  set(_poet_host_has_avx512 FALSE)
-  if(EXISTS "/proc/cpuinfo")
-    file(READ "/proc/cpuinfo" _poet_cpuinfo)
-    string(FIND "${_poet_cpuinfo}" "avx512f" _poet_avx512_pos)
-    if(NOT _poet_avx512_pos EQUAL -1)
-      set(_poet_host_has_avx512 TRUE)
-    endif()
-  endif()
-
-  if(_poet_host_has_avx512)
-    _poet_configure_benchmark_target(poet_static_for_bench_avx512 static_for_bench.cpp)
-    target_compile_options(poet_static_for_bench_avx512 PRIVATE -mavx512f)
-
-    _poet_configure_benchmark_target(poet_dynamic_for_bench_avx512 dynamic_for_bench.cpp)
-    target_compile_options(poet_dynamic_for_bench_avx512 PRIVATE -mavx512f)
-
-    message(STATUS "POET: building AVX-512 benchmarks (poet_*_bench_avx512)")
-  else()
-    message(STATUS "POET: skipping AVX-512 benchmarks (host CPU lacks avx512f)")
-  endif()
-endif()
 
 # ── Umbrella build target (CI uses --target poet_benchmarks) ───────────────
 add_custom_target(poet_benchmarks
@@ -102,6 +78,8 @@ add_custom_target(poet_run_bench
   USES_TERMINAL
   COMMENT "Running POET benchmarks"
 )
+# Short aliases
+add_custom_target(benchmarks DEPENDS poet_run_bench)
 # Alias used by CI
 add_custom_target(poet_run_benchmarks DEPENDS poet_run_bench)
 
@@ -114,6 +92,8 @@ if(COMPILER_SUPPORTS_MARCH_NATIVE)
     USES_TERMINAL
     COMMENT "Running POET benchmarks (-march=native)"
   )
+  # Short alias
+  add_custom_target(benchmarks-native DEPENDS poet_run_bench_native)
   # Alias used by CI
   add_custom_target(poet_run_benchmarks_native DEPENDS poet_run_bench_native)
 endif()

@@ -36,9 +36,13 @@
 /// Generic assumption hint. UB if expression is false at runtime.
 /// Uses [[assume(expr)]] when the compiler reports support via __has_cpp_attribute
 /// (GCC >= 13, Clang >= 19), otherwise falls back to compiler builtins.
+#ifdef __has_cpp_attribute
 #if __has_cpp_attribute(assume)
 #define POET_ASSUME(expr) [[assume(expr)]]// NOLINT(cppcoreguidelines-macro-usage)
-#elif defined(__clang__)
+#endif
+#endif
+#ifndef POET_ASSUME
+#if defined(__clang__)
 #define POET_ASSUME(expr) __builtin_assume(expr)// NOLINT(cppcoreguidelines-macro-usage)
 #elif defined(__GNUC__)
 #define POET_ASSUME(expr)                \
@@ -52,6 +56,7 @@
     do {                  \
     } while (false)// NOLINT(cppcoreguidelines-macro-usage)
 #endif
+#endif// ifndef POET_ASSUME
 
 // ============================================================================
 // POET_NOINLINE_FLATTEN

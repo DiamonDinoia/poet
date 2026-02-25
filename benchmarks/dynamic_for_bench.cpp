@@ -30,7 +30,14 @@ constexpr auto regs = poet::available_registers();
 constexpr std::size_t vec_regs = regs.vector_registers;
 constexpr std::size_t lanes_64 = regs.lanes_64bit;
 
-// Tuned accumulator count: 2 full vector registers worth of 64-bit lanes.
+// Tuned unroll factor: 2 vector registers worth of 64-bit lanes.
+//
+// GCC packs the N accumulators from the carried-index fold into
+// ceil(N / lanes_per_reg) vector registers.  Going beyond 2 regs
+// works when N is a clean multiple of lanes_per_reg, but on SSE2
+// (2 lanes) GCC collapses folds wider than ~4 to a scalar stack
+// loop.  2 * lanes_64 = 8 (AVX2) / 4 (SSE2) is the sweet spot
+// that stays vectorised on both ISAs.
 constexpr std::size_t tuned_accs = lanes_64 * 2;
 
 // ── Workload ─────────────────────────────────────────────────────────────────
@@ -138,19 +145,19 @@ int main() {
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // Unroll-factor sweep: plain for (1-acc) vs dynamic_for at 2, 4, 8, tuned
+    // Unroll comparison: plain for vs tuned vs over-unrolled
     //
-    // The plain for loop has a serial dependency chain on a single accumulator.
-    // dynamic_for with N accumulators breaks the chain into N independent
-    // chains — the CPU can execute them in parallel (ILP).  This section
-    // sweeps unroll factors to find the sweet-spot for the current ISA.
+    // 1. plain for (1-acc)  — serial dependency chain, baseline
+    // 2. dynamic_for<tuned> — register-aware unroll (lanes_64 * 2)
+    // 3. dynamic_for<4x>    — deliberate over-unroll to show spill cost
     // ════════════════════════════════════════════════════════════════════════
     {
         constexpr std::size_t N = 10000;
+        constexpr std::size_t over_unroll = tuned_accs * 4;
 
         ankerl::nanobench::Bench b;
         b.minEpochTime(50ms).relative(true);
-        b.title("Unroll sweep: plain for vs dynamic_for (N=10000)");
+        b.title("Unroll: plain for vs tuned vs over-unrolled (N=10000)");
 
         run(b, N, "plain for (1 acc)", [salt] {
             double acc = 0.0;
@@ -158,12 +165,8 @@ int main() {
             return acc;
         });
 
-        run(b, N, "dynamic_for<2>", [salt] { return dynamic_for_multi_acc<2>(N, salt); });
-        run(b, N, "dynamic_for<4>", [salt] { return dynamic_for_multi_acc<4>(N, salt); });
-        run(b, N, "dynamic_for<8>", [salt] { return dynamic_for_multi_acc<8>(N, salt); });
+        run(b, N, "dynamic_for<tuned>", [salt] { return dynamic_for_multi_acc<tuned_accs>(N, salt); });
 
-        if constexpr (tuned_accs != 2 && tuned_accs != 4 && tuned_accs != 8) {
-            run(b, N, "dynamic_for<tuned>", [salt] { return dynamic_for_multi_acc<tuned_accs>(N, salt); });
-        }
+        run(b, N, "dynamic_for<4x over>", [salt] { return dynamic_for_multi_acc<over_unroll>(N, salt); });
     }
 }
