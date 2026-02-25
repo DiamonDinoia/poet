@@ -722,13 +722,10 @@ POET_CPP20_CONSTEVAL auto vector_lanes_32bit() noexcept -> size_t { return avail
 #include <type_traits>
 #include <utility>
 
-/* Begin inline (angle): include/poet/core/macros.hpp */
-/* Skipped already inlined: include/poet/core/macros.hpp */
-/* End inline (angle): include/poet/core/macros.hpp */
-/* Begin inline (angle): include/poet/core/static_dispatch.hpp */
-// BEGIN_FILE: include/poet/core/static_dispatch.hpp
+/* Begin inline (angle): include/poet/core/dispatch.hpp */
+// BEGIN_FILE: include/poet/core/dispatch.hpp
 
-/// \file static_dispatch.hpp
+/// \file dispatch.hpp
 /// \brief Runtime-to-compile-time dispatch via function pointer tables.
 ///
 /// Maps runtime integers (or tuples of integers) to compile-time template parameters
@@ -765,7 +762,7 @@ POET_CPP20_CONSTEVAL auto vector_lanes_32bit() noexcept -> size_t { return avail
 /// \brief Multidimensional index utilities for N-D dispatch table generation.
 ///
 /// Provides row-major stride computation and total-size calculation used by
-/// the N-D function-pointer-table dispatch in static_dispatch.hpp.
+/// the N-D function-pointer-table dispatch in dispatch.hpp.
 
 #include <array>
 #include <cstddef>
@@ -2014,8 +2011,11 @@ auto dispatch(throw_on_no_match_t /*tag*/, Functor &&functor, ParamTuple const &
 }
 
 }// namespace poet
-// END_FILE: include/poet/core/static_dispatch.hpp
-/* End inline (angle): include/poet/core/static_dispatch.hpp */
+// END_FILE: include/poet/core/dispatch.hpp
+/* End inline (angle): include/poet/core/dispatch.hpp */
+/* Begin inline (angle): include/poet/core/macros.hpp */
+/* Skipped already inlined: include/poet/core/macros.hpp */
+/* End inline (angle): include/poet/core/macros.hpp */
 
 
 namespace poet {
@@ -2520,9 +2520,9 @@ template<std::size_t U, typename F> constexpr auto make_dynamic_for(F &&f) -> dy
 #endif// __cplusplus >= 202002L
 // END_FILE: include/poet/core/dynamic_for.hpp
 /* End inline (angle): include/poet/core/dynamic_for.hpp */
-/* Begin inline (angle): include/poet/core/static_dispatch.hpp */
-/* Skipped already inlined: include/poet/core/static_dispatch.hpp */
-/* End inline (angle): include/poet/core/static_dispatch.hpp */
+/* Begin inline (angle): include/poet/core/dispatch.hpp */
+/* Skipped already inlined: include/poet/core/dispatch.hpp */
+/* End inline (angle): include/poet/core/dispatch.hpp */
 /* Begin inline (angle): include/poet/core/static_for.hpp */
 // BEGIN_FILE: include/poet/core/static_for.hpp
 
