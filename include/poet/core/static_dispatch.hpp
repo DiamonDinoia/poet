@@ -679,9 +679,11 @@ namespace detail {
 
         static POET_CPP20_CONSTEVAL auto make() {
             if constexpr (is_stateless_v<Functor>) {
-                return std::array{ lambda_maker<Values>::make_stateless()... };
+                using fn_type = decltype(lambda_maker<first_value>::make_stateless());
+                return std::array<fn_type, sizeof...(Values)>{ lambda_maker<Values>::make_stateless()... };
             } else {
-                return std::array{ lambda_maker<Values>::make_stateful()... };
+                using fn_type = decltype(lambda_maker<first_value>::make_stateful());
+                return std::array<fn_type, sizeof...(Values)>{ lambda_maker<Values>::make_stateful()... };
             }
         }
     };
@@ -837,9 +839,15 @@ namespace detail {
         /// Works for both void and non-void return types.
         template<typename R> static constexpr auto make_table() {
             if constexpr (is_stateless_v<Functor>) {
-                return std::array{ &nd_index_caller<FlatIndices>::template call_stateless<R>... };
+                using fn_type = decltype(&nd_index_caller<0>::template call_stateless<R>);
+                return std::array<fn_type, sizeof...(FlatIndices)>{
+                    &nd_index_caller<FlatIndices>::template call_stateless<R>...
+                };
             } else {
-                return std::array{ &nd_index_caller<FlatIndices>::template call<R>... };
+                using fn_type = decltype(&nd_index_caller<0>::template call<R>);
+                return std::array<fn_type, sizeof...(FlatIndices)>{
+                    &nd_index_caller<FlatIndices>::template call<R>...
+                };
             }
         }
     };
