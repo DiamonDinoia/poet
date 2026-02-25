@@ -101,11 +101,7 @@ set(HEADERS_TEST_SRCS
   poet_header_tests.cpp
 )
 set(DYNAMIC_FOR_TEST_SRCS
-  dynamic_for_core_basic_tests.cpp
-  dynamic_for_core_step_tests.cpp
-  dynamic_for_edge_stress_tests.cpp
-  dynamic_for_advanced_tests.cpp
-  dynamic_for_ranges_tests.cpp
+  dynamic_for_tests.cpp
 )
 set(STATIC_FOR_TEST_SRCS
   static_for_tests.cpp
@@ -114,21 +110,7 @@ set(REGISTER_INFO_TEST_SRCS
   register_info_tests.cpp
 )
 set(DISPATCH_TEST_SRCS
-  static_dispatch_basic_tests.cpp
-  static_dispatch_throw_tests.cpp
-  static_dispatch_advanced_tests.cpp
-  static_dispatch_tuple_tests.cpp
-)
-
-# Heavy tests split by category to reduce linking memory usage
-set(HEAVY_ARRAY1D_TEST_SRCS
-  static_dispatch_heavy_array1d_tests.cpp
-)
-set(HEAVY_ARRAYND_TEST_SRCS
-  static_dispatch_heavy_arraynd_tests.cpp
-)
-set(HEAVY_RETURN_TEST_SRCS
-  static_dispatch_heavy_return_tests.cpp
+  dispatch_tests.cpp
 )
 option(POET_ENABLE_TEST_PCH "Enable precompiled headers for test targets" ON)
 
@@ -203,9 +185,6 @@ macro(add_poet_tests_suite suite_target cxx_feature)
     ${suite_target}_static_for
     ${suite_target}_register_info
     ${suite_target}_dispatch
-    ${suite_target}_heavy_array1d
-    ${suite_target}_heavy_arraynd
-    ${suite_target}_heavy_return
   )
 
   # Create separate executables for each test category to enable parallel compilation
@@ -220,11 +199,6 @@ macro(add_poet_tests_suite suite_target cxx_feature)
     target_compile_definitions(${suite_target}_register_info PRIVATE POET_HAS_HW_DETECTION)
   endif()
   add_poet_test_exec(${suite_target}_dispatch ${cxx_feature} ${DISPATCH_TEST_SRCS})
-
-  # Heavy tests: split by category to reduce peak memory usage during linking
-  add_poet_test_exec(${suite_target}_heavy_array1d ${cxx_feature} ${HEAVY_ARRAY1D_TEST_SRCS})
-  add_poet_test_exec(${suite_target}_heavy_arraynd ${cxx_feature} ${HEAVY_ARRAYND_TEST_SRCS})
-  add_poet_test_exec(${suite_target}_heavy_return ${cxx_feature} ${HEAVY_RETURN_TEST_SRCS})
 
   # Create umbrella target for building all tests in this suite
   add_custom_target(${suite_target} DEPENDS ${_suite_execs})

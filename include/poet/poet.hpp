@@ -13,7 +13,7 @@
 #include <poet/core/macros.hpp>
 #include <poet/core/register_info.hpp>
 #include <poet/core/dynamic_for.hpp>
-#include <poet/core/static_dispatch.hpp>
+#include <poet/core/dispatch.hpp>
 #include <poet/core/static_for.hpp>
 #include <poet/core/undef_macros.hpp>
 // NOLINTEND(llvm-include-order)

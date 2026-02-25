@@ -4,7 +4,7 @@
 /// \brief Multidimensional index utilities for N-D dispatch table generation.
 ///
 /// Provides row-major stride computation and total-size calculation used by
-/// the N-D function-pointer-table dispatch in static_dispatch.hpp.
+/// the N-D function-pointer-table dispatch in dispatch.hpp.
 
 #include <array>
 #include <cstddef>

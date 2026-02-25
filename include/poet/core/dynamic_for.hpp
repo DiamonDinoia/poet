@@ -87,8 +87,8 @@
 #include <type_traits>
 #include <utility>
 
+#include <poet/core/dispatch.hpp>
 #include <poet/core/macros.hpp>
-#include <poet/core/static_dispatch.hpp>
 
 
 namespace poet {
