@@ -1,9 +1,15 @@
 /// \file dynamic_for_bench.cpp
 /// \brief Register-tuned dynamic_for benchmark.
 ///
-/// Multi-acc: for loop (1-acc) vs for loop (tuned accs) vs dynamic_for (tuned accs).
-/// Shows that dynamic_for's compile-time lane indices enable independent
-/// accumulator chains that break serial dependency bottlenecks.
+/// Two benchmark groups:
+///
+/// 1. **Multi-acc ILP**: for loop (1-acc) vs for loop (tuned accs) vs
+///    dynamic_for (tuned accs).  Shows that dynamic_for's compile-time lane
+///    indices enable independent accumulator chains that break serial
+///    dependency bottlenecks.
+///
+/// 2. **Unroll sweep**: plain for (1-acc) vs dynamic_for at Unroll = 2, 4, 8,
+///    tuned.  Finds the sweet-spot unroll factor for the current ISA.
 
 #include <array>
 #include <cstddef>
@@ -80,6 +86,17 @@ template<std::size_t NumAccs> double hand_unrolled_multi_acc(std::size_t count, 
     return reduce(accs);
 }
 
+// ── dynamic_for multi-acc wrapper (templated on Unroll) ──────────────────────
+
+template<std::size_t Unroll> double dynamic_for_multi_acc(std::size_t count, std::uint32_t salt) {
+    std::array<double, Unroll> accs{};
+    poet::dynamic_for<Unroll>(std::size_t{ 0 }, count, [&accs, salt](auto lane_c, std::size_t i) {
+        constexpr auto lane = decltype(lane_c)::value;
+        accs[lane] += heavy_work(i, salt);
+    });
+    return reduce(accs);
+}
+
 }// namespace
 
 int main() {
@@ -117,14 +134,36 @@ int main() {
 
         run(b, N, "for loop (tuned accs)", [salt] { return hand_unrolled_multi_acc<tuned_accs>(N, salt); });
 
-        run(b, N, "dynamic_for (tuned accs)", [salt] {
-            std::array<double, tuned_accs> accs{};
-            poet::dynamic_for<tuned_accs>(
-              std::size_t{ 0 }, std::size_t{ N }, [&accs, salt](auto lane_c, std::size_t i) {
-                  constexpr auto lane = decltype(lane_c)::value;
-                  accs[lane] += heavy_work(i, salt);
-              });
-            return reduce(accs);
+        run(b, N, "dynamic_for (tuned accs)", [salt] { return dynamic_for_multi_acc<tuned_accs>(N, salt); });
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // Unroll-factor sweep: plain for (1-acc) vs dynamic_for at 2, 4, 8, tuned
+    //
+    // The plain for loop has a serial dependency chain on a single accumulator.
+    // dynamic_for with N accumulators breaks the chain into N independent
+    // chains — the CPU can execute them in parallel (ILP).  This section
+    // sweeps unroll factors to find the sweet-spot for the current ISA.
+    // ════════════════════════════════════════════════════════════════════════
+    {
+        constexpr std::size_t N = 10000;
+
+        ankerl::nanobench::Bench b;
+        b.minEpochTime(50ms).relative(true);
+        b.title("Unroll sweep: plain for vs dynamic_for (N=10000)");
+
+        run(b, N, "plain for (1 acc)", [salt] {
+            double acc = 0.0;
+            for (std::size_t i = 0; i < N; ++i) acc += heavy_work(i, salt);
+            return acc;
         });
+
+        run(b, N, "dynamic_for<2>", [salt] { return dynamic_for_multi_acc<2>(N, salt); });
+        run(b, N, "dynamic_for<4>", [salt] { return dynamic_for_multi_acc<4>(N, salt); });
+        run(b, N, "dynamic_for<8>", [salt] { return dynamic_for_multi_acc<8>(N, salt); });
+
+        if constexpr (tuned_accs != 2 && tuned_accs != 4 && tuned_accs != 8) {
+            run(b, N, "dynamic_for<tuned>", [salt] { return dynamic_for_multi_acc<tuned_accs>(N, salt); });
+        }
     }
 }

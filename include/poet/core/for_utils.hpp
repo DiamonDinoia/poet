@@ -21,9 +21,8 @@ template<std::ptrdiff_t Begin, std::ptrdiff_t End, std::ptrdiff_t Step>
         static_assert(Begin >= End, "static_for with a negative step requires Begin >= End");
     }
     if constexpr (Begin == End) { return 0; }
-    constexpr auto abs = [](auto x) -> decltype(x) { return x < 0 ? -x : x; };
-    constexpr auto distance = abs(End - Begin);
-    constexpr auto magnitude = abs(Step);
+    constexpr auto distance = (End - Begin) < 0 ? -(End - Begin) : (End - Begin);
+    constexpr auto magnitude = Step < 0 ? -Step : Step;
     return static_cast<std::size_t>((distance + magnitude - 1) / magnitude);
 }
 

@@ -293,4 +293,24 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 #define POET_CPP20_CONSTEVAL constexpr
 #endif
 
+// ============================================================================
+// POET_PREFER_WIDE_VECTORS (opt-in)
+// ============================================================================
+/// When users define POET_PREFER_WIDE_VECTORS (e.g., -DPOET_PREFER_WIDE_VECTORS),
+/// instructs GCC to prefer wider vector registers. This fixes a regression in
+/// GCC-13/14 where native builds drop to 128-bit vectors despite AVX2 being
+/// available.
+///
+/// Off by default — opt in only when your workload benefits from wider vectors.
+/// Latency-sensitive code with few independent chains may prefer 128-bit.
+#ifdef POET_PREFER_WIDE_VECTORS
+#if defined(__GNUC__) && !defined(__clang__)
+#if defined(__AVX512F__)
+_Pragma("GCC optimize(\"-mprefer-vector-width=512\")")
+#elif defined(__AVX2__) || defined(__AVX__)
+_Pragma("GCC optimize(\"-mprefer-vector-width=256\")")
+#endif
+#endif
+#endif
+
 #endif// POET_CORE_MACROS_HPP

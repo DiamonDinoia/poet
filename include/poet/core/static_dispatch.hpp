@@ -253,6 +253,10 @@ namespace detail {
     /// Sentinel value returned by seq_lookup::find() on miss.
     inline constexpr std::size_t dispatch_npos = static_cast<std::size_t>(-1);
 
+    // ========================================================================
+    // seq_lookup: primary template + contiguous specialization
+    // ========================================================================
+
     template<typename Seq, bool IsContiguous = is_contiguous_sequence<Seq>::value> struct seq_lookup;
 
     // O(1) arithmetic lookup for contiguous sequences (ascending or descending).
@@ -274,17 +278,47 @@ namespace detail {
         }
     };
 
-    // O(log N) compact lookup for sparse/non-contiguous sequences.
+    // ========================================================================
+    // Sparse (non-contiguous) lookup: strided O(1) or binary search
+    // ========================================================================
+
     template<int... Values> struct seq_lookup<std::integer_sequence<int, Values...>, false> {
         using seq_type = std::integer_sequence<int, Values...>;
         using sparse_data = sparse_sequence_index_data<seq_type>;
 
-        static POET_FORCEINLINE auto find(int value) -> std::size_t {
-            const auto pos = std::lower_bound(sparse_data::keys.begin(), sparse_data::keys.end(), value);
-            if (pos != sparse_data::keys.end() && *pos == value) {
-                return sparse_data::indices[static_cast<std::size_t>(pos - sparse_data::keys.begin())];
+        // True when the sorted unique keys have a constant positive stride.
+        // The sorted keys always ascend, so stride = keys[1] - keys[0] > 0.
+        static constexpr bool is_strided = []() constexpr -> bool {
+            if constexpr (sparse_data::unique_count < 2) {
+                return false;
+            } else {
+                const int stride0 = sparse_data::keys[1] - sparse_data::keys[0];
+                if (stride0 <= 0) { return false; }
+                for (std::size_t i = 2; i < sparse_data::unique_count; ++i) {
+                    if (sparse_data::keys[i] - sparse_data::keys[i - 1] != stride0) { return false; }
+                }
+                return true;
             }
-            return dispatch_npos;
+        }();
+
+        static POET_FORCEINLINE auto find(int value) -> std::size_t {
+            if constexpr (is_strided) {
+                // O(1): (value - first) / stride is the index into the sorted keys,
+                // equivalent to lower_bound on the normalised sequence {0, 1, ..., N-1}.
+                static constexpr int first = sparse_data::keys[0];
+                static constexpr int stride = sparse_data::keys[1] - sparse_data::keys[0];
+                const int diff = value - first;
+                if (diff < 0 || diff % stride != 0) { return dispatch_npos; }
+                const auto idx = static_cast<std::size_t>(diff / stride);
+                if (POET_LIKELY(idx < sparse_data::unique_count)) { return sparse_data::indices[idx]; }
+                return dispatch_npos;
+            } else {
+                const auto pos = std::lower_bound(sparse_data::keys.begin(), sparse_data::keys.end(), value);
+                if (pos != sparse_data::keys.end() && *pos == value) {
+                    return sparse_data::indices[static_cast<std::size_t>(pos - sparse_data::keys.begin())];
+                }
+                return dispatch_npos;
+            }
         }
     };
 

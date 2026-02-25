@@ -42,9 +42,9 @@
 ///   or index-only) is detected once at template instantiation via
 ///   `detect_callable_form`, not per-iteration via `if constexpr`.
 ///
-/// - **Fused block emission**: Unrolled blocks delegate to `static_for`
-///   with lightweight invoker structs, reusing its register-pressure-aware
-///   block isolation for large unroll factors.
+/// - **Carried-index block emission**: Unrolled blocks use a fold with a
+///   carried index (`idx += stride`) that breaks GCC's SLP vectorizer
+///   pattern while preserving per-lane accumulator ILP.
 ///
 /// - **Two-tier stride handling**: When the stride is known at compile time
 ///   (including the common stride=1 case), per-lane multiplication uses
@@ -63,11 +63,10 @@
 /// this is where `dynamic_for` **outperforms** a naive for loop.
 ///
 /// For simple **index-only** element-wise work (`out[i] = f(i)`), a plain
-/// `for` loop is typically faster.  `dynamic_for` expands each block via
-/// `static_for` template expansion, which on GCC can cause the SLP
-/// vectorizer to over-allocate vector registers and spill on wide ISAs
-/// (AVX2/AVX-512).  A plain `for` loop avoids this because the compiler's
-/// loop vectorizer handles packing naturally with a single index register.
+/// `for` loop is typically comparable or faster.  `dynamic_for` uses a
+/// carried-index fold (`idx += stride`) that prevents SLP vectorization of
+/// index computations, but a plain `for` loop still has less overhead for
+/// trivial bodies.
 ///
 /// `dynamic_for` also does **not** help with serial dependency chains
 /// (`acc += work(i)`).  Unrolling a serial chain adds instructions without
@@ -90,7 +89,7 @@
 
 #include <poet/core/macros.hpp>
 #include <poet/core/static_dispatch.hpp>
-#include <poet/core/static_for.hpp>
+
 
 namespace poet {
 
@@ -144,63 +143,39 @@ namespace detail {
     }
 
     // ========================================================================
-    // Block invokers — adapter structs for static_for unrolling
+    // Carried-index block emission
     // ========================================================================
+    //
+    // Fold with carried index: each lane's index depends on the previous
+    // (idx += stride), preventing GCC's SLP vectorizer from packing the
+    // independent index computations into a vector and spilling registers.
 
-    /// \brief Invoker for unrolled blocks with runtime stride.
-    ///
-    /// Adapts the tag-dispatched invoke_lane interface for use with static_for.
-    /// Each lane computes index = base + Lane * stride.
-    template<typename FormTag, typename Callable, typename T> struct block_invoker {
-        Callable &callable;
-        T base;
-        T stride;
+    /// \brief Emits an unrolled block with runtime stride using a carried index.
+    template<typename FormTag, typename Callable, typename T, std::size_t... Lanes>
+    POET_FORCEINLINE constexpr void
+      emit_carried(Callable &callable, T index, T stride, std::index_sequence<Lanes...> /*seq*/) {
+        ((invoke_lane<Lanes>(FormTag{}, callable, index), index += stride), ...);
+    }
 
-        template<std::ptrdiff_t Value>
-        POET_FORCEINLINE constexpr void operator()(std::integral_constant<std::ptrdiff_t, Value> /*ic*/) const {
-            invoke_lane<static_cast<std::size_t>(Value)>(FormTag{}, callable, base + (static_cast<T>(Value) * stride));
-        }
-    };
-
-    /// \brief Invoker for unrolled blocks with compile-time stride.
-    ///
-    /// The stride is baked into the template parameter, so per-lane
-    /// multiplication uses compile-time constants (including Step=1
-    /// where `Value * 1` is constant-folded away).
-    template<std::ptrdiff_t Step, typename FormTag, typename Callable, typename T> struct block_invoker_ct_stride {
-        Callable &callable;
-        T base;
-
-        template<std::ptrdiff_t Value>
-        POET_FORCEINLINE constexpr void operator()(std::integral_constant<std::ptrdiff_t, Value> /*ic*/) const {
-            invoke_lane<static_cast<std::size_t>(Value)>(FormTag{}, callable, base + static_cast<T>(Value * Step));
-        }
-    };
-
-    // ========================================================================
-    // Block execution — delegates to static_for for compile-time unrolling
-    // ========================================================================
-
-    /// \brief Executes an unrolled block with runtime stride.
     template<typename FormTag, typename Callable, typename T, std::size_t Count>
-    POET_FORCEINLINE constexpr void execute_block(FormTag /*tag*/,
+    POET_FORCEINLINE constexpr void emit_block(FormTag /*tag*/,
       [[maybe_unused]] Callable &callable,
       [[maybe_unused]] T base,
       [[maybe_unused]] T stride) {
-        if constexpr (Count > 0) {
-            block_invoker<FormTag, Callable, T> invoker{ callable, base, stride };
-            static_for<0, static_cast<std::ptrdiff_t>(Count)>(invoker);
-        }
+        if constexpr (Count > 0) { emit_carried<FormTag>(callable, base, stride, std::make_index_sequence<Count>{}); }
     }
 
-    /// \brief Executes an unrolled block with compile-time stride.
+    /// \brief Emits an unrolled block with compile-time stride using a carried index.
+    template<std::ptrdiff_t Step, typename FormTag, typename Callable, typename T, std::size_t... Lanes>
+    POET_FORCEINLINE constexpr void
+      emit_carried_ct(Callable &callable, T index, std::index_sequence<Lanes...> /*seq*/) {
+        ((invoke_lane<Lanes>(FormTag{}, callable, index), index += static_cast<T>(Step)), ...);
+    }
+
     template<std::ptrdiff_t Step, typename FormTag, typename Callable, typename T, std::size_t Count>
     POET_FORCEINLINE constexpr void
-      execute_block_ct_stride(FormTag /*tag*/, [[maybe_unused]] Callable &callable, [[maybe_unused]] T base) {
-        if constexpr (Count > 0) {
-            block_invoker_ct_stride<Step, FormTag, Callable, T> invoker{ callable, base };
-            static_for<0, static_cast<std::ptrdiff_t>(Count)>(invoker);
-        }
+      emit_block_ct(FormTag /*tag*/, [[maybe_unused]] Callable &callable, [[maybe_unused]] T base) {
+        if constexpr (Count > 0) { emit_carried_ct<Step, FormTag>(callable, base, std::make_index_sequence<Count>{}); }
     }
 
     // ========================================================================
@@ -215,7 +190,7 @@ namespace detail {
     template<typename FormTag, typename Callable, typename T> struct tail_dispatch_functor {
         template<int N> POET_FORCEINLINE void operator()(Callable *callable, T index, T stride) const {
             if constexpr (N > 0) {
-                execute_block<FormTag, Callable, T, static_cast<std::size_t>(N)>(FormTag{}, *callable, index, stride);
+                emit_block<FormTag, Callable, T, static_cast<std::size_t>(N)>(FormTag{}, *callable, index, stride);
             }
         }
     };
@@ -228,11 +203,38 @@ namespace detail {
     struct tail_dispatch_functor_ct_stride {
         template<int N> POET_FORCEINLINE void operator()(Callable *callable, T index) const {
             if constexpr (N > 0) {
-                execute_block_ct_stride<Step, FormTag, Callable, T, static_cast<std::size_t>(N)>(
-                  FormTag{}, *callable, index);
+                emit_block_ct<Step, FormTag, Callable, T, static_cast<std::size_t>(N)>(FormTag{}, *callable, index);
             }
         }
     };
+
+    // ========================================================================
+    // Direct if-cascade tail dispatch — avoids function pointer table for
+    // small unroll factors (Unroll <= 16) so GCC can inline everything.
+    // Falls back to poet::dispatch for Unroll > 16 to limit code bloat.
+    // ========================================================================
+
+    template<typename FormTag, typename Callable, typename T, std::size_t... Ns>
+    POET_NOINLINE_FLATTEN void dispatch_tail_cascade(std::size_t count,
+      Callable &callable,
+      T index,
+      T stride,
+      std::index_sequence<Ns...> /*seq*/) {
+        // Expand if-chain: Ns = 0, 1, 2, ... Unroll-2 representing tail sizes 1, 2, ... Unroll-1
+        ((count == (Ns + 1) ? (emit_block<FormTag, Callable, T, Ns + 1>(FormTag{}, callable, index, stride), true)
+                            : false)
+          || ...);
+    }
+
+    template<std::ptrdiff_t Step, typename FormTag, typename Callable, typename T, std::size_t... Ns>
+    POET_NOINLINE_FLATTEN void dispatch_tail_ct_stride_cascade(std::size_t count,
+      Callable &callable,
+      T index,
+      std::index_sequence<Ns...> /*seq*/) {
+        ((count == (Ns + 1) ? (emit_block_ct<Step, FormTag, Callable, T, Ns + 1>(FormTag{}, callable, index), true)
+                            : false)
+          || ...);
+    }
 
     POET_PUSH_OPTIMIZE
 
@@ -240,23 +242,32 @@ namespace detail {
     POET_FORCEINLINE void dispatch_tail(std::size_t count, Callable &callable, T index, T stride) {
         static_assert(Unroll > 1, "dispatch_tail requires Unroll > 1");
         if (count == 0) { return; }
-        const tail_dispatch_functor<FormTag, Callable, T> functor{};
-        poet::dispatch(functor,
-          poet::DispatchParam<poet::make_range<1, static_cast<int>(Unroll - 1)>>{ static_cast<int>(count) },
-          std::addressof(callable),
-          index,
-          stride);
+        if constexpr (Unroll <= 16) {
+            dispatch_tail_cascade<FormTag>(count, callable, index, stride, std::make_index_sequence<Unroll - 1>{});
+        } else {
+            const tail_dispatch_functor<FormTag, Callable, T> functor{};
+            poet::dispatch(functor,
+              poet::DispatchParam<poet::make_range<1, static_cast<int>(Unroll - 1)>>{ static_cast<int>(count) },
+              std::addressof(callable),
+              index,
+              stride);
+        }
     }
 
     template<std::ptrdiff_t Step, typename FormTag, std::size_t Unroll, typename Callable, typename T>
     POET_FORCEINLINE void dispatch_tail_ct_stride(std::size_t count, Callable &callable, T index) {
         static_assert(Unroll > 1, "dispatch_tail_ct_stride requires Unroll > 1");
         if (count == 0) { return; }
-        const tail_dispatch_functor_ct_stride<Step, FormTag, Callable, T> functor{};
-        poet::dispatch(functor,
-          poet::DispatchParam<poet::make_range<1, static_cast<int>(Unroll - 1)>>{ static_cast<int>(count) },
-          std::addressof(callable),
-          index);
+        if constexpr (Unroll <= 16) {
+            dispatch_tail_ct_stride_cascade<Step, FormTag>(
+              count, callable, index, std::make_index_sequence<Unroll - 1>{});
+        } else {
+            const tail_dispatch_functor_ct_stride<Step, FormTag, Callable, T> functor{};
+            poet::dispatch(functor,
+              poet::DispatchParam<poet::make_range<1, static_cast<int>(Unroll - 1)>>{ static_cast<int>(count) },
+              std::addressof(callable),
+              index);
+        }
     }
 
     POET_POP_OPTIMIZE
@@ -359,7 +370,7 @@ namespace detail {
 
             const T stride_times_unroll = static_cast<T>(Unroll) * stride;
             while (remaining >= Unroll) {
-                execute_block<FormTag, Callable, T, Unroll>(tag, callable, index, stride);
+                emit_block<FormTag, Callable, T, Unroll>(tag, callable, index, stride);
                 index += stride_times_unroll;
                 remaining -= Unroll;
             }
@@ -405,7 +416,7 @@ namespace detail {
 
             constexpr T stride_times_unroll = static_cast<T>(static_cast<std::ptrdiff_t>(Unroll) * Step);
             while (remaining >= Unroll) {
-                execute_block_ct_stride<Step, FormTag, Callable, T, Unroll>(tag, callable, index);
+                emit_block_ct<Step, FormTag, Callable, T, Unroll>(tag, callable, index);
                 index += stride_times_unroll;
                 remaining -= Unroll;
             }

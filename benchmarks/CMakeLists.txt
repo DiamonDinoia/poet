@@ -95,11 +95,10 @@ add_custom_target(poet_benchmarks
 
 # ── Run targets ────────────────────────────────────────────────────────────
 add_custom_target(poet_run_bench
-  COMMAND $<TARGET_FILE:poet_compiler_comparison_bench>
   COMMAND $<TARGET_FILE:poet_dispatch_bench>
   COMMAND $<TARGET_FILE:poet_static_for_bench>
   COMMAND $<TARGET_FILE:poet_dynamic_for_bench>
-  DEPENDS poet_compiler_comparison_bench poet_dispatch_bench poet_static_for_bench poet_dynamic_for_bench
+  DEPENDS poet_dispatch_bench poet_static_for_bench poet_dynamic_for_bench
   USES_TERMINAL
   COMMENT "Running POET benchmarks"
 )
@@ -108,11 +107,10 @@ add_custom_target(poet_run_benchmarks DEPENDS poet_run_bench)
 
 if(COMPILER_SUPPORTS_MARCH_NATIVE)
   add_custom_target(poet_run_bench_native
-    COMMAND $<TARGET_FILE:poet_compiler_comparison_bench_native>
     COMMAND $<TARGET_FILE:poet_dispatch_bench>
     COMMAND $<TARGET_FILE:poet_static_for_bench_native>
     COMMAND $<TARGET_FILE:poet_dynamic_for_bench_native>
-    DEPENDS poet_compiler_comparison_bench_native poet_dispatch_bench poet_static_for_bench_native poet_dynamic_for_bench_native
+    DEPENDS poet_dispatch_bench poet_static_for_bench_native poet_dynamic_for_bench_native
     USES_TERMINAL
     COMMENT "Running POET benchmarks (-march=native)"
   )
