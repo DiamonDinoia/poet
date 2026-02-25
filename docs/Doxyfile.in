@@ -23,8 +23,6 @@ EXPAND_ONLY_PREDEF     = YES
 PREDEFINED             = POET_FORCEINLINE= \
                          POET_HOT_LOOP= \
                          POET_CPP20_CONSTEVAL=constexpr \
-                         POET_CPP20_CONSTEXPR=constexpr \
-                         POET_CPP23_CONSTEXPR=constexpr \
                          POET_LIKELY(x)=x \
                          POET_UNLIKELY(x)=x \
                          POET_ASSUME(x)= \

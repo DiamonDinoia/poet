@@ -1219,7 +1219,6 @@ auto dispatch(throw_on_no_match_t /*tag*/,
 /// Example:
 ///   dispatch(throw_t, func, DispatchParam<Seq1>{v1}, DispatchParam<Seq2>{v2}, arg1, arg2)
 ///
-/// \param tag throw_on_no_match_t tag to request exception on mismatch.
 /// \param functor Callable exposing `template <int...>` call operators.
 /// \param first_param First DispatchParam.
 /// \param rest Remaining DispatchParams followed by runtime arguments.

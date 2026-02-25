@@ -302,7 +302,7 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 #endif
 
 // ============================================================================
-// C++20/C++23 Feature Detection
+// C++20 Feature Detection
 // ============================================================================
 /// Use `consteval` for C++20+, fallback to `constexpr` for C++17.
 #if __cplusplus >= 202002L
