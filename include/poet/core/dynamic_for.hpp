@@ -221,9 +221,10 @@ namespace detail {
       T stride,
       std::index_sequence<Ns...> /*seq*/) {
         // Expand if-chain: Ns = 0, 1, 2, ... Unroll-2 representing tail sizes 1, 2, ... Unroll-1
-        ((count == (Ns + 1) ? (emit_block<FormTag, Callable, T, Ns + 1>(FormTag{}, callable, index, stride), true)
-                            : false)
-          || ...);
+        static_cast<void>(
+          ((count == (Ns + 1) ? (emit_block<FormTag, Callable, T, Ns + 1>(FormTag{}, callable, index, stride), true)
+                              : false)
+            || ...));
     }
 
     template<std::ptrdiff_t Step, typename FormTag, typename Callable, typename T, std::size_t... Ns>
@@ -231,9 +232,10 @@ namespace detail {
       Callable &callable,
       T index,
       std::index_sequence<Ns...> /*seq*/) {
-        ((count == (Ns + 1) ? (emit_block_ct<Step, FormTag, Callable, T, Ns + 1>(FormTag{}, callable, index), true)
-                            : false)
-          || ...);
+        static_cast<void>(
+          ((count == (Ns + 1) ? (emit_block_ct<Step, FormTag, Callable, T, Ns + 1>(FormTag{}, callable, index), true)
+                              : false)
+            || ...));
     }
 
     POET_PUSH_OPTIMIZE

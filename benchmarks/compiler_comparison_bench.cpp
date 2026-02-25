@@ -165,10 +165,31 @@ float saxpy_plain(float a, float b) noexcept {
     return sum;
 }
 
+// Portable restrict qualifier (POET macros are cleaned up by undef_macros.hpp).
+#if defined(_MSC_VER)
+#define BENCH_RESTRICT __restrict
+#elif defined(__GNUC__) || defined(__clang__)
+#define BENCH_RESTRICT __restrict__
+#else
+#define BENCH_RESTRICT
+#endif
+
+// Portable alignment-hint helper: returns ptr with a compile-time alignment promise.
+template<std::size_t Align, typename T> inline T *bench_assume_aligned(T *ptr) noexcept {
+#if defined(__GNUC__) || defined(__clang__)
+    return static_cast<T *>(__builtin_assume_aligned(ptr, Align));
+#elif defined(_MSC_VER)
+    __assume((reinterpret_cast<std::uintptr_t>(ptr) & (Align - 1)) == 0);
+    return ptr;
+#else
+    return ptr;
+#endif
+}
+
 // 2b. With alignment hints
 float saxpy_aligned(float a, float b) noexcept {
-    const float *__restrict__ xp = static_cast<const float *>(__builtin_assume_aligned(saxpy_x, 64));
-    float *__restrict__ yp = static_cast<float *>(__builtin_assume_aligned(saxpy_y, 64));
+    const float *BENCH_RESTRICT xp = bench_assume_aligned<64>(static_cast<const float *>(saxpy_x));
+    float *BENCH_RESTRICT yp = bench_assume_aligned<64>(saxpy_y);
     for (std::size_t i = 0; i < kSaxpyN; ++i) yp[i] = a * xp[i] + b;
     float sum = 0.0f;
     for (std::size_t i = 0; i < kSaxpyN; ++i) sum += yp[i];
@@ -177,8 +198,8 @@ float saxpy_aligned(float a, float b) noexcept {
 
 // 2c. With restrict only (no alignment hint)
 float saxpy_restrict(float a, float b) noexcept {
-    float *__restrict__ yp = saxpy_y;
-    const float *__restrict__ xp = saxpy_x;
+    float *BENCH_RESTRICT yp = saxpy_y;
+    const float *BENCH_RESTRICT xp = saxpy_x;
     for (std::size_t i = 0; i < kSaxpyN; ++i) yp[i] = a * xp[i] + b;
     float sum = 0.0f;
     for (std::size_t i = 0; i < kSaxpyN; ++i) sum += yp[i];
