@@ -1060,8 +1060,8 @@ namespace detail {
             if constexpr (sparse_data::unique_count < 2) {
                 return false;
             } else {
-                const int stride0 = sparse_data::keys[1] - sparse_data::keys[0];
-                if (stride0 <= 0) { return false; }
+                constexpr int stride0 = sparse_data::keys[1] - sparse_data::keys[0];
+                if constexpr (stride0 <= 0) { return false; }
                 // cppcheck-suppress syntaxError
                 for (std::size_t i = 2; i < sparse_data::unique_count; ++i) {
                     if (sparse_data::keys[i] - sparse_data::keys[i - 1] != stride0) { return false; }
