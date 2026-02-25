@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <poet/core/macros.hpp>
 
 namespace poet {
 
