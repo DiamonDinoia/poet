@@ -100,6 +100,19 @@
 #endif
 
 // ============================================================================
+// POET_RESTRICT
+// ============================================================================
+/// Restrict pointer qualifier — informs the compiler the pointer does not alias
+/// any other pointer in the current scope, enabling better vectorization.
+#ifdef _MSC_VER
+#define POET_RESTRICT __restrict// NOLINT(cppcoreguidelines-macro-usage)
+#elif defined(__GNUC__) || defined(__clang__)
+#define POET_RESTRICT __restrict__// NOLINT(cppcoreguidelines-macro-usage)
+#else
+#define POET_RESTRICT// NOLINT(cppcoreguidelines-macro-usage)
+#endif
+
+// ============================================================================
 // POET_LIKELY / POET_UNLIKELY
 // ============================================================================
 /// Branch prediction hints. Use for conditions true/false >95% of the time.
@@ -2127,9 +2140,10 @@ namespace detail {
       T stride,
       std::index_sequence<Ns...> /*seq*/) {
         // Expand if-chain: Ns = 0, 1, 2, ... Unroll-2 representing tail sizes 1, 2, ... Unroll-1
-        ((count == (Ns + 1) ? (emit_block<FormTag, Callable, T, Ns + 1>(FormTag{}, callable, index, stride), true)
-                            : false)
-          || ...);
+        static_cast<void>(
+          ((count == (Ns + 1) ? (emit_block<FormTag, Callable, T, Ns + 1>(FormTag{}, callable, index, stride), true)
+                              : false)
+            || ...));
     }
 
     template<std::ptrdiff_t Step, typename FormTag, typename Callable, typename T, std::size_t... Ns>
@@ -2137,9 +2151,10 @@ namespace detail {
       Callable &callable,
       T index,
       std::index_sequence<Ns...> /*seq*/) {
-        ((count == (Ns + 1) ? (emit_block_ct<Step, FormTag, Callable, T, Ns + 1>(FormTag{}, callable, index), true)
-                            : false)
-          || ...);
+        static_cast<void>(
+          ((count == (Ns + 1) ? (emit_block_ct<Step, FormTag, Callable, T, Ns + 1>(FormTag{}, callable, index), true)
+                              : false)
+            || ...));
     }
 
     POET_PUSH_OPTIMIZE
@@ -2839,6 +2854,13 @@ template<std::ptrdiff_t End, typename Func> POET_FORCEINLINE constexpr void stat
 
 #ifdef POET_POP_OPTIMIZE
 #undef POET_POP_OPTIMIZE
+#endif
+
+// ============================================================================
+// Undefine POET_RESTRICT
+// ============================================================================
+#ifdef POET_RESTRICT
+#undef POET_RESTRICT
 #endif
 
 // ============================================================================
