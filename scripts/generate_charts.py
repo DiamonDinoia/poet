@@ -219,7 +219,7 @@ def generate_static_for_chart(data: dict[str, dict], output: Path):
             "Map",
             r"Map.*static_for",
             [
-                ("for loop", r"^for loop$"),
+                ("for loop", r"`for loop`"),
                 ("static_for (tuned BS)", r"tuned BS"),
                 ("static_for (default BS)", r"default BS"),
             ],
@@ -228,7 +228,7 @@ def generate_static_for_chart(data: dict[str, dict], output: Path):
             "Multi-acc",
             r"Multi-acc.*static_for",
             [
-                ("for loop", r"^for loop$"),
+                ("for loop", r"`for loop`"),
                 ("static_for (tuned BS)", r"tuned BS"),
                 ("static_for (default BS)", r"default BS"),
             ],
@@ -380,7 +380,7 @@ def generate_cross_compiler_chart(data: dict[str, dict], output: Path):
         },
         "static_for_bench": {
             "table_pattern": r"Multi-acc.*static_for",
-            "baseline_pattern": r"^for loop$",
+            "baseline_pattern": r"`for loop`",
             "poet_pattern": r"tuned BS",
             "label": "static_for",
         },

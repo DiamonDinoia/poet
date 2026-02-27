@@ -122,11 +122,6 @@ jobs:
           path: results/
           merge-multiple: true
 
-      - name: Debug artifact structure
-        run: |
-          echo "=== results/ tree ==="
-          find results/ -type f | head -50 || echo "results/ not found"
-
       - name: Install Python dependencies
         run: pip install matplotlib
 
