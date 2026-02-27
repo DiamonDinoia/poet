@@ -607,9 +607,9 @@ namespace detail {
                     Functor func{};
                     constexpr bool use_value_form = can_use_value_form<Functor, V, arg_pack<Args...>>::value;
                     if constexpr (use_value_form) {
-                        return func(std::integral_constant<int, V>{}, static_cast<Args &&>(args)...);
+                        return func(std::integral_constant<int, V>{}, std::forward<Args>(args)...);
                     } else {
-                        return func.template operator()<V>(static_cast<Args &&>(args)...);
+                        return func.template operator()<V>(std::forward<Args>(args)...);
                     }
                 };
             }
@@ -618,9 +618,9 @@ namespace detail {
                 return +[](Functor &func, pass_t<Args &&, Functor, first_value>... args) -> R {
                     constexpr bool use_value_form = can_use_value_form<Functor, V, arg_pack<Args...>>::value;
                     if constexpr (use_value_form) {
-                        return func(std::integral_constant<int, V>{}, static_cast<Args &&>(args)...);
+                        return func(std::integral_constant<int, V>{}, std::forward<Args>(args)...);
                     } else {
-                        return func.template operator()<V>(static_cast<Args &&>(args)...);
+                        return func.template operator()<V>(std::forward<Args>(args)...);
                     }
                 };
             }
@@ -770,13 +770,13 @@ namespace detail {
 
             template<typename R> static POET_FORCEINLINE auto call(Functor &func, repr_opt_type<Args &&>... args) -> R {
                 return call_with_indices<R>(
-                  func, std::make_index_sequence<sizeof...(Seqs)>{}, static_cast<Args &&>(args)...);
+                  func, std::make_index_sequence<sizeof...(Seqs)>{}, std::forward<Args>(args)...);
             }
 
             template<typename R> static POET_FORCEINLINE auto call_stateless(repr_opt_type<Args &&>... args) -> R {
                 Functor func{};
                 return call_with_indices<R>(
-                  func, std::make_index_sequence<sizeof...(Seqs)>{}, static_cast<Args &&>(args)...);
+                  func, std::make_index_sequence<sizeof...(Seqs)>{}, std::forward<Args>(args)...);
             }
         };
 
@@ -862,15 +862,26 @@ template<typename ValueType, typename... Tuples> struct DispatchSet {
 struct throw_on_no_match_t {};
 inline constexpr throw_on_no_match_t throw_t{};
 
+/// \brief Exception thrown by poet::dispatch when no compile-time combination
+///        matches the supplied runtime inputs and throw_on_no_match_t is used.
+///
+/// Inherits from std::runtime_error so existing catch (std::runtime_error)
+/// handlers still work, while allowing targeted catches:
+/// \code
+///   try { poet::dispatch(throw_t, f, param); }
+///   catch (const poet::no_match_error &e) { /* dispatch-specific handling */ }
+/// \endcode
+struct no_match_error : std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
+
 namespace detail {
-    inline constexpr const char k_no_match_error[] =
-      "poet::dispatch: no matching compile-time combination for runtime inputs";
 
     POET_PUSH_OPTIMIZE
 
     /// \brief Invoke a single table entry, handling stateless/stateful and void/non-void return.
     template<typename R, typename EntryFn, typename FunctorFwd, typename... Args>
-    POET_FORCEINLINE auto invoke_table_entry(FunctorFwd &&functor, EntryFn entry, Args &&...args) -> R {
+    POET_FORCEINLINE auto invoke_table_entry(FunctorFwd &functor, EntryFn entry, Args &&...args) -> R {
         using FT = std::decay_t<FunctorFwd>;
         if constexpr (is_stateless_v<FT>) {
             if constexpr (std::is_void_v<R>) {
@@ -892,7 +903,7 @@ namespace detail {
     /// \brief 1D dispatch through a function-pointer table.
     /// O(1) for contiguous sequences, O(log N) for sparse — selected by seq_lookup.
     template<bool ThrowOnNoMatch, typename R, typename Functor, typename ParamTuple, typename... Args>
-    POET_FORCEINLINE auto dispatch_1d(Functor &&functor, ParamTuple const &params, Args &&...args) -> R {
+    POET_FORCEINLINE auto dispatch_1d(Functor &functor, ParamTuple const &params, Args &&...args) -> R {
         using FirstParam = std::tuple_element_t<0, std::remove_reference_t<ParamTuple>>;
         using Seq = typename FirstParam::seq_type;
         const int runtime_val = std::get<0>(params).runtime_val;
@@ -901,10 +912,10 @@ namespace detail {
         if (POET_LIKELY(idx != dispatch_npos)) {
             using FunctorT = std::decay_t<Functor>;
             static constexpr auto table = make_dispatch_table<FunctorT, arg_pack<Args...>, R>(Seq{});
-            return invoke_table_entry<R>(std::forward<Functor>(functor), table[idx], std::forward<Args>(args)...);
+            return invoke_table_entry<R>(functor, table[idx], std::forward<Args>(args)...);
         }
         if constexpr (ThrowOnNoMatch) {
-            throw std::runtime_error(k_no_match_error);
+            throw no_match_error("poet::dispatch: no matching compile-time combination for runtime inputs");
         } else if constexpr (!std::is_void_v<R>) {
             return R{};
         }
@@ -914,7 +925,7 @@ namespace detail {
     /// Uses fused speculative indexing for all-contiguous dimensions,
     /// short-circuit validation for mixed contiguous/sparse.
     template<bool ThrowOnNoMatch, typename R, typename Functor, typename ParamTuple, typename... Args>
-    POET_FORCEINLINE auto dispatch_nd(Functor &&functor, ParamTuple const &params, Args &&...args) -> R {
+    POET_FORCEINLINE auto dispatch_nd(Functor &functor, ParamTuple const &params, Args &&...args) -> R {
         constexpr auto dimensions = dimensions_of<ParamTuple>();
         constexpr std::size_t table_size = compute_total_size(dimensions);
 
@@ -927,10 +938,10 @@ namespace detail {
 
             using FunctorT = std::decay_t<Functor>;
             static constexpr auto table = make_nd_dispatch_table<FunctorT, arg_pack<Args...>, R>(sequences);
-            return invoke_table_entry<R>(std::forward<Functor>(functor), table[flat_idx], std::forward<Args>(args)...);
+            return invoke_table_entry<R>(functor, table[flat_idx], std::forward<Args>(args)...);
         }
         if constexpr (ThrowOnNoMatch) {
-            throw std::runtime_error(k_no_match_error);
+            throw no_match_error("poet::dispatch: no matching compile-time combination for runtime inputs");
         } else if constexpr (!std::is_void_v<R>) {
             return R{};
         }
@@ -938,17 +949,15 @@ namespace detail {
 
     /// \brief Internal implementation for dispatch with compile-time error handling policy.
     template<bool ThrowOnNoMatch, typename Functor, typename ParamTuple, typename... Args>
-    POET_FORCEINLINE auto dispatch_impl(Functor &&functor, ParamTuple const &params, Args &&...args) -> decltype(auto) {
+    POET_FORCEINLINE auto dispatch_impl(Functor &functor, ParamTuple const &params, Args &&...args) -> decltype(auto) {
         constexpr std::size_t param_count = std::tuple_size_v<std::remove_reference_t<ParamTuple>>;
         using sequences_t = decltype(extract_sequences<ParamTuple>());
         using result_type = dispatch_result_t<Functor, sequences_t, Args &&...>;
 
         if constexpr (param_count == 1) {
-            return dispatch_1d<ThrowOnNoMatch, result_type>(
-              std::forward<Functor>(functor), params, std::forward<Args>(args)...);
+            return dispatch_1d<ThrowOnNoMatch, result_type>(functor, params, std::forward<Args>(args)...);
         } else {
-            return dispatch_nd<ThrowOnNoMatch, result_type>(
-              std::forward<Functor>(functor), params, std::forward<Args>(args)...);
+            return dispatch_nd<ThrowOnNoMatch, result_type>(functor, params, std::forward<Args>(args)...);
         }
     }
 
@@ -973,7 +982,7 @@ namespace detail {
 
     // Split a variadic call into leading DispatchParams and trailing runtime args.
     template<bool ThrowOnNoMatch, typename Functor, std::size_t... ParamIdx, std::size_t... ArgIdx, typename... All>
-    POET_FORCEINLINE auto dispatch_split_impl(Functor &&functor,
+    POET_FORCEINLINE auto dispatch_split_impl(Functor &functor,
       std::index_sequence<ParamIdx...> /*p*/,
       std::index_sequence<ArgIdx...> /*a*/,
       All &&...all) -> decltype(auto) {
@@ -986,14 +995,14 @@ namespace detail {
 
         // Forward remaining runtime arguments preserving value category.
         // std::move(all_refs) in a pack expansion only casts to rvalue ref; each get() accesses a disjoint index.
-        return dispatch_impl<ThrowOnNoMatch>(std::forward<Functor>(functor),
+        return dispatch_impl<ThrowOnNoMatch>(functor,
           params,
           std::get<num_params + ArgIdx>(
             std::move(all_refs))...);// NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
     }
 
     template<bool ThrowOnNoMatch, typename Functor, typename FirstParam, typename... Rest>
-    POET_FORCEINLINE auto dispatch_variadic_impl(Functor &&functor, FirstParam &&first_param, Rest &&...rest)
+    POET_FORCEINLINE auto dispatch_variadic_impl(Functor &functor, FirstParam &&first_param, Rest &&...rest)
       -> decltype(auto) {
         // Count leading DispatchParams to split params from runtime arguments.
         constexpr std::size_t num_params = 1 + leading_param_count<Rest...>::value;
@@ -1001,9 +1010,9 @@ namespace detail {
 
         if constexpr (num_args == 0) {
             auto params = std::make_tuple(std::forward<FirstParam>(first_param), std::forward<Rest>(rest)...);
-            return dispatch_impl<ThrowOnNoMatch>(std::forward<Functor>(functor), params);
+            return dispatch_impl<ThrowOnNoMatch>(functor, params);
         } else {
-            return dispatch_split_impl<ThrowOnNoMatch>(std::forward<Functor>(functor),
+            return dispatch_split_impl<ThrowOnNoMatch>(functor,
               std::make_index_sequence<num_params>{},
               std::make_index_sequence<num_args>{},
               std::forward<FirstParam>(first_param),
@@ -1043,9 +1052,12 @@ template<typename Functor,
   typename FirstParam,
   typename... Rest,
   std::enable_if_t<detail::is_dispatch_param_v<FirstParam>, int> = 0>
-auto dispatch(Functor &&functor, FirstParam &&first_param, Rest &&...rest) -> decltype(auto) {
+auto dispatch(Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward) — accepted as universal ref to avoid
+                                // copy; internally always used by lvalue ref
+  FirstParam &&first_param,
+  Rest &&...rest) -> decltype(auto) {
     return detail::dispatch_variadic_impl<false>(
-      std::forward<Functor>(functor), std::forward<FirstParam>(first_param), std::forward<Rest>(rest)...);
+      functor, std::forward<FirstParam>(first_param), std::forward<Rest>(rest)...);
 }
 
 /// \brief Dispatch using a tuple of DispatchParams.
@@ -1062,8 +1074,11 @@ template<typename Functor,
   typename ParamTuple,
   typename... Args,
   std::enable_if_t<detail::is_dispatch_param_tuple_v<ParamTuple>, int> = 0>
-auto dispatch(Functor &&functor, ParamTuple const &params, Args &&...args) -> decltype(auto) {
-    return detail::dispatch_impl<false>(std::forward<Functor>(functor), params, std::forward<Args>(args)...);
+auto dispatch(Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward) — accepted as universal ref to avoid
+                                // copy; internally always used by lvalue ref
+  ParamTuple const &params,
+  Args &&...args) -> decltype(auto) {
+    return detail::dispatch_impl<false>(functor, params, std::forward<Args>(args)...);
 }
 
 namespace detail {
@@ -1110,7 +1125,7 @@ namespace detail {
             }
         }
         if constexpr (ThrowOnNoMatch) {
-            throw std::runtime_error("poet::dispatch_tuples: no matching compile-time tuple for runtime inputs");
+            throw no_match_error("poet::dispatch_tuples: no matching compile-time tuple for runtime inputs");
         } else if constexpr (!std::is_void_v<result_type>) {
             return result_type{};
         }
@@ -1144,7 +1159,7 @@ auto dispatch(throw_on_no_match_t /*tag*/,
 
 /// \brief Dispatch with exception on no match.
 ///
-/// This overload throws `std::runtime_error` when no matching dispatch is found.
+/// This overload throws `poet::no_match_error` when no matching dispatch is found.
 /// Uses the same dispatch path as the non-throwing version.
 ///
 /// Example:
@@ -1154,15 +1169,18 @@ auto dispatch(throw_on_no_match_t /*tag*/,
 /// \param first_param First DispatchParam.
 /// \param rest Remaining DispatchParams followed by runtime arguments.
 /// \return The functor's result.
-/// \throws std::runtime_error if no matching dispatch is found.
+/// \throws poet::no_match_error if no matching dispatch is found.
 template<typename Functor,
   typename FirstParam,
   typename... Rest,
   std::enable_if_t<detail::is_dispatch_param_v<FirstParam>, int> = 0>
-auto dispatch(throw_on_no_match_t /*tag*/, Functor &&functor, FirstParam &&first_param, Rest &&...rest)
-  -> decltype(auto) {
+auto dispatch(throw_on_no_match_t /*tag*/,
+  Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward) — accepted as universal ref to avoid copy;
+                    // internally always used by lvalue ref
+  FirstParam &&first_param,
+  Rest &&...rest) -> decltype(auto) {
     return detail::dispatch_variadic_impl<true>(
-      std::forward<Functor>(functor), std::forward<FirstParam>(first_param), std::forward<Rest>(rest)...);
+      functor, std::forward<FirstParam>(first_param), std::forward<Rest>(rest)...);
 }
 
 /// \brief Dispatch using a tuple of DispatchParams with exception on no match.
@@ -1170,9 +1188,12 @@ template<typename Functor,
   typename ParamTuple,
   typename... Args,
   std::enable_if_t<detail::is_dispatch_param_tuple_v<ParamTuple>, int> = 0>
-auto dispatch(throw_on_no_match_t /*tag*/, Functor &&functor, ParamTuple const &params, Args &&...args)
-  -> decltype(auto) {
-    return detail::dispatch_impl<true>(std::forward<Functor>(functor), params, std::forward<Args>(args)...);
+auto dispatch(throw_on_no_match_t /*tag*/,
+  Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward) — accepted as universal ref to avoid copy;
+                    // internally always used by lvalue ref
+  ParamTuple const &params,
+  Args &&...args) -> decltype(auto) {
+    return detail::dispatch_impl<true>(functor, params, std::forward<Args>(args)...);
 }
 
 }// namespace poet
