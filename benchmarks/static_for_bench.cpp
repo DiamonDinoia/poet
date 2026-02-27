@@ -5,8 +5,17 @@
 ///   1. Map: apply heavy_work element-wise (no serial deps, pure ILP).
 ///   2. Multi-accumulator: for loop vs tuned BS vs default BS at N=256.
 ///
-///   optimal_bs = vec_regs × lanes_64 / 2
-///              SSE2  → 16   AVX2  → 32   AVX-512 → 128
+/// Different heuristics apply to each section:
+///
+///   Map (no serial deps — maximize ILP):
+///     optimal_bs_map = vec_regs × lanes_64 / 2
+///                  SSE2 → 16   AVX2 → 32   AVX-512 → 128
+///
+///   MultiAcc (serial dep per chain — avoid accumulator register spill):
+///     optimal_bs_multiacc = lanes_64 × 2   (2 SIMD regs of accumulators)
+///                       SSE2 → 4   AVX2 → 8   AVX-512 → 16
+///     heavy_work needs ~10 registers for its FMA constants/intermediates;
+///     keeping accumulators to 2 SIMD regs leaves ample headroom.
 
 #include <array>
 #include <cstddef>
@@ -93,13 +102,19 @@ template<std::size_t NumAccs> struct MultiAccFunctor {
 
 constexpr std::size_t kSweepN = 256;
 
-// Tuned: balances ILP, register pressure, and icache footprint.
-//   optimal_bs ≈ vec_regs × lanes_64 / 2
-// Clamped to [4, 128] to avoid degenerate cases.
-constexpr std::size_t tuned_bs = [] {
+// Map: maximize ILP across independent iterations.
+//   Half the register file in scalar-element units lets the compiler keep
+//   vec_regs/2 independent computation chains in flight simultaneously.
+constexpr std::size_t optimal_bs_map = [] {
     auto v = vec_regs * lanes_64 / 2;
     return v < 4 ? 4 : (v > 128 ? 128 : v);
 }();
+
+// MultiAcc: empirically optimal block size = 2 SIMD registers of accumulators.
+//   Consistent with dynamic_for sweep (peak at lanes_64 * 2 = 8 on AVX2).
+//   heavy_work's 5-stage FMA chain needs ~10 registers for constants and
+//   intermediates; 2 SIMD regs of accumulators leaves ample headroom.
+constexpr std::size_t optimal_bs_multiacc = lanes_64 * 2;
 
 }// namespace
 
@@ -110,7 +125,8 @@ int main() {
         std::cout << "Vector registers: " << vec_regs << "\n";
         std::cout << "Vector width:     " << regs.vector_width_bits << " bits\n";
         std::cout << "Lanes (64-bit):   " << lanes_64 << "\n";
-        std::cout << "Tuned BS:         " << tuned_bs << "  (vec_regs * lanes_64 / 2)\n\n";
+        std::cout << "Map BS:           " << optimal_bs_map << "  (vec_regs * lanes_64 / 2)\n";
+        std::cout << "MultiAcc BS:      " << optimal_bs_multiacc << "  (lanes_64 * 2)\n\n";
     }
 
     const auto salt = next_salt();
@@ -134,7 +150,7 @@ int main() {
 
         run(b, kSweepN, "static_for (tuned BS)", [salt] {
             std::array<double, kSweepN> out{};
-            poet::static_for<0, static_cast<std::intmax_t>(kSweepN), 1, tuned_bs>(
+            poet::static_for<0, static_cast<std::intmax_t>(kSweepN), 1, optimal_bs_map>(
               MapFunctor<kSweepN>{ .out = out, .salt = salt });
             return reduce(out);
         });
@@ -165,9 +181,9 @@ int main() {
         });
 
         run(b, kSweepN, "static_for (tuned BS)", [salt] {
-            std::array<double, tuned_bs> accs{};
-            poet::static_for<0, static_cast<std::intmax_t>(kSweepN), 1, tuned_bs>(
-              MultiAccFunctor<tuned_bs>{ .accs = accs, .salt = salt });
+            std::array<double, optimal_bs_multiacc> accs{};
+            poet::static_for<0, static_cast<std::intmax_t>(kSweepN), 1, optimal_bs_multiacc>(
+              MultiAccFunctor<optimal_bs_multiacc>{ .accs = accs, .salt = salt });
             return reduce(accs);
         });
 

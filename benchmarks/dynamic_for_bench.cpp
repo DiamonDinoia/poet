@@ -3,13 +3,21 @@
 ///
 /// Two benchmark groups:
 ///
-/// 1. **Multi-acc ILP**: for loop (1-acc) vs for loop (tuned accs) vs
-///    dynamic_for (tuned accs).  Shows that dynamic_for's compile-time lane
+/// 1. **Multi-acc ILP**: for loop (1-acc) vs for loop (optimal accs) vs
+///    dynamic_for (optimal accs).  Shows that dynamic_for's compile-time lane
 ///    indices enable independent accumulator chains that break serial
 ///    dependency bottlenecks.
 ///
-/// 2. **Unroll sweep**: plain for (1-acc) vs dynamic_for at Unroll = 2, 4, 8,
-///    tuned.  Finds the sweet-spot unroll factor for the current ISA.
+/// 2. **Unroll comparison**: plain for (1-acc) vs dynamic_for<optimal> vs
+///    dynamic_for<spill>.  Contrasts the empirically validated sweet spot
+///    against a value confirmed to be in spill territory by assembly inspection.
+///
+/// Tuning constants (AVX2, validated by unroll sweep + objdump analysis):
+///   optimal_accs = lanes_64 * 2 = 8   — peak throughput at 2 SIMD regs of
+///                                        accumulators; hot loop still reloads
+///                                        one acc from the stack but OOO hides it
+///   spill_accs   = optimal_accs * 4   — 2667 rsp refs in hot loop (vs 62 for
+///                                        optimal); deep spill territory
 
 #include <array>
 #include <cstddef>
@@ -30,15 +38,25 @@ constexpr auto regs = poet::available_registers();
 constexpr std::size_t vec_regs = regs.vector_registers;
 constexpr std::size_t lanes_64 = regs.lanes_64bit;
 
-// Tuned unroll factor: 2 vector registers worth of 64-bit lanes.
+// Optimal unroll: 2 SIMD registers worth of scalar accumulators.
 //
-// GCC packs the N accumulators from the carried-index fold into
-// ceil(N / lanes_per_reg) vector registers.  Going beyond 2 regs
-// works when N is a clean multiple of lanes_per_reg, but on SSE2
-// (2 lanes) GCC collapses folds wider than ~4 to a scalar stack
-// loop.  2 * lanes_64 = 8 (AVX2) / 4 (SSE2) is the sweet spot
-// that stays vectorised on both ISAs.
-constexpr std::size_t tuned_accs = lanes_64 * 2;
+// Empirically confirmed as the throughput peak via an unroll sweep (Unroll
+// 1..32) on AVX2: performance rises from 1 to 8, then drops at 12-16 as
+// spill pressure grows.  The hot loop for Unroll=8 does reload one
+// accumulator from the stack per iteration, but the OOO scheduler hides it.
+//
+// On SSE2 (2 lanes) GCC collapses vectorized folds wider than ~4 scalars to
+// a scalar stack loop, so lanes_64 * 2 = 4 is also the ISA ceiling there.
+constexpr std::size_t optimal_accs = lanes_64 * 2;
+
+// Spill reference: 4× the optimal.
+//
+// Assembly inspection (objdump) shows the Unroll=32 hot loop body contains
+// 2667 rsp references vs 62 for optimal — clearly in deep spill territory.
+// Performance may still be competitive due to the compiler switching to a
+// different code structure (scalar + wider vectorization), but the register
+// pressure is demonstrably excessive.
+constexpr std::size_t spill_accs = optimal_accs * 4;
 
 // ── Workload ─────────────────────────────────────────────────────────────────
 
@@ -113,7 +131,8 @@ int main() {
         std::cout << "Vector registers: " << vec_regs << "\n";
         std::cout << "Vector width:     " << regs.vector_width_bits << " bits\n";
         std::cout << "Lanes (64-bit):   " << lanes_64 << "\n";
-        std::cout << "Tuned accums:     " << tuned_accs << "  (lanes_64 * 2)\n\n";
+        std::cout << "Optimal accums:   " << optimal_accs << "  (lanes_64 * 2)\n";
+        std::cout << "Spill accums:     " << spill_accs << "  (optimal_accs * 4)\n\n";
     }
 
     const auto salt = next_salt();
@@ -139,25 +158,25 @@ int main() {
             return acc;
         });
 
-        run(b, N, "for loop (tuned accs)", [salt] { return hand_unrolled_multi_acc<tuned_accs>(N, salt); });
+        run(b, N, "for loop (optimal accs)", [salt] { return hand_unrolled_multi_acc<optimal_accs>(N, salt); });
 
-        run(b, N, "dynamic_for (tuned accs)", [salt] { return dynamic_for_multi_acc<tuned_accs>(N, salt); });
+        run(b, N, "dynamic_for (optimal accs)", [salt] { return dynamic_for_multi_acc<optimal_accs>(N, salt); });
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // Unroll comparison: plain for vs tuned vs over-unrolled
+    // Unroll comparison: plain for vs optimal vs spill
     //
-    // 1. plain for (1-acc)  — serial dependency chain, baseline
-    // 2. dynamic_for<tuned> — register-aware unroll (lanes_64 * 2)
-    // 3. dynamic_for<4x>    — deliberate over-unroll to show spill cost
+    // 1. plain for (1-acc)      — serial dependency chain, baseline
+    // 2. dynamic_for<optimal>   — lanes_64 * 2, empirically confirmed peak
+    // 3. dynamic_for<spill>     — optimal * 4, confirmed deep spill territory
+    //                             by objdump (2667 rsp refs in hot loop)
     // ════════════════════════════════════════════════════════════════════════
     {
         constexpr std::size_t N = 10000;
-        constexpr std::size_t over_unroll = tuned_accs * 4;
 
         ankerl::nanobench::Bench b;
         b.minEpochTime(50ms).relative(true);
-        b.title("Unroll: plain for vs tuned vs over-unrolled (N=10000)");
+        b.title("Unroll: plain for vs optimal vs spill (N=10000)");
 
         run(b, N, "plain for (1 acc)", [salt] {
             double acc = 0.0;
@@ -165,8 +184,8 @@ int main() {
             return acc;
         });
 
-        run(b, N, "dynamic_for<tuned>", [salt] { return dynamic_for_multi_acc<tuned_accs>(N, salt); });
+        run(b, N, "dynamic_for<optimal>", [salt] { return dynamic_for_multi_acc<optimal_accs>(N, salt); });
 
-        run(b, N, "dynamic_for<4x over>", [salt] { return dynamic_for_multi_acc<over_unroll>(N, salt); });
+        run(b, N, "dynamic_for<spill>", [salt] { return dynamic_for_multi_acc<spill_accs>(N, salt); });
     }
 }
