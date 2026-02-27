@@ -439,19 +439,19 @@ namespace detail {
         return instruction_set::sse2;
 #endif
 
-        // ARM NEON (auto-enabled on ARM64)
-#ifdef __ARM_NEON__
-        return instruction_set::arm_neon;
-#endif
-
-        // ARM SVE2 (newer scalable vectors)
-#ifdef __ARM_FEATURE_SVE2__
+        // ARM SVE2 (newer scalable vectors) — check before SVE and NEON
+#if defined(__ARM_FEATURE_SVE2) || defined(__ARM_FEATURE_SVE2__)
         return instruction_set::arm_sve2;
 #endif
 
-        // ARM SVE (scalable vectors)
-#ifdef __ARM_FEATURE_SVE__
+        // ARM SVE (scalable vectors) — check before NEON
+#if defined(__ARM_FEATURE_SVE) || defined(__ARM_FEATURE_SVE__)
         return instruction_set::arm_sve;
+#endif
+
+        // ARM NEON (auto-enabled on ARM64)
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+        return instruction_set::arm_neon;
 #endif
 
         // PowerPC VSX
