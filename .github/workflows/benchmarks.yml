@@ -1,0 +1,163 @@
+name: Benchmarks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  benchmark:
+    name: Bench (${{ matrix.toolchain }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [gcc, gcc-14, llvm, llvm-21]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup C++ toolchain
+        uses: aminya/setup-cpp@v1
+        with:
+          compiler: ${{ matrix.toolchain }}
+          cmake: true
+          ninja: true
+          cache-tools: true
+
+      - name: Configure
+        shell: bash
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS="-mavx2 -mfma" \
+            -DPOET_BUILD_BENCHMARKS=ON \
+            -DPOET_BUILD_TESTS=OFF \
+            -DPOET_ENABLE_SANITIZERS=OFF \
+            -DPOET_WARNINGS_AS_ERRORS=OFF
+
+      - name: Build benchmarks
+        run: cmake --build build --target poet_benchmarks --parallel
+
+      - name: Run benchmarks and parse results
+        shell: bash
+        run: |
+          toolchain="${{ matrix.toolchain }}"
+          if [[ "$toolchain" == "gcc" ]]; then
+            compiler="gcc-latest"
+          elif [[ "$toolchain" == "llvm" ]]; then
+            compiler="clang-latest"
+          elif [[ "$toolchain" == llvm-* ]]; then
+            compiler="clang-${toolchain#llvm-}"
+          else
+            compiler="$toolchain"
+          fi
+
+          result_dir="results/${compiler}/default"
+          mkdir -p "$result_dir"
+
+          bench_targets=(
+            poet_compiler_comparison_bench
+            poet_dispatch_bench
+            poet_dispatch_optimization_bench
+            poet_static_for_bench
+            poet_dynamic_for_bench
+          )
+          bench_names=(
+            compiler_comparison_bench
+            dispatch_bench
+            dispatch_optimization_bench
+            static_for_bench
+            dynamic_for_bench
+          )
+
+          for idx in "${!bench_targets[@]}"; do
+            target="${bench_targets[$idx]}"
+            name="${bench_names[$idx]}"
+            binary="build/benchmarks/${target}"
+
+            if [[ ! -f "$binary" ]]; then
+              echo "SKIP: $binary not found"
+              continue
+            fi
+
+            echo "Running: $name"
+            txt_file="${result_dir}/${name}.txt"
+            json_file="${result_dir}/${name}.json"
+
+            "$binary" > "$txt_file" 2>&1 || echo "WARNING: $name exited non-zero"
+
+            if [[ -f "$txt_file" ]]; then
+              python3 scripts/parse_bench.py "$txt_file" "$json_file" || \
+                echo "WARNING: parse failed for $txt_file"
+            fi
+          done
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-${{ matrix.toolchain }}
+          path: results/
+          retention-days: 30
+
+  charts:
+    name: Generate charts and publish
+    needs: benchmark
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Download all bench artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: bench-results-*
+          path: results/
+          merge-multiple: true
+
+      - name: Install Python dependencies
+        run: pip install matplotlib
+
+      - name: Generate charts
+        run: python3 scripts/generate_charts.py --results-root results --output-dir benchmark-results
+
+      - name: Generate summary
+        run: |
+          python3 scripts/analyze_bench.py \
+            --results-root results \
+            --output-md benchmark-results/bench_comparison.md \
+            --output-csv benchmark-results/bench_comparison.csv \
+            --asm-md benchmark-results/asm_analysis.md
+
+      - name: Upload charts as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-charts
+          path: benchmark-results/
+          retention-days: 90
+
+      - name: Configure Git
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+
+      - name: Create fresh results branch
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+        run: git checkout --orphan benchmark-results
+
+      - name: Commit and push benchmark results
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git add benchmark-results/
+          git commit -m "Update benchmark results from $(date +'%Y-%m-%d %H:%M:%S') [skip ci]"
+          git push -f https://${GITHUB_TOKEN}@github.com/${{ github.repository }} benchmark-results

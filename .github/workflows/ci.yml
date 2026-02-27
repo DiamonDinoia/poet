@@ -1,0 +1,214 @@
+name: CI
+
+on: [push, pull_request]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.os }} (${{ matrix.toolchain }} ${{ matrix.build_type }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Release, Debug]
+        toolchain:
+          - gcc
+          - gcc-13
+          - gcc-14
+          - llvm
+          - llvm-18
+          - llvm-21
+          - apple-clang
+          - msvc
+        include:
+          - toolchain: gcc
+            os: ubuntu-24.04
+          - toolchain: gcc-13
+            os: ubuntu-24.04
+          - toolchain: gcc-14
+            os: ubuntu-24.04
+          - toolchain: llvm
+            os: ubuntu-24.04
+          - toolchain: llvm-18
+            os: ubuntu-24.04
+          - toolchain: llvm-21
+            os: ubuntu-24.04
+          - toolchain: apple-clang
+            os: macos-14
+          - toolchain: msvc
+            os: windows-2022
+            multi_config: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup C++ toolchain
+        uses: aminya/setup-cpp@v1
+        with:
+          compiler: ${{ matrix.toolchain }}
+          cmake: true
+          ninja: true
+          cache-tools: true
+          vcvarsall: ${{ runner.os == 'Windows' }}
+
+      - name: Configure
+        if: ${{ !matrix.multi_config }}
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            export POET_ENABLE_SANITIZERS=ON
+          else
+            export POET_ENABLE_SANITIZERS=OFF
+          fi
+          cmake -S . -B build/${{ matrix.build_type }} \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DPOET_STRICT_WARNINGS=ON \
+            -DPOET_ENABLE_SANITIZERS=${POET_ENABLE_SANITIZERS} \
+            -DPOET_BUILD_BENCHMARKS=ON
+
+      - name: Build
+        if: ${{ !matrix.multi_config }}
+        run: cmake --build build/${{ matrix.build_type }}
+
+      - name: Test
+        if: ${{ !matrix.multi_config }}
+        run: ctest --output-on-failure --test-dir build/${{ matrix.build_type }}
+
+      - name: Build Benchmarks
+        if: ${{ !matrix.multi_config && matrix.build_type == 'Release' }}
+        run: cmake --build build/${{ matrix.build_type }} --target poet_benchmarks
+
+      - name: Run Benchmarks
+        if: ${{ !matrix.multi_config && matrix.build_type == 'Release' }}
+        shell: bash
+        run: |
+          ctest --output-on-failure --test-dir build/${{ matrix.build_type }} -L benchmarks
+          cmake --build build/${{ matrix.build_type }} --target poet_run_benchmarks
+          targets=$(cmake --build build/${{ matrix.build_type }} --target help 2>&1 || true)
+          if echo "$targets" | grep -q 'poet_run_benchmarks_native'; then
+            cmake --build build/${{ matrix.build_type }} --target poet_run_benchmarks_native
+          fi
+
+      - name: Configure (multi-config)
+        if: matrix.multi_config
+        shell: pwsh
+        run: |
+          $generatorArgs = '-A x64'
+          if ("${{ startsWith(matrix.toolchain, 'llvm') }}" -eq 'true') {
+            $generatorArgs = "$generatorArgs -T ClangCL"
+          }
+          cmake -S . -B build `
+            $generatorArgs `
+            -DPOET_STRICT_WARNINGS=ON `
+            -DPOET_ENABLE_SANITIZERS=OFF `
+            -DPOET_BUILD_BENCHMARKS=ON
+
+      - name: Build (multi-config)
+        if: matrix.multi_config
+        shell: pwsh
+        run: cmake --build build --config ${{ matrix.build_type }}
+
+      - name: Test (multi-config)
+        if: matrix.multi_config
+        shell: pwsh
+        run: ctest --output-on-failure --test-dir build -C ${{ matrix.build_type }}
+
+      - name: Build Benchmarks (multi-config)
+        if: ${{ matrix.multi_config && matrix.build_type == 'Release' }}
+        shell: pwsh
+        run: cmake --build build --config ${{ matrix.build_type }} --target poet_benchmarks
+
+      - name: Run Benchmarks (multi-config)
+        if: ${{ matrix.multi_config && matrix.build_type == 'Release' }}
+        shell: pwsh
+        run: |
+          ctest --output-on-failure --test-dir build -C ${{ matrix.build_type }} -L benchmarks
+          cmake --build build --config ${{ matrix.build_type }} --target poet_run_benchmarks
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-${{ matrix.toolchain }}-logs
+          path: |
+            build/**/Testing/**/*.log
+            build/**/Testing/**/*.xml
+          if-no-files-found: ignore
+
+  analysis:
+    name: Static Analysis
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang clang-tidy cppcheck ninja-build
+
+      - name: Configure analysis
+        run: |
+          cmake -S . -B build/analyze \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/install" \
+            -DPOET_ENABLE_CLANG_TIDY=ON \
+            -DPOET_ENABLE_CPPCHECK=ON \
+            -DPOET_STRICT_WARNINGS=ON \
+            -DPOET_ENABLE_SANITIZERS=OFF
+
+      - name: Build (analysis)
+        run: cmake --build build/analyze
+
+      - name: Install (analysis)
+        run: cmake --build build/analyze --target install
+
+      - name: Upload analysis logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analysis-logs
+          path: |
+            build/analyze/**/Testing/**/*.log
+            build/analyze/**/*.txt
+          if-no-files-found: ignore
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-24.04
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup C++ toolchain
+        uses: aminya/setup-cpp@v1
+        with:
+          compiler: gcc-13
+          cmake: true
+          ninja: true
+          cache-tools: true
+
+      - name: Install coverage tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lcov
+
+      - name: Configure (coverage)
+        run: cmake -S . -B build/coverage -G Ninja -DPOET_ENABLE_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build coverage target
+        run: cmake --build build/coverage --target coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: build/coverage/coverage.info
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
