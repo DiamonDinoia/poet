@@ -1,6 +1,6 @@
 # POET
 
-[![CI Status](https://img.shields.io/badge/CI-GitHub%20Actions-lightgrey)](https://github.com/DiamonDinoia/poet/actions)
+[![CI](https://github.com/DiamonDinoia/poet/actions/workflows/ci.yml/badge.svg)](https://github.com/DiamonDinoia/poet/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![C++ Standard](https://img.shields.io/badge/C%2B%2B-17%2B-lightblue)](https://en.cppreference.com/w/cpp/17)
 [![Coverage](https://codecov.io/gh/DiamonDinoia/poet/branch/main/graph/badge.svg)](https://codecov.io/gh/DiamonDinoia/poet)
