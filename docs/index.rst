@@ -8,6 +8,7 @@ Core primitives
 - static_for — compile-time unrolled iteration for integer ranges or template packs.
 - dynamic_for — runtime loops emitted as compile-time unrolled blocks for low-overhead iteration.
 - dispatch / DispatchSet — map runtime integers or tuples to compile-time non-type template parameters for zero-cost specialization.
+- register_info — compile-time CPU register and SIMD capability detection for tuning unroll factors and block sizes to the target ISA.
 
 Why it matters
 --------------
@@ -130,7 +131,7 @@ Key findings:
 
 Throwing dispatch
 -----------------
-Some dispatch overloads accept the tag ``poet::throw_t`` (alias of ``throw_on_no_match_t``) and will throw ``std::runtime_error`` when no compile-time match exists — useful for fatal configuration errors.
+Some dispatch overloads accept the tag ``poet::throw_t`` (alias of ``throw_on_no_match_t``) and will throw ``poet::no_match_error`` (inherits from ``std::runtime_error``) when no compile-time match exists — useful for fatal configuration errors.
 
 Documentation & license
 -----------------------

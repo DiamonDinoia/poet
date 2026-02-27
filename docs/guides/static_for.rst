@@ -24,7 +24,7 @@ Iterate 0..N (exclusive) where N is a compile-time constant.
 What I represents
 -----------------
 - In the callable form that takes an argument (e.g. ``[](auto i){ ... }``),
-  ``i`` is a ``std::integral_constant<std::intmax_t, K>`` wrapper for the
+  ``i`` is a ``std::integral_constant<std::ptrdiff_t, K>`` wrapper for the
   compile-time integer K. Retrieve the integer as ``decltype(i)::value`` or
   ``i.value``.
 - In the C++20 template-lambda form (``[]<auto I>(){...}``), ``I`` is the
@@ -144,18 +144,15 @@ A step other than 1 can be specified to skip values.
        // use idx ...
    });
 
-What if the range exceeds the default block-size cap?
------------------------------------------------------
-- The default ``BlockSize`` is computed as the minimum of the total iteration count and a library-defined cap (currently 256 on most compilers, 128 on MSVC).
-- static_for still emits all iterations at compile time. There is no outer
-  runtime loop. The implementation divides the total iterations into blocks and
-  then emits those blocks in compile-time "chunks" to reduce template recursion
-  depth.
-- Default ``BlockSize`` is ``min(total_count, library_cap)``.
+What if the range is very large?
+--------------------------------
+- The default ``BlockSize`` equals the total iteration count, so all iterations
+  are fully inlined into a single block. There is no outer runtime loop.
+- When that causes excessive register pressure, pass an explicit ``BlockSize``
+  to partition the loop into multiple noinline-isolated blocks, each with its
+  own register-allocation scope.
 - Full blocks and a possible remainder block are computed as constexpr values
   and expanded entirely at compile time.
-- Internally, large numbers of blocks are processed in compile-time chunks up
-  to that same cap to avoid a single enormous fold expression.
 
 Why this matters (practical note)
 ---------------------------------

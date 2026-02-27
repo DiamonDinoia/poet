@@ -14,6 +14,8 @@ capabilities:
 - dynamic_for — efficient runtime loops implemented by emitting compile-time unrolled blocks.
 - dispatch / DispatchSet — map runtime integers or tuples to compile-time non-type template parameters
   for zero-cost specialization.
+- register_info — compile-time CPU register and SIMD capability detection for tuning
+  unroll factors and block sizes to the target ISA.
 
 ## Why it matters
 
@@ -81,7 +83,7 @@ Include the umbrella header:
 
 int main() {
   poet::static_for<0, 5>([](auto I) {
-    // I is std::integral_constant<std::intmax_t, N>
+    // I is std::integral_constant<std::ptrdiff_t, N>
     std::cout << decltype(I)::value << '\n';
   });
 }
@@ -171,8 +173,8 @@ int main() {
 ### Throwing dispatch
 
 Some overloads of `dispatch` accept the tag `poet::throw_t` (alias of `throw_on_no_match_t`) as the
-first argument and will throw `std::runtime_error` when no compile-time match exists. This is useful
-when a missing specialization is a fatal configuration error.
+first argument and will throw `poet::no_match_error` (inherits from `std::runtime_error`) when no
+compile-time match exists. This is useful when a missing specialization is a fatal configuration error.
 
 ```cpp
 #include <iostream>
@@ -187,10 +189,10 @@ int main() {
   try {
     int runtime_choice = 10;
     auto params = std::make_tuple(poet::DispatchParam<poet::make_range<0,4>>{ runtime_choice });
-    // Throws std::runtime_error because 10 is not in [0..4]
+    // Throws poet::no_match_error because 10 is not in [0..4]
     int result = poet::dispatch(poet::throw_t, Impl3{}, params, 5);
     std::cout << result << '\n';
-  } catch (const std::runtime_error &e) {
+  } catch (const poet::no_match_error &e) {
     std::cerr << "dispatch failed: " << e.what() << '\n';
   }
 }

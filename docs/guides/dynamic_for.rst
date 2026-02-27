@@ -66,7 +66,7 @@ Choose unroll based on your profile and compile-time/code-size constraints.
    poet::dynamic_for<4>(n, func);   // balanced starting point
    poet::dynamic_for<8>(n, func);   // for profiled hot/simple loops
 
-.. note:: ``Unroll`` must not exceed the library maximum unroll cap (currently 256 on most compilers, 128 on MSVC).
+.. note:: There is no hard upper limit on ``Unroll``, but very large values increase code size and compile time. Profile to find the sweet spot for your workload.
 
 Callable Signatures
 -------------------

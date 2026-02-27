@@ -108,7 +108,7 @@ You can force a check by passing ``poet::throw_t`` as the first argument:
 .. code-block:: cpp
 
    poet::dispatch(poet::throw_t, Kernel{}, params, args...);
-   // Throws std::runtime_error if no match found.
+   // Throws poet::no_match_error if no match found.
 
 The throwing overload with ``DispatchSet`` is also available:
 
