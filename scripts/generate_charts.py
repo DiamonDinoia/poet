@@ -193,9 +193,15 @@ def generate_dynamic_for_chart(data: dict[str, dict], output: Path):
     ax.set_xticks(x + width)
     ax.set_xticklabels(compilers, rotation=30, ha="right")
     ax.set_ylabel("Speedup vs for loop (1 acc)")
-    ax.legend(loc="upper left", framealpha=0.9, fontsize=9)
     style_chart(ax, "dynamic_for: multi-accumulator speedup")
     ax.axhline(y=1.0, color="#CCCCCC", linestyle="--", linewidth=0.8)
+    ax.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.15),
+        ncol=3,
+        framealpha=0.9,
+        fontsize=9,
+    )
 
     fig.tight_layout()
     fig.savefig(str(output), format="svg", bbox_inches="tight")
@@ -281,9 +287,15 @@ def generate_static_for_chart(data: dict[str, dict], output: Path):
         ax.set_xticks(x + width)
         ax.set_xticklabels(compilers, rotation=30, ha="right")
         ax.set_ylabel("Speedup vs for loop")
-        ax.legend(loc="upper left", framealpha=0.9, fontsize=8)
         style_chart(ax, f"static_for: {section_title}")
         ax.axhline(y=1.0, color="#CCCCCC", linestyle="--", linewidth=0.8)
+        ax.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.15),
+            ncol=3,
+            framealpha=0.9,
+            fontsize=8,
+        )
 
     fig.tight_layout()
     fig.savefig(str(output), format="svg", bbox_inches="tight")
@@ -334,30 +346,32 @@ def generate_dispatch_optimization_chart(data: dict[str, dict], output: Path):
             runtime_vals.append(rt_nsop if rt_nsop is not None else 0)
             dispatched_vals.append(disp_nsop if disp_nsop is not None else 0)
 
-    ax.bar(x - width / 2, runtime_vals, width, label="runtime N", color="#AAAAAA")
-    ax.bar(x + width / 2, dispatched_vals, width, label="dispatched N", color="#4C72B0")
+    # Compute speedup: runtime / dispatched
+    speedups = []
+    for rt, disp in zip(runtime_vals, dispatched_vals):
+        if rt > 0 and disp > 0:
+            speedups.append(rt / disp)
+        else:
+            speedups.append(0)
 
-    # Add speedup annotations
-    for i in range(len(x)):
-        if runtime_vals[i] > 0 and dispatched_vals[i] > 0:
-            speedup = runtime_vals[i] / dispatched_vals[i]
+    bars = ax.bar(x, speedups, width * 1.5, color="#4C72B0")
+    for bar, s in zip(bars, speedups):
+        if s > 0:
             ax.text(
-                x[i] + width / 2,
-                dispatched_vals[i] + 0.1,
-                f"{speedup:.1f}x",
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + 0.02,
+                f"{s:.2f}x",
                 ha="center",
                 va="bottom",
                 fontsize=7,
-                color="#2a5a8a",
-                fontweight="bold",
             )
 
     ax.set_xticks(x)
     ax.set_xticklabels(group_labels, rotation=45, ha="right", fontsize=7)
-    ax.set_ylabel("ns/op")
-    ax.legend(loc="upper left", framealpha=0.9, fontsize=9)
+    ax.set_ylabel("Speedup (dispatched vs runtime)")
+    ax.axhline(y=1.0, color="#CCCCCC", linestyle="--", linewidth=0.8)
     style_chart(
-        ax, "Compile-time specialization: runtime N vs dispatched N (Horner polynomial)"
+        ax, "Compile-time specialization: dispatched N speedup (Horner polynomial)"
     )
 
     fig.tight_layout()
@@ -462,9 +476,15 @@ def generate_cross_compiler_chart(data: dict[str, dict], output: Path):
     ax.set_xticks(x)
     ax.set_xticklabels(compilers, rotation=30, ha="right")
     ax.set_ylabel("Speedup vs baseline")
-    ax.legend(loc="upper left", framealpha=0.9, fontsize=9)
     style_chart(ax, "Cross-compiler: POET speedup over baseline")
     ax.axhline(y=1.0, color="#CCCCCC", linestyle="--", linewidth=0.8)
+    ax.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.15),
+        ncol=3,
+        framealpha=0.9,
+        fontsize=9,
+    )
 
     fig.tight_layout()
     fig.savefig(str(output), format="svg", bbox_inches="tight")
