@@ -45,6 +45,9 @@ _poet_configure_benchmark_target(poet_compiler_comparison_bench compiler_compari
 # ── Dispatch benchmark ─────────────────────────────────────────────────────
 _poet_configure_benchmark_target(poet_dispatch_bench dispatch_bench.cpp)
 
+# ── Dispatch optimization benchmark ──────────────────────────────────────────
+_poet_configure_benchmark_target(poet_dispatch_optimization_bench dispatch_optimization_bench.cpp)
+
 # ── Register-tuned benchmarks (default ISA) ────────────────────────────────
 _poet_configure_benchmark_target(poet_static_for_bench static_for_bench.cpp)
 _poet_configure_benchmark_target(poet_dynamic_for_bench dynamic_for_bench.cpp)
@@ -66,15 +69,16 @@ endif()
 
 # ── Umbrella build target (CI uses --target poet_benchmarks) ───────────────
 add_custom_target(poet_benchmarks
-  DEPENDS poet_compiler_comparison_bench poet_dispatch_bench poet_static_for_bench poet_dynamic_for_bench
+  DEPENDS poet_compiler_comparison_bench poet_dispatch_bench poet_dispatch_optimization_bench poet_static_for_bench poet_dynamic_for_bench
 )
 
 # ── Run targets ────────────────────────────────────────────────────────────
 add_custom_target(poet_run_bench
   COMMAND $<TARGET_FILE:poet_dispatch_bench>
+  COMMAND $<TARGET_FILE:poet_dispatch_optimization_bench>
   COMMAND $<TARGET_FILE:poet_static_for_bench>
   COMMAND $<TARGET_FILE:poet_dynamic_for_bench>
-  DEPENDS poet_dispatch_bench poet_static_for_bench poet_dynamic_for_bench
+  DEPENDS poet_dispatch_bench poet_dispatch_optimization_bench poet_static_for_bench poet_dynamic_for_bench
   USES_TERMINAL
   COMMENT "Running POET benchmarks"
 )
@@ -102,9 +106,10 @@ if(POET_BUILD_TESTS)
   option(POET_REGISTER_BENCHMARKS_AS_TESTS "Register benchmarks as CTest tests" OFF)
   if(POET_REGISTER_BENCHMARKS_AS_TESTS)
     add_test(NAME poet.bench.dispatch COMMAND $<TARGET_FILE:poet_dispatch_bench>)
+    add_test(NAME poet.bench.dispatch_optimization COMMAND $<TARGET_FILE:poet_dispatch_optimization_bench>)
     add_test(NAME poet.bench.static_for COMMAND $<TARGET_FILE:poet_static_for_bench>)
     add_test(NAME poet.bench.dynamic_for COMMAND $<TARGET_FILE:poet_dynamic_for_bench>)
-    set_tests_properties(poet.bench.dispatch poet.bench.static_for poet.bench.dynamic_for
+    set_tests_properties(poet.bench.dispatch poet.bench.dispatch_optimization poet.bench.static_for poet.bench.dynamic_for
       PROPERTIES LABELS benchmarks)
   endif()
 endif()

@@ -45,7 +45,7 @@ int next_noise() {
 int main() {
     ankerl::nanobench::Bench bench;
     bench.title("dispatch: dimensionality, hit/miss, contiguous/sparse");
-    bench.minEpochTime(50ms);
+    bench.minEpochTime(100ms);
 
     // ── 1D Dispatch ─────────────────────────────────────────────────────
     bench.run("1D contiguous hit", [&] {

@@ -149,7 +149,7 @@ int main() {
         constexpr std::size_t N = 10000;
 
         ankerl::nanobench::Bench b;
-        b.minEpochTime(50ms).relative(true);
+        b.minEpochTime(100ms).relative(true);
         b.title("Multi-acc: dynamic_for lane callbacks (N=10000)");
 
         run(b, N, "for loop (1 acc)", [salt] {
@@ -175,7 +175,7 @@ int main() {
         constexpr std::size_t N = 10000;
 
         ankerl::nanobench::Bench b;
-        b.minEpochTime(50ms).relative(true);
+        b.minEpochTime(100ms).relative(true);
         b.title("Unroll: plain for vs optimal vs spill (N=10000)");
 
         run(b, N, "plain for (1 acc)", [salt] {

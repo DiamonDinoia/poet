@@ -118,6 +118,18 @@ The throwing overload with ``DispatchSet`` is also available:
    Shapes s(r, c);
    poet::dispatch(poet::throw_t, MatMul{}, s); // throws if (r,c) not allowed
 
+Performance: why dispatch is faster
+------------------------------------
+
+Beyond eliminating virtual-call overhead, the primary benefit of ``dispatch`` is that it enables the compiler to optimize the *body* of your functor.  When N is a compile-time constant:
+
+- Loop trip counts are known, enabling full unrolling.
+- Array accesses with constant indices become direct register loads.
+- The instruction scheduler can interleave independent operations.
+- Dead code for impossible branches is eliminated.
+
+Benchmarks show 2-5x speedups for Horner polynomial evaluation when N is dispatched vs passed as a runtime argument.  See :doc:`benchmarks` for detailed charts across GCC and Clang.
+
 Implementation Details
 ----------------------
 

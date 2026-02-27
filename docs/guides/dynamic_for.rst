@@ -139,6 +139,24 @@ Use with C++20 Ranges and Piping
        // i = 0,2,4,...,22
    });
 
+Performance: multi-accumulator ILP
+-----------------------------------
+
+The most impactful use of ``dynamic_for`` is breaking serial dependency chains in
+reductions.  The two-argument callback ``func(lane, index)`` receives ``lane`` as a
+``std::integral_constant``, so the compiler allocates each accumulator independently:
+
+.. code-block:: cpp
+
+   std::array<double, 8> accs{};
+   poet::dynamic_for<8>(0u, N, [&](auto lane, std::size_t i) {
+       accs[lane] += heavy_work(i, salt);
+   });
+   double total = std::accumulate(accs.begin(), accs.end(), 0.0);
+
+This consistently delivers multi-x speedups over a scalar ``for`` loop.
+See :doc:`benchmarks` for charts across GCC and Clang.
+
 Notes
 -----
 

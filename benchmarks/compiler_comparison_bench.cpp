@@ -286,7 +286,7 @@ int main() {
     // ── Section 1: Dispatch Baselines ────────────────────────────────────────
     {
         ankerl::nanobench::Bench b;
-        b.minEpochTime(50ms).relative(true);
+        b.minEpochTime(100ms).relative(true);
         b.title("Dispatch baselines: if-else / switch / fn-ptr / POET (8 branches)");
 
         b.run("dispatch if-else", [&] {
@@ -322,7 +322,7 @@ int main() {
         const float b_val = 1.0f;
 
         ankerl::nanobench::Bench bench;
-        bench.minEpochTime(50ms).relative(true);
+        bench.minEpochTime(100ms).relative(true);
         bench.title("Vectorization probe: saxpy + reduce (N=" + std::to_string(kSaxpyN) + ")");
 
         bench.batch(kSaxpyN).run("saxpy plain", [&] { ankerl::nanobench::doNotOptimizeAway(saxpy_plain(a, b_val)); });
@@ -339,7 +339,7 @@ int main() {
         const auto salt = next_salt();
 
         ankerl::nanobench::Bench b;
-        b.minEpochTime(50ms).relative(true);
+        b.minEpochTime(100ms).relative(true);
         b.title("N sweep: 1-acc vs tuned-acc vs dynamic_for");
 
         run_sweep<64>(b, salt);
@@ -351,7 +351,7 @@ int main() {
     // ── Section 4: Template Inlining Depth ───────────────────────────────────
     {
         ankerl::nanobench::Bench b;
-        b.minEpochTime(50ms).relative(true);
+        b.minEpochTime(100ms).relative(true);
         b.title("Template inlining: plain loop vs static_for (trivial body)");
 
         run_inline_test<4>(b);

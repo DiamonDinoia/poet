@@ -112,6 +112,22 @@ High-level usage pointers
   - guides/dispatch — when runtime choices must map to compile-time specializations.
 - Consult the API Reference for exact signatures and template parameters.
 
+Benchmark results
+-----------------
+POET ships with comprehensive nanobench benchmarks that run across GCC and Clang.
+CI generates SVG charts automatically — see the :doc:`guides/benchmarks` page for
+detailed results and analysis, or view the charts directly in the README.
+
+Key findings:
+
+- **dynamic_for** delivers consistent multi-accumulator ILP speedups by exposing
+  independent accumulator chains via compile-time lane indices.
+- **static_for** with register-aware block sizing avoids spill pressure while
+  maximizing throughput.
+- **dispatch** enables 2-5x speedups by letting the compiler fully unroll and
+  optimize loops when N is a compile-time constant.
+- Results are consistent across GCC and Clang, confirming the patterns are robust.
+
 Throwing dispatch
 -----------------
 Some dispatch overloads accept the tag ``poet::throw_t`` (alias of ``throw_on_no_match_t``) and will throw ``std::runtime_error`` when no compile-time match exists — useful for fatal configuration errors.
@@ -138,6 +154,7 @@ PRs and issues welcome.
    guides/static_for
    guides/dynamic_for
    guides/dispatch
+   guides/benchmarks
 
 .. toctree::
    :maxdepth: 2

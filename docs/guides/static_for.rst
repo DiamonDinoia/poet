@@ -174,7 +174,24 @@ Common pitfalls & tips
 - If large compile times are observed, reduce BlockSize to shrink per-block
   expansion or split the problem into smaller compile-time ranges.
 
+Performance: register-aware block sizing
+-----------------------------------------
+
+The ``BlockSize`` parameter directly affects performance.  Benchmarks across GCC and
+Clang show that the optimal block size depends on the workload:
+
+- **Map (independent iterations)**: ``vec_regs * lanes_64 / 2`` — maximizes ILP by
+  keeping half the register file available for computation chains.
+- **Multi-accumulator (serial per chain)**: ``lanes_64 * 2`` — uses 2 SIMD registers
+  worth of accumulators, leaving headroom for intermediate values.
+
+Going beyond the optimal point causes register spill pressure (objdump shows thousands
+of stack references in the hot loop), degrading performance.
+
+See :doc:`benchmarks` for charts across GCC and Clang.
+
 See also
 --------
 - guides/dynamic_for — runtime-driven loops implemented with compile-time blocks.
+- guides/benchmarks — benchmark results with charts and analysis.
 - api/library_root — API reference for exact signatures and overloads.
