@@ -2090,18 +2090,38 @@ namespace detail {
     };
 
     // ========================================================================
-    // Direct if-cascade tail dispatch — avoids function pointer table for
-    // small unroll factors (Unroll <= 16) so GCC can inline everything.
-    // Falls back to poet::dispatch for Unroll > 16 to limit code bloat.
+    // Direct if-cascade tail dispatch
+    //
+    // Two variants per stride type:
+    //   - Inline: FORCEINLINE for the tiny-range fast path (count < Unroll),
+    //     where there is no main loop — noinline would be pure call overhead.
+    //   - Outlined: NOINLINE_FLATTEN for the post-main-loop remainder, where
+    //     noinline provides register isolation from the hot loop.
+    //
+    // For Unroll > 16, both paths use poet::dispatch (function pointer table)
+    // which is inherently outlined.
     // ========================================================================
 
+    /// \brief Inline tail cascade — used when there is no main loop to protect.
     template<typename FormTag, typename Callable, typename T, std::size_t... Ns>
-    POET_NOINLINE_FLATTEN void dispatch_tail_cascade(std::size_t count,
+    POET_FORCEINLINE void tail_cascade_inline(std::size_t count,
       Callable &callable,
       T index,
       T stride,
       std::index_sequence<Ns...> /*seq*/) {
-        // Expand if-chain: Ns = 0, 1, 2, ... Unroll-2 representing tail sizes 1, 2, ... Unroll-1
+        [[maybe_unused]] const bool matched =
+          ((count == (Ns + 1) ? (emit_block<FormTag, Callable, T, Ns + 1>(FormTag{}, callable, index, stride), true)
+                              : false)
+            || ...);
+    }
+
+    /// \brief Outlined tail cascade — register isolation from the main loop.
+    template<typename FormTag, typename Callable, typename T, std::size_t... Ns>
+    POET_NOINLINE_FLATTEN void tail_cascade_outlined(std::size_t count,
+      Callable &callable,
+      T index,
+      T stride,
+      std::index_sequence<Ns...> /*seq*/) {
         [[maybe_unused]] const bool matched =
           ((count == (Ns + 1) ? (emit_block<FormTag, Callable, T, Ns + 1>(FormTag{}, callable, index, stride), true)
                               : false)
@@ -2109,7 +2129,18 @@ namespace detail {
     }
 
     template<std::ptrdiff_t Step, typename FormTag, typename Callable, typename T, std::size_t... Ns>
-    POET_NOINLINE_FLATTEN void dispatch_tail_ct_stride_cascade(std::size_t count,
+    POET_FORCEINLINE void tail_cascade_ct_stride_inline(std::size_t count,
+      Callable &callable,
+      T index,
+      std::index_sequence<Ns...> /*seq*/) {
+        [[maybe_unused]] const bool matched =
+          ((count == (Ns + 1) ? (emit_block_ct<Step, FormTag, Callable, T, Ns + 1>(FormTag{}, callable, index), true)
+                              : false)
+            || ...);
+    }
+
+    template<std::ptrdiff_t Step, typename FormTag, typename Callable, typename T, std::size_t... Ns>
+    POET_NOINLINE_FLATTEN void tail_cascade_ct_stride_outlined(std::size_t count,
       Callable &callable,
       T index,
       std::index_sequence<Ns...> /*seq*/) {
@@ -2121,12 +2152,38 @@ namespace detail {
 
     POET_PUSH_OPTIMIZE
 
+    /// \brief Inline tail dispatch — for the tiny-range fast path.
+    ///
+    /// Called when count < Unroll and there is no main loop. The tail IS the
+    /// entire execution, so noinline would be pure call/ret overhead with no
+    /// register-isolation benefit.
     template<typename FormTag, std::size_t Unroll, typename Callable, typename T>
-    POET_FORCEINLINE void dispatch_tail(std::size_t count, Callable &callable, T index, T stride) {
-        static_assert(Unroll > 1, "dispatch_tail requires Unroll > 1");
+    POET_FORCEINLINE void dispatch_tail_inline(std::size_t count, Callable &callable, T index, T stride) {
+        static_assert(Unroll > 1, "dispatch_tail_inline requires Unroll > 1");
         if (count == 0) { return; }
         if constexpr (Unroll <= 16) {
-            dispatch_tail_cascade<FormTag>(count, callable, index, stride, std::make_index_sequence<Unroll - 1>{});
+            tail_cascade_inline<FormTag>(count, callable, index, stride, std::make_index_sequence<Unroll - 1>{});
+        } else {
+            const tail_dispatch_functor<FormTag, Callable, T> functor{};
+            poet::dispatch(functor,
+              poet::DispatchParam<poet::make_range<1, static_cast<int>(Unroll - 1)>>{ static_cast<int>(count) },
+              std::addressof(callable),
+              index,
+              stride);
+        }
+    }
+
+    /// \brief Outlined tail dispatch — for post-main-loop remainder.
+    ///
+    /// Called after the hot main loop exits. The noinline boundary prevents
+    /// the tail's many specializations from interfering with the main loop's
+    /// register allocation and icache footprint.
+    template<typename FormTag, std::size_t Unroll, typename Callable, typename T>
+    POET_FORCEINLINE void dispatch_tail_outlined(std::size_t count, Callable &callable, T index, T stride) {
+        static_assert(Unroll > 1, "dispatch_tail_outlined requires Unroll > 1");
+        if (count == 0) { return; }
+        if constexpr (Unroll <= 16) {
+            tail_cascade_outlined<FormTag>(count, callable, index, stride, std::make_index_sequence<Unroll - 1>{});
         } else {
             const tail_dispatch_functor<FormTag, Callable, T> functor{};
             poet::dispatch(functor,
@@ -2138,11 +2195,27 @@ namespace detail {
     }
 
     template<std::ptrdiff_t Step, typename FormTag, std::size_t Unroll, typename Callable, typename T>
-    POET_FORCEINLINE void dispatch_tail_ct_stride(std::size_t count, Callable &callable, T index) {
-        static_assert(Unroll > 1, "dispatch_tail_ct_stride requires Unroll > 1");
+    POET_FORCEINLINE void dispatch_tail_ct_stride_inline(std::size_t count, Callable &callable, T index) {
+        static_assert(Unroll > 1, "dispatch_tail_ct_stride_inline requires Unroll > 1");
         if (count == 0) { return; }
         if constexpr (Unroll <= 16) {
-            dispatch_tail_ct_stride_cascade<Step, FormTag>(
+            tail_cascade_ct_stride_inline<Step, FormTag>(
+              count, callable, index, std::make_index_sequence<Unroll - 1>{});
+        } else {
+            const tail_dispatch_functor_ct_stride<Step, FormTag, Callable, T> functor{};
+            poet::dispatch(functor,
+              poet::DispatchParam<poet::make_range<1, static_cast<int>(Unroll - 1)>>{ static_cast<int>(count) },
+              std::addressof(callable),
+              index);
+        }
+    }
+
+    template<std::ptrdiff_t Step, typename FormTag, std::size_t Unroll, typename Callable, typename T>
+    POET_FORCEINLINE void dispatch_tail_ct_stride_outlined(std::size_t count, Callable &callable, T index) {
+        static_assert(Unroll > 1, "dispatch_tail_ct_stride_outlined requires Unroll > 1");
+        if (count == 0) { return; }
+        if constexpr (Unroll <= 16) {
+            tail_cascade_ct_stride_outlined<Step, FormTag>(
               count, callable, index, std::make_index_sequence<Unroll - 1>{});
         } else {
             const tail_dispatch_functor_ct_stride<Step, FormTag, Callable, T> functor{};
@@ -2247,7 +2320,8 @@ namespace detail {
             std::size_t remaining = count;
 
             if (POET_UNLIKELY(count < Unroll)) {
-                dispatch_tail<FormTag, Unroll>(count, callable, index, stride);
+                // Tiny range: no main loop exists, inline the tail for zero overhead.
+                dispatch_tail_inline<FormTag, Unroll>(count, callable, index, stride);
                 return;
             }
 
@@ -2258,7 +2332,8 @@ namespace detail {
                 remaining -= Unroll;
             }
 
-            dispatch_tail<FormTag, Unroll>(remaining, callable, index, stride);
+            // Post-loop remainder: outlined for register isolation from the hot loop.
+            dispatch_tail_outlined<FormTag, Unroll>(remaining, callable, index, stride);
         }
     }
 
@@ -2293,7 +2368,8 @@ namespace detail {
             std::size_t remaining = count;
 
             if (POET_UNLIKELY(count < Unroll)) {
-                dispatch_tail_ct_stride<Step, FormTag, Unroll>(count, callable, index);
+                // Tiny range: no main loop exists, inline the tail for zero overhead.
+                dispatch_tail_ct_stride_inline<Step, FormTag, Unroll>(count, callable, index);
                 return;
             }
 
@@ -2304,7 +2380,8 @@ namespace detail {
                 remaining -= Unroll;
             }
 
-            dispatch_tail_ct_stride<Step, FormTag, Unroll>(remaining, callable, index);
+            // Post-loop remainder: outlined for register isolation from the hot loop.
+            dispatch_tail_ct_stride_outlined<Step, FormTag, Unroll>(remaining, callable, index);
         }
     }
 
