@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        toolchain: [gcc, gcc-14, llvm, llvm-21]
+        toolchain: [gcc-14, gcc-15, llvm-20, llvm-21]
     steps:
       - uses: actions/checkout@v4
 
@@ -46,11 +46,7 @@ jobs:
         shell: bash
         run: |
           toolchain="${{ matrix.toolchain }}"
-          if [[ "$toolchain" == "gcc" ]]; then
-            compiler="gcc-latest"
-          elif [[ "$toolchain" == "llvm" ]]; then
-            compiler="clang-latest"
-          elif [[ "$toolchain" == llvm-* ]]; then
+          if [[ "$toolchain" == llvm-* ]]; then
             compiler="clang-${toolchain#llvm-}"
           else
             compiler="$toolchain"

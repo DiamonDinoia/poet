@@ -148,7 +148,8 @@ def generate_dynamic_for_chart(data: dict[str, dict], output: Path):
     method_patterns = [
         ("for loop (1 acc)", r"for loop \(1 acc\)"),
         ("hand-unrolled", r"for loop \(optimal"),
-        ("dynamic_for", r"dynamic_for"),
+        ("dynamic_for (1 acc)", r"dynamic_for \(1 acc\)"),
+        ("dynamic_for (optimal)", r"dynamic_for \(optimal"),
     ]
 
     fig, ax = plt.subplots(figsize=(max(8, len(compilers) * 2.5), 5))
@@ -156,8 +157,8 @@ def generate_dynamic_for_chart(data: dict[str, dict], output: Path):
     import numpy as np
 
     x = np.arange(len(compilers))
-    width = 0.25
-    method_colors = ["#AAAAAA", "#7FBBDA", "#4C72B0"]
+    width = 0.19
+    method_colors = ["#AAAAAA", "#7FBBDA", "#8FBC8F", "#4C72B0"]
 
     for mi, (label, pattern) in enumerate(method_patterns):
         values = []
@@ -190,7 +191,7 @@ def generate_dynamic_for_chart(data: dict[str, dict], output: Path):
                     fontsize=7,
                 )
 
-    ax.set_xticks(x + width)
+    ax.set_xticks(x + width * 1.5)
     ax.set_xticklabels(compilers, rotation=30, ha="right")
     ax.set_ylabel("Speedup vs for loop (1 acc)")
     style_chart(ax, "dynamic_for: multi-accumulator speedup")
@@ -198,7 +199,7 @@ def generate_dynamic_for_chart(data: dict[str, dict], output: Path):
     ax.legend(
         loc="upper center",
         bbox_to_anchor=(0.5, -0.15),
-        ncol=3,
+        ncol=4,
         framealpha=0.9,
         fontsize=9,
     )
@@ -492,6 +493,120 @@ def generate_cross_compiler_chart(data: dict[str, dict], output: Path):
     print(f"  Wrote {output}")
 
 
+def generate_average_improvement_chart(data: dict[str, dict], output: Path):
+    """Average improvement: geometric mean speedup per compiler across all benchmarks."""
+    bench_configs = {
+        "dynamic_for_bench": {
+            "table_pattern": r"Multi-acc.*lane",
+            "baseline_pattern": r"for loop \(1 acc\)",
+            "poet_pattern": r"dynamic_for \(optimal",
+        },
+        "static_for_bench": {
+            "table_pattern": r"Multi-acc.*static_for",
+            "baseline_pattern": r"`for loop`",
+            "poet_pattern": r"tuned BS",
+        },
+        "dispatch_optimization_bench": {
+            "table_pattern": r"",
+            "baseline_pattern": r"N=16.*runtime",
+            "poet_pattern": r"N=16.*dispatched",
+        },
+    }
+
+    all_compilers: set[str] = set()
+    for bench_name in bench_configs:
+        if bench_name in data:
+            all_compilers.update(data[bench_name].keys())
+
+    compilers = sorted(all_compilers, key=compiler_sort_key)
+    if not compilers:
+        print("Warning: no data for average improvement chart", file=sys.stderr)
+        return
+
+    import math
+
+    import numpy as np
+
+    geo_means = []
+    for compiler in compilers:
+        speedups = []
+        for bench_name, cfg in bench_configs.items():
+            if bench_name not in data or compiler not in data[bench_name]:
+                continue
+            parsed = data[bench_name][compiler]
+            rows = find_rows(parsed, cfg["table_pattern"])
+            baseline_nsop = None
+            poet_nsop = None
+            for r in rows:
+                name = row_name(r)
+                if re.search(cfg["baseline_pattern"], name):
+                    baseline_nsop = row_nsop(r)
+                if re.search(cfg["poet_pattern"], name):
+                    poet_nsop = row_nsop(r)
+            if baseline_nsop and poet_nsop and poet_nsop > 0:
+                speedups.append(baseline_nsop / poet_nsop)
+
+        if speedups:
+            geo_mean = math.exp(sum(math.log(s) for s in speedups) / len(speedups))
+        else:
+            geo_mean = 0
+        geo_means.append(geo_mean)
+
+    if not any(g > 0 for g in geo_means):
+        print(
+            "Warning: no valid speedup data for average improvement chart",
+            file=sys.stderr,
+        )
+        return
+
+    fig, ax = plt.subplots(figsize=(max(8, len(compilers) * 1.5), 5))
+    x = np.arange(len(compilers))
+    colors = [compiler_color(c) for c in compilers]
+
+    bars = ax.bar(x, geo_means, 0.6, color=colors)
+    for bar, g in zip(bars, geo_means):
+        if g > 0:
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + 0.02,
+                f"{g:.2f}x",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                fontweight="bold",
+            )
+
+    # Overall average across all compilers (excluding zeros)
+    valid = [g for g in geo_means if g > 0]
+    if valid:
+        overall = math.exp(sum(math.log(g) for g in valid) / len(valid))
+        ax.axhline(
+            y=overall,
+            color="#C44E52",
+            linestyle="--",
+            linewidth=1.5,
+            label=f"overall average: {overall:.2f}x",
+        )
+
+    ax.axhline(y=1.0, color="#CCCCCC", linestyle="--", linewidth=0.8)
+    ax.set_xticks(x)
+    ax.set_xticklabels(compilers, rotation=30, ha="right")
+    ax.set_ylabel("Geometric mean speedup vs baseline")
+    style_chart(ax, "Average POET improvement across all benchmarks")
+    ax.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.15),
+        ncol=2,
+        framealpha=0.9,
+        fontsize=9,
+    )
+
+    fig.tight_layout()
+    fig.savefig(str(output), format="svg", bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Wrote {output}")
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 
@@ -537,6 +652,7 @@ def main():
     generate_static_for_chart(data, output_dir / "static_for_speedup.svg")
     generate_dispatch_optimization_chart(data, output_dir / "dispatch_optimization.svg")
     generate_cross_compiler_chart(data, output_dir / "cross_compiler_overview.svg")
+    generate_average_improvement_chart(data, output_dir / "average_improvement.svg")
     print("\nDone.")
 
 

@@ -160,6 +160,8 @@ int main() {
 
         run(b, N, "for loop (optimal accs)", [salt] { return hand_unrolled_multi_acc<optimal_accs>(N, salt); });
 
+        run(b, N, "dynamic_for (1 acc)", [salt] { return dynamic_for_multi_acc<1>(N, salt); });
+
         run(b, N, "dynamic_for (optimal accs)", [salt] { return dynamic_for_multi_acc<optimal_accs>(N, salt); });
     }
 
