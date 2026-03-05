@@ -191,7 +191,11 @@ namespace detail {
     POET_FORCEINLINE void tail_binary(std::size_t count, Callable &callable, T index, T stride) {
         if constexpr (N <= 1) {
         } else {
-            constexpr std::size_t half = N / 2;
+            constexpr std::size_t half = []() constexpr -> std::size_t {
+                std::size_t pow2 = 1;
+                while (pow2 * 2 < N) { pow2 *= 2; }
+                return pow2;
+            }();
             const std::size_t rem = (count >= half) ? (count - half) : count;
             tail_binary<half, FormTag>(rem, callable, index, stride);
             if (count >= half) {
@@ -212,7 +216,11 @@ namespace detail {
     POET_FORCEINLINE void tail_binary_ct(std::size_t count, Callable &callable, T index) {
         if constexpr (N <= 1) {
         } else {
-            constexpr std::size_t half = N / 2;
+            constexpr std::size_t half = []() constexpr -> std::size_t {
+                std::size_t pow2 = 1;
+                while (pow2 * 2 < N) { pow2 *= 2; }
+                return pow2;
+            }();
             const std::size_t rem = (count >= half) ? (count - half) : count;
             tail_binary_ct<half, Step, FormTag>(rem, callable, index);
             if (count >= half) {

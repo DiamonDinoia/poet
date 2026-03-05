@@ -139,6 +139,41 @@ TEST_CASE("dynamic_for honours custom unroll factors", "[dynamic_for]") {
     REQUIRE(visited == expected);
 }
 
+TEST_CASE("dynamic_for non-power-of-2 unroll tail correctness", "[dynamic_for]") {
+    // Regression: tail_binary used N/2 which doesn't produce correct binary
+    // decomposition for non-power-of-2 N, dropping elements.
+    auto test_unroll = [](auto unroll_tag, std::size_t count) {
+        constexpr std::size_t Unroll = decltype(unroll_tag)::value;
+        std::vector<std::size_t> visited;
+        poet::dynamic_for<Unroll>(std::size_t{ 0 }, count, [&visited](std::size_t i) { visited.push_back(i); });
+        REQUIRE(visited.size() == count);
+        for (std::size_t i = 0; i < count; ++i) { REQUIRE(visited[i] == i); }
+    };
+
+    // Non-power-of-2 unroll factors with various tail sizes
+    SECTION("Unroll=3") {
+        for (std::size_t n = 0; n <= 10; ++n) test_unroll(std::integral_constant<std::size_t, 3>{}, n);
+    }
+    SECTION("Unroll=5") {
+        for (std::size_t n = 0; n <= 16; ++n) test_unroll(std::integral_constant<std::size_t, 5>{}, n);
+    }
+    SECTION("Unroll=6") {
+        for (std::size_t n = 0; n <= 20; ++n) test_unroll(std::integral_constant<std::size_t, 6>{}, n);
+    }
+    SECTION("Unroll=7") {
+        for (std::size_t n = 0; n <= 22; ++n) test_unroll(std::integral_constant<std::size_t, 7>{}, n);
+    }
+    SECTION("Unroll=9") {
+        for (std::size_t n = 0; n <= 28; ++n) test_unroll(std::integral_constant<std::size_t, 9>{}, n);
+    }
+    SECTION("Unroll=10") {
+        for (std::size_t n = 0; n <= 32; ++n) test_unroll(std::integral_constant<std::size_t, 10>{}, n);
+    }
+    SECTION("Unroll=12") {
+        for (std::size_t n = 0; n <= 38; ++n) test_unroll(std::integral_constant<std::size_t, 12>{}, n);
+    }
+}
+
 TEST_CASE("dynamic_for auto-detects forward direction", "[dynamic_for][auto-step]") {
     std::vector<int> visited;
     poet::dynamic_for<4>(5, 10, [&visited](int i) { visited.push_back(i); });
