@@ -405,17 +405,23 @@ TEST_CASE("dynamic_for passes compile-time lane in tiny and tail ranges", "[dyna
     poet::dynamic_for<kUnroll>(
       5U, 8U, [&tiny](auto lane_c, std::size_t i) { tiny.emplace_back(i, decltype(lane_c)::value); });
 
-    REQUIRE(tiny == std::vector<std::pair<std::size_t, std::size_t>>{ { 5U, 0U }, { 6U, 1U }, { 7U, 2U } });
+    // Binary decomposition splits tail=3 into blocks [1, 2], so lanes are [0], [0, 1].
+    REQUIRE(tiny == std::vector<std::pair<std::size_t, std::size_t>>{ { 5U, 0U }, { 6U, 0U }, { 7U, 1U } });
 
     std::vector<std::pair<std::size_t, std::size_t>> with_tail;
     poet::dynamic_for<kUnroll>(
       5U, 16U, [&with_tail](auto lane_c, std::size_t i) { with_tail.emplace_back(i, decltype(lane_c)::value); });
 
     REQUIRE(with_tail.size() == 11);
-    for (std::size_t iter = 0; iter < with_tail.size(); ++iter) {
+    // Main loop: 8 iterations with lanes 0-7.
+    for (std::size_t iter = 0; iter < kUnroll; ++iter) {
         REQUIRE(with_tail[iter].first == 5U + iter);
-        REQUIRE(with_tail[iter].second == iter % kUnroll);
+        REQUIRE(with_tail[iter].second == iter);
     }
+    // Tail of 3: binary decomposition emits blocks [1, 2] → lanes [0], [0, 1].
+    REQUIRE(with_tail[8] == std::make_pair(std::size_t{ 13 }, std::size_t{ 0 }));
+    REQUIRE(with_tail[9] == std::make_pair(std::size_t{ 14 }, std::size_t{ 0 }));
+    REQUIRE(with_tail[10] == std::make_pair(std::size_t{ 15 }, std::size_t{ 1 }));
 }
 
 TEST_CASE("dynamic_for lane works with count and auto-step overloads", "[dynamic_for][lane]") {
