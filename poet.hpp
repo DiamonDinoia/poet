@@ -819,11 +819,11 @@ namespace detail {
         if constexpr (N <= 1) {
         } else {
             constexpr std::size_t half = N / 2;
-            const std::size_t m2 = (count >= half) ? (count - half) : count;
-            tail_binary<half, FormTag>(m2, callable, index, stride);
+            const std::size_t rem = (count >= half) ? (count - half) : count;
+            tail_binary<half, FormTag>(rem, callable, index, stride);
             if (count >= half) {
                 emit_block<FormTag, Callable, T, half>(
-                  FormTag{}, callable, static_cast<T>(index + static_cast<T>(m2) * stride), stride);
+                  FormTag{}, callable, static_cast<T>(index + static_cast<T>(rem) * stride), stride);
             }
         }
     }
@@ -840,11 +840,11 @@ namespace detail {
         if constexpr (N <= 1) {
         } else {
             constexpr std::size_t half = N / 2;
-            const std::size_t m2 = (count >= half) ? (count - half) : count;
-            tail_binary_ct<half, Step, FormTag>(m2, callable, index);
+            const std::size_t rem = (count >= half) ? (count - half) : count;
+            tail_binary_ct<half, Step, FormTag>(rem, callable, index);
             if (count >= half) {
                 emit_block_ct<Step, FormTag, Callable, T, half>(
-                  FormTag{}, callable, static_cast<T>(index + static_cast<T>(static_cast<std::ptrdiff_t>(m2) * Step)));
+                  FormTag{}, callable, static_cast<T>(index + static_cast<T>(static_cast<std::ptrdiff_t>(rem) * Step)));
             }
         }
     }
