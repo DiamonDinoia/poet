@@ -417,22 +417,9 @@ POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, T3 step, Func &&fu
     using T = std::common_type_t<T1, T2, T3>;
     const T stride = static_cast<T>(step);
 
-    if constexpr (std::is_lvalue_reference_v<Func>) {
-        using callable_t = std::remove_reference_t<Func>;
+    auto run = [&](auto &callable) -> void {
+        using callable_t = std::remove_reference_t<decltype(callable)>;
         using form_tag = detail::callable_form_t<callable_t, T>;
-
-        if (stride == static_cast<T>(1)) {
-            detail::dynamic_for_impl_ct_stride<1, T, callable_t, Unroll>(
-              static_cast<T>(begin), static_cast<T>(end), func, form_tag{});
-        } else {
-            detail::dynamic_for_impl_general<T, callable_t, Unroll>(
-              static_cast<T>(begin), static_cast<T>(end), stride, func, form_tag{});
-        }
-    } else {
-        std::remove_reference_t<Func> callable(std::forward<Func>(func));
-        using callable_t = std::remove_reference_t<Func>;
-        using form_tag = detail::callable_form_t<callable_t, T>;
-
         if (stride == static_cast<T>(1)) {
             detail::dynamic_for_impl_ct_stride<1, T, callable_t, Unroll>(
               static_cast<T>(begin), static_cast<T>(end), callable, form_tag{});
@@ -440,6 +427,13 @@ POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, T3 step, Func &&fu
             detail::dynamic_for_impl_general<T, callable_t, Unroll>(
               static_cast<T>(begin), static_cast<T>(end), stride, callable, form_tag{});
         }
+    };
+
+    if constexpr (std::is_lvalue_reference_v<Func>) {
+        run(func);
+    } else {
+        std::remove_reference_t<Func> local(std::forward<Func>(func));
+        run(local);
     }
 }
 
@@ -462,17 +456,18 @@ POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, Func &&func) {
 
     using T = std::common_type_t<T1, T2>;
 
-    if constexpr (std::is_lvalue_reference_v<Func>) {
-        using callable_t = std::remove_reference_t<Func>;
-        using form_tag = detail::callable_form_t<callable_t, T>;
-        detail::dynamic_for_impl_ct_stride<Step, T, callable_t, Unroll>(
-          static_cast<T>(begin), static_cast<T>(end), func, form_tag{});
-    } else {
-        std::remove_reference_t<Func> callable(std::forward<Func>(func));
-        using callable_t = std::remove_reference_t<Func>;
+    auto run = [&](auto &callable) -> void {
+        using callable_t = std::remove_reference_t<decltype(callable)>;
         using form_tag = detail::callable_form_t<callable_t, T>;
         detail::dynamic_for_impl_ct_stride<Step, T, callable_t, Unroll>(
           static_cast<T>(begin), static_cast<T>(end), callable, form_tag{});
+    };
+
+    if constexpr (std::is_lvalue_reference_v<Func>) {
+        run(func);
+    } else {
+        std::remove_reference_t<Func> local(std::forward<Func>(func));
+        run(local);
     }
 }
 

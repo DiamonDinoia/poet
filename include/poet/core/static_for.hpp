@@ -110,28 +110,23 @@ POET_FORCEINLINE constexpr void static_for(Func &&func) {
     constexpr auto full_blocks = count / BlockSize;
     constexpr auto remainder = count % BlockSize;
 
-    // Callable storage is handled inline (rather than via a helper) to
-    // avoid introducing an indirection that compilers may refuse to
-    // inline across the block emission pipeline.
     using callable_t = std::remove_reference_t<Func>;
 
-    if constexpr (std::is_invocable_v<callable_t &, std::integral_constant<std::ptrdiff_t, Begin>>) {
-        if constexpr (std::is_lvalue_reference_v<Func>) {
-            detail::run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(func);
+    auto do_for = [&](auto &ref) -> void {
+        if constexpr (std::is_invocable_v<callable_t &, std::integral_constant<std::ptrdiff_t, Begin>>) {
+            detail::run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(ref);
         } else {
-            callable_t callable(std::forward<Func>(func));
-            detail::run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(callable);
+            using invoker_t = detail::template_invoker<callable_t>;
+            invoker_t invoker{ ref };
+            detail::run_blocks<invoker_t, Begin, Step, BlockSize, full_blocks, remainder>(invoker);
         }
+    };
+
+    if constexpr (std::is_lvalue_reference_v<Func>) {
+        do_for(func);
     } else {
-        using invoker_t = detail::template_invoker<callable_t>;
-        if constexpr (std::is_lvalue_reference_v<Func>) {
-            invoker_t invoker{ func };
-            detail::run_blocks<invoker_t, Begin, Step, BlockSize, full_blocks, remainder>(invoker);
-        } else {
-            callable_t callable(std::forward<Func>(func));
-            invoker_t invoker{ callable };
-            detail::run_blocks<invoker_t, Begin, Step, BlockSize, full_blocks, remainder>(invoker);
-        }
+        callable_t callable(std::forward<Func>(func));
+        do_for(callable);
     }
 }
 
