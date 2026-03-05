@@ -196,7 +196,7 @@ namespace detail {
             tail_binary<half, FormTag>(rem, callable, index, stride);
             if (count >= half) {
                 emit_block<FormTag, Callable, T, half>(
-                  FormTag{}, callable, static_cast<T>(index + static_cast<T>(rem) * stride), stride);
+                  FormTag{}, callable, static_cast<T>(index + (static_cast<T>(rem) * stride)), stride);
             }
         }
     }

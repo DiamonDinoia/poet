@@ -507,75 +507,26 @@ namespace detail {
     template<typename T>
     inline constexpr bool is_stateless_v = std::is_empty_v<T> && std::is_default_constructible_v<T>;
 
-    /// \brief Detects if a functor accepts a type by-value for given template parameters.
-    ///
-    /// This trait checks whether `Functor::operator()<Vs...>(U)` is callable where U is
-    /// the by-value version of T. If the functor accepts by-value, we can safely
-    /// optimize the function pointer signature to pass by-value even if the caller
-    /// passed a non-const lvalue reference (since by-value proves no output semantics).
-    ///
-    /// Covers both 1D dispatch (single V) and N-D dispatch (pack Vs...).
-    ///
-    /// \tparam Functor The functor type to introspect
-    /// \tparam T The caller's argument type (possibly a reference)
-    /// \tparam Vs The template parameter values (one per dimension)
-    template<typename Functor, typename T, int... Vs> struct functor_accepts_by_value {
-        using raw = std::remove_cv_t<std::remove_reference_t<T>>;
-
-        // Only consider small trivially copyable types as optimization candidates
-        static constexpr bool is_candidate = std::is_trivially_copyable_v<raw> && sizeof(raw) <= 2 * sizeof(void *);
-
-        // Test template form: Functor::template operator()<Vs...>(U)
-        template<typename F,
-          typename U,
-          typename = decltype(std::declval<F>().template operator()<Vs...>(std::declval<U>()))>
-        static auto test_template(int) -> std::true_type;
-
-        template<typename F, typename U> static auto test_template(...) -> std::false_type;
-
-        // Test value form: Functor::operator()(integral_constant<int, Vs>..., U)
-        template<typename F,
-          typename U,
-          typename = decltype(std::declval<F>()(std::integral_constant<int, Vs>{}..., std::declval<U>()))>
-        static auto test_value(int) -> std::true_type;
-
-        template<typename F, typename U> static auto test_value(...) -> std::false_type;
-
-        static constexpr bool value =
-          is_candidate
-          && (decltype(test_template<Functor, raw>(0))::value || decltype(test_value<Functor, raw>(0))::value);
-    };
-
     /// \brief Optimizes argument passing for dispatch function pointer tables.
     /// Small trivially-copyable types are passed by value to keep them in
     /// registers instead of spilling to stack. Applies to:
     /// - Rvalue references (safe: caller doesn't observe the move)
     /// - Const lvalue references (safe: const guarantees no output-parameter semantics)
-    /// - Non-const lvalue references IF functor accepts by-value (safe: proves no output semantics)
-    ///
-    /// Covers both 1D dispatch (single V) and N-D dispatch (pack Vs...).
-    template<typename T, typename Functor = void, int... Vs> struct arg_pass {
+    template<typename T> struct arg_pass {
         using raw = std::remove_reference_t<T>;
         using raw_unqual = std::remove_cv_t<raw>;
         static constexpr bool is_small_trivial =
           std::is_trivially_copyable_v<raw_unqual> && (sizeof(raw_unqual) <= 2 * sizeof(void *));
 
-        // Original conditions: caller explicitly allows copying
         static constexpr bool caller_allows_copy =
           std::is_rvalue_reference_v<T> || (std::is_lvalue_reference_v<T> && std::is_const_v<raw>);
 
-        // New condition: functor parameter type introspection
-        // If functor accepts by-value, it cannot have output semantics
-        static constexpr bool functor_allows_copy =
-          !std::is_void_v<Functor> && functor_accepts_by_value<Functor, T, Vs...>::value;
-
-        static constexpr bool by_value = is_small_trivial && (caller_allows_copy || functor_allows_copy);
+        static constexpr bool by_value = is_small_trivial && caller_allows_copy;
 
         using type = std::conditional_t<by_value, raw_unqual, T>;
     };
 
-    template<typename T, typename Functor, int... Vs> using pass_t = typename arg_pass<T, Functor, Vs...>::type;
-    template<typename T, typename Functor, int... Vs> using pass_nd_t = typename arg_pass<T, Functor, Vs...>::type;
+    template<typename T> using pass_t = typename arg_pass<T>::type;
 
     /// \brief Helper to detect value-argument form invocability
     template<typename Functor, int Value, typename ArgPack> struct can_use_value_form : std::false_type {};
@@ -603,7 +554,7 @@ namespace detail {
         // Helper to create a single lambda for a specific V value
         template<int V> struct lambda_maker {
             static POET_CPP20_CONSTEVAL auto make_stateless() {
-                return +[](pass_t<Args &&, Functor, first_value>... args) -> R {
+                return +[](pass_t<Args &&>... args) -> R {
                     Functor func{};
                     constexpr bool use_value_form = can_use_value_form<Functor, V, arg_pack<Args...>>::value;
                     if constexpr (use_value_form) {
@@ -615,7 +566,7 @@ namespace detail {
             }
 
             static POET_CPP20_CONSTEVAL auto make_stateful() {
-                return +[](Functor &func, pass_t<Args &&, Functor, first_value>... args) -> R {
+                return +[](Functor &func, pass_t<Args &&>... args) -> R {
                     constexpr bool use_value_form = can_use_value_form<Functor, V, arg_pack<Args...>>::value;
                     if constexpr (use_value_form) {
                         return func(std::integral_constant<int, V>{}, std::forward<Args>(args)...);
@@ -707,13 +658,6 @@ namespace detail {
 
             using VE = decltype(make_ve(std::make_index_sequence<sizeof...(Seqs)>{}));
 
-            // Expand index sequence to build parameter types using VE::values
-            template<typename T, std::size_t... Is>
-            static auto make_opt_type_impl(std::index_sequence<Is...>) -> pass_nd_t<T, Functor, VE::values[Is]...>;
-
-            template<typename T>
-            using opt_type = decltype(make_opt_type_impl<T>(std::make_index_sequence<sizeof...(Seqs)>{}));
-
             template<typename R, typename VE_inner, std::size_t... SeqIdx>
             static POET_FORCEINLINE auto call_value_form(Functor &func, Args &&...args) -> R {
                 if constexpr (std::is_void_v<R>) {
@@ -756,24 +700,12 @@ namespace detail {
                 return call_impl<R, SeqIdx...>(func, std::forward<Args>(args)...);
             }
 
-            // Helper to build optimized type for a single argument using representative values (FlatIdx=0)
-            template<typename T, typename IndexSeq> struct repr_opt_type_helper_impl;
-
-            template<typename T, std::size_t... Is> struct repr_opt_type_helper_impl<T, std::index_sequence<Is...>> {
-                // Extract values from FlatIdx=0
-                using type = pass_nd_t<T, Functor, extract_value_for_dim<0, Is, sequence_size<Seqs>::value...>()...>;
-            };
-
-            template<typename T>
-            using repr_opt_type =
-              typename repr_opt_type_helper_impl<T, std::make_index_sequence<sizeof...(Seqs)>>::type;
-
-            template<typename R> static POET_FORCEINLINE auto call(Functor &func, repr_opt_type<Args &&>... args) -> R {
+            template<typename R> static POET_FORCEINLINE auto call(Functor &func, pass_t<Args &&>... args) -> R {
                 return call_with_indices<R>(
                   func, std::make_index_sequence<sizeof...(Seqs)>{}, std::forward<Args>(args)...);
             }
 
-            template<typename R> static POET_FORCEINLINE auto call_stateless(repr_opt_type<Args &&>... args) -> R {
+            template<typename R> static POET_FORCEINLINE auto call_stateless(pass_t<Args &&>... args) -> R {
                 Functor func{};
                 return call_with_indices<R>(
                   func, std::make_index_sequence<sizeof...(Seqs)>{}, std::forward<Args>(args)...);
