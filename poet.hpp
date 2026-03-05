@@ -1044,22 +1044,9 @@ POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, T3 step, Func &&fu
     using T = std::common_type_t<T1, T2, T3>;
     const T stride = static_cast<T>(step);
 
-    if constexpr (std::is_lvalue_reference_v<Func>) {
-        using callable_t = std::remove_reference_t<Func>;
+    auto run = [&](auto &callable) -> void {
+        using callable_t = std::remove_reference_t<decltype(callable)>;
         using form_tag = detail::callable_form_t<callable_t, T>;
-
-        if (stride == static_cast<T>(1)) {
-            detail::dynamic_for_impl_ct_stride<1, T, callable_t, Unroll>(
-              static_cast<T>(begin), static_cast<T>(end), func, form_tag{});
-        } else {
-            detail::dynamic_for_impl_general<T, callable_t, Unroll>(
-              static_cast<T>(begin), static_cast<T>(end), stride, func, form_tag{});
-        }
-    } else {
-        std::remove_reference_t<Func> callable(std::forward<Func>(func));
-        using callable_t = std::remove_reference_t<Func>;
-        using form_tag = detail::callable_form_t<callable_t, T>;
-
         if (stride == static_cast<T>(1)) {
             detail::dynamic_for_impl_ct_stride<1, T, callable_t, Unroll>(
               static_cast<T>(begin), static_cast<T>(end), callable, form_tag{});
@@ -1067,6 +1054,13 @@ POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, T3 step, Func &&fu
             detail::dynamic_for_impl_general<T, callable_t, Unroll>(
               static_cast<T>(begin), static_cast<T>(end), stride, callable, form_tag{});
         }
+    };
+
+    if constexpr (std::is_lvalue_reference_v<Func>) {
+        run(func);
+    } else {
+        std::remove_reference_t<Func> local(std::forward<Func>(func));
+        run(local);
     }
 }
 
@@ -1089,17 +1083,18 @@ POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, Func &&func) {
 
     using T = std::common_type_t<T1, T2>;
 
-    if constexpr (std::is_lvalue_reference_v<Func>) {
-        using callable_t = std::remove_reference_t<Func>;
-        using form_tag = detail::callable_form_t<callable_t, T>;
-        detail::dynamic_for_impl_ct_stride<Step, T, callable_t, Unroll>(
-          static_cast<T>(begin), static_cast<T>(end), func, form_tag{});
-    } else {
-        std::remove_reference_t<Func> callable(std::forward<Func>(func));
-        using callable_t = std::remove_reference_t<Func>;
+    auto run = [&](auto &callable) -> void {
+        using callable_t = std::remove_reference_t<decltype(callable)>;
         using form_tag = detail::callable_form_t<callable_t, T>;
         detail::dynamic_for_impl_ct_stride<Step, T, callable_t, Unroll>(
           static_cast<T>(begin), static_cast<T>(end), callable, form_tag{});
+    };
+
+    if constexpr (std::is_lvalue_reference_v<Func>) {
+        run(func);
+    } else {
+        std::remove_reference_t<Func> local(std::forward<Func>(func));
+        run(local);
     }
 }
 
@@ -1359,32 +1354,14 @@ namespace detail {
     struct sequence_size<std::integer_sequence<T, Values...>>
       : std::integral_constant<std::size_t, sizeof...(Values)> {};
 
-    // Helper to check if a value exists in a sequence
-    template<int Value, typename Sequence> struct sequence_contains;
-
-    template<int Value, int... Values>
-    struct sequence_contains<Value, std::integer_sequence<int, Values...>>
-      : std::bool_constant<((Value == Values) || ...)> {};
-
-    // Helper to check that all values in a sequence are unique
-    template<typename Sequence> struct sequence_unique;
-
-    template<> struct sequence_unique<std::integer_sequence<int>> : std::true_type {};
-
-    template<int First, int... Rest>
-    struct sequence_unique<std::integer_sequence<int, First, Rest...>>
-      : std::bool_constant<!sequence_contains<First, std::integer_sequence<int, Rest...>>::value
-                           && sequence_unique<std::integer_sequence<int, Rest...>>::value> {};
-
-    // Compile-time predicate: true when sequence is contiguous (ascending or descending) and unique.
-    // A contiguous sequence has max - min + 1 == count.
+    // Compile-time predicate: true when sequence is contiguous (ascending or descending).
+    // For integers, max - min + 1 == count implies uniqueness by the pigeonhole principle.
     template<typename Seq> struct is_contiguous_sequence : std::false_type {};
 
     template<int First, int... Rest>
     struct is_contiguous_sequence<std::integer_sequence<int, First, Rest...>>
-      : std::bool_constant<(std::max({ First, Rest... }) - std::min({ First, Rest... }) + 1
-                             == static_cast<int>(1 + sizeof...(Rest)))
-                           && sequence_unique<std::integer_sequence<int, First, Rest...>>::value> {};
+      : std::bool_constant<(
+          std::max({ First, Rest... }) - std::min({ First, Rest... }) + 1 == static_cast<int>(1 + sizeof...(Rest)))> {};
 
     /// \brief True when every sequence in a tuple of DispatchParams is contiguous.
     template<typename ParamTuple, typename = std::make_index_sequence<std::tuple_size_v<std::decay_t<ParamTuple>>>>
@@ -1772,9 +1749,8 @@ namespace detail {
     struct table_builder<Functor, arg_pack<Args...>, R, Values...> {
         static constexpr int first_value = sequence_first<std::integer_sequence<int, Values...>>::value;
 
-        // Helper to create a single lambda for a specific V value
-        template<int V> struct lambda_maker {
-            static POET_CPP20_CONSTEVAL auto make_stateless() {
+        template<int V> static POET_CPP20_CONSTEVAL auto make_entry() {
+            if constexpr (is_stateless_v<Functor>) {
                 return +[](pass_t<Args &&>... args) -> R {
                     Functor func{};
                     constexpr bool use_value_form = can_use_value_form<Functor, V, arg_pack<Args...>>::value;
@@ -1784,9 +1760,7 @@ namespace detail {
                         return func.template operator()<V>(std::forward<Args>(args)...);
                     }
                 };
-            }
-
-            static POET_CPP20_CONSTEVAL auto make_stateful() {
+            } else {
                 return +[](Functor &func, pass_t<Args &&>... args) -> R {
                     constexpr bool use_value_form = can_use_value_form<Functor, V, arg_pack<Args...>>::value;
                     if constexpr (use_value_form) {
@@ -1796,16 +1770,11 @@ namespace detail {
                     }
                 };
             }
-        };
+        }
 
         static POET_CPP20_CONSTEVAL auto make() {
-            if constexpr (is_stateless_v<Functor>) {
-                using fn_type = decltype(lambda_maker<first_value>::make_stateless());
-                return std::array<fn_type, sizeof...(Values)>{ lambda_maker<Values>::make_stateless()... };
-            } else {
-                using fn_type = decltype(lambda_maker<first_value>::make_stateful());
-                return std::array<fn_type, sizeof...(Values)>{ lambda_maker<Values>::make_stateful()... };
-            }
+            using fn_type = decltype(make_entry<first_value>());
+            return std::array<fn_type, sizeof...(Values)>{ make_entry<Values>()... };
         }
     };
 
@@ -1828,44 +1797,26 @@ namespace detail {
     template<typename Functor, typename... Args, typename... Seqs, std::size_t... FlatIndices>
     struct nd_table_builder<Functor, arg_pack<Args...>, std::tuple<Seqs...>, std::index_sequence<FlatIndices...>> {
 
+        static constexpr std::array<std::size_t, sizeof...(Seqs)> dims_ = { sequence_size<Seqs>::value... };
+        static constexpr std::array<std::size_t, sizeof...(Seqs)> strides_ = compute_strides(dims_);
+
         /// \brief Get the Ith value from a sequence at compile-time.
         template<std::size_t I, typename Seq> struct get_sequence_value;
 
         template<std::size_t I, int... Values> struct get_sequence_value<I, std::integer_sequence<int, Values...>> {
-            // Select the I-th value from the integer pack without creating a temporary
-            // std::array (which may emit calls in some libstdc++/libc++ builds).
-            template<std::size_t J, int First, int... Rest> struct select_impl {
-                static constexpr int value = select_impl<J - 1, Rest...>::value;
-            };
-
-            template<int First, int... Rest> struct select_impl<0, First, Rest...> {
-                static constexpr int value = First;
-            };
-
-            static constexpr int value = select_impl<I, Values...>::value;
+            static constexpr std::array<int, sizeof...(Values)> values = { Values... };
+            static constexpr int value = values[I];
         };
 
-        /// \brief Compute the index for a specific dimension from a flat index.
-        template<std::size_t FlatIdx, std::size_t DimIdx, std::size_t... Dims> struct compute_dim_index {
-            static constexpr std::size_t value = []() constexpr -> std::size_t {
-                constexpr std::array<std::size_t, sizeof...(Dims)> dimensions = { Dims... };
-                constexpr std::array<std::size_t, sizeof...(Dims)> strides = compute_strides(dimensions);
-                return FlatIdx / strides[DimIdx] % dimensions[DimIdx];
-            }();
-        };
-
-        /// \brief Extract the value for a specific dimension at compile-time.
-        template<std::size_t FlatIdx, std::size_t DimIdx, std::size_t... Dims>
-        static constexpr auto extract_value_for_dim() -> int {
-            constexpr std::size_t idx_in_seq = compute_dim_index<FlatIdx, DimIdx, Dims...>::value;
-            using Seq = std::tuple_element_t<DimIdx, std::tuple<Seqs...>>;
-            return get_sequence_value<idx_in_seq, Seq>::value;
-        }
+        /// \brief Index within a dimension for a given flat index.
+        template<std::size_t FlatIdx, std::size_t DimIdx>
+        static constexpr std::size_t dim_index_v = FlatIdx / strides_[DimIdx] % dims_[DimIdx];
 
         /// \brief Helper to build integral_constants from extracted values.
         template<std::size_t FlatIdx, std::size_t... SeqIdx> struct value_extractor {
             static constexpr std::array<int, sizeof...(SeqIdx)> values = {
-                extract_value_for_dim<FlatIdx, SeqIdx, sequence_size<Seqs>::value...>()...
+                get_sequence_value<dim_index_v<FlatIdx, SeqIdx>,
+                  std::tuple_element_t<SeqIdx, std::tuple<Seqs...>>>::value...
             };
 
             template<std::size_t N> using ic = std::integral_constant<int, values[N]>;
@@ -1873,63 +1824,31 @@ namespace detail {
 
         /// \brief Helper struct to call functor with values computed from flat index.
         template<std::size_t FlatIdx> struct nd_index_caller {
-            // Helper to build value_extractor type with proper index sequence
             template<std::size_t... Is>
             static auto make_ve(std::index_sequence<Is...>) -> value_extractor<FlatIdx, Is...>;
-
             using VE = decltype(make_ve(std::make_index_sequence<sizeof...(Seqs)>{}));
 
-            template<typename R, typename VE_inner, std::size_t... SeqIdx>
-            static POET_FORCEINLINE auto call_value_form(Functor &func, Args &&...args) -> R {
-                if constexpr (std::is_void_v<R>) {
-                    func(typename VE_inner::template ic<SeqIdx>{}..., std::forward<Args>(args)...);
-                    return;
+            template<typename R, std::size_t... SeqIdx>
+            static POET_FORCEINLINE auto invoke(Functor &func, std::index_sequence<SeqIdx...> /*idx*/, Args &&...args)
+              -> R {
+                using VE_local = value_extractor<FlatIdx, SeqIdx...>;
+                constexpr bool use_value_form =
+                  std::is_invocable_v<Functor &, typename VE_local::template ic<SeqIdx>..., Args &&...>;
+                if constexpr (use_value_form) {
+                    return func(typename VE_local::template ic<SeqIdx>{}..., std::forward<Args>(args)...);
                 } else {
-                    return func(typename VE_inner::template ic<SeqIdx>{}..., std::forward<Args>(args)...);
-                }
-            }
-
-            template<typename R, typename VE_inner, std::size_t... SeqIdx>
-            static POET_FORCEINLINE auto call_template_form(Functor &func, Args &&...args) -> R {
-                if constexpr (std::is_void_v<R>) {
-                    func.template operator()<VE_inner::template ic<SeqIdx>::value...>(std::forward<Args>(args)...);
-                    return;
-                } else {
-                    return func.template operator()<VE_inner::template ic<SeqIdx>::value...>(
+                    return func.template operator()<VE_local::template ic<SeqIdx>::value...>(
                       std::forward<Args>(args)...);
                 }
             }
 
-            template<typename R, std::size_t... SeqIdx>
-            static POET_FORCEINLINE auto call_impl(Functor &func, Args &&...args) -> R {
-                using VE_local = value_extractor<FlatIdx, SeqIdx...>;
-
-                // Detect which form the functor supports: template parameters or integral_constant values
-                constexpr bool use_value_form =
-                  std::is_invocable_v<Functor &, typename VE_local::template ic<SeqIdx>..., Args &&...>;
-
-                if constexpr (use_value_form) {
-                    return call_value_form<R, VE_local, SeqIdx...>(func, std::forward<Args>(args)...);
-                } else {
-                    return call_template_form<R, VE_local, SeqIdx...>(func, std::forward<Args>(args)...);
-                }
-            }
-
-            template<typename R, std::size_t... SeqIdx>
-            static POET_FORCEINLINE auto
-              call_with_indices(Functor &func, std::index_sequence<SeqIdx...> /*indices*/, Args &&...args) -> R {
-                return call_impl<R, SeqIdx...>(func, std::forward<Args>(args)...);
-            }
-
             template<typename R> static POET_FORCEINLINE auto call(Functor &func, pass_t<Args &&>... args) -> R {
-                return call_with_indices<R>(
-                  func, std::make_index_sequence<sizeof...(Seqs)>{}, std::forward<Args>(args)...);
+                return invoke<R>(func, std::make_index_sequence<sizeof...(Seqs)>{}, std::forward<Args>(args)...);
             }
 
             template<typename R> static POET_FORCEINLINE auto call_stateless(pass_t<Args &&>... args) -> R {
                 Functor func{};
-                return call_with_indices<R>(
-                  func, std::make_index_sequence<sizeof...(Seqs)>{}, std::forward<Args>(args)...);
+                return invoke<R>(func, std::make_index_sequence<sizeof...(Seqs)>{}, std::forward<Args>(args)...);
             }
         };
 
@@ -2544,28 +2463,23 @@ POET_FORCEINLINE constexpr void static_for(Func &&func) {
     constexpr auto full_blocks = count / BlockSize;
     constexpr auto remainder = count % BlockSize;
 
-    // Callable storage is handled inline (rather than via a helper) to
-    // avoid introducing an indirection that compilers may refuse to
-    // inline across the block emission pipeline.
     using callable_t = std::remove_reference_t<Func>;
 
-    if constexpr (std::is_invocable_v<callable_t &, std::integral_constant<std::ptrdiff_t, Begin>>) {
-        if constexpr (std::is_lvalue_reference_v<Func>) {
-            detail::run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(func);
+    auto do_for = [&](auto &ref) -> void {
+        if constexpr (std::is_invocable_v<callable_t &, std::integral_constant<std::ptrdiff_t, Begin>>) {
+            detail::run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(ref);
         } else {
-            callable_t callable(std::forward<Func>(func));
-            detail::run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(callable);
+            using invoker_t = detail::template_invoker<callable_t>;
+            invoker_t invoker{ ref };
+            detail::run_blocks<invoker_t, Begin, Step, BlockSize, full_blocks, remainder>(invoker);
         }
+    };
+
+    if constexpr (std::is_lvalue_reference_v<Func>) {
+        do_for(func);
     } else {
-        using invoker_t = detail::template_invoker<callable_t>;
-        if constexpr (std::is_lvalue_reference_v<Func>) {
-            invoker_t invoker{ func };
-            detail::run_blocks<invoker_t, Begin, Step, BlockSize, full_blocks, remainder>(invoker);
-        } else {
-            callable_t callable(std::forward<Func>(func));
-            invoker_t invoker{ callable };
-            detail::run_blocks<invoker_t, Begin, Step, BlockSize, full_blocks, remainder>(invoker);
-        }
+        callable_t callable(std::forward<Func>(func));
+        do_for(callable);
     }
 }
 
