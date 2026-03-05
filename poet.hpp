@@ -888,8 +888,7 @@ namespace detail {
     POET_FORCEINLINE void tail_binary(std::size_t count, Callable &callable, T index, T stride) {
         if constexpr (N <= 1) {
         } else {
-            // NOLINTNEXTLINE(modernize-use-trailing-return-type)
-            constexpr std::size_t half = []() constexpr {
+            constexpr std::size_t half = []() constexpr -> std::size_t {
                 std::size_t pow2 = 1;
                 while (pow2 * 2 < N) { pow2 *= 2; }
                 return pow2;
@@ -914,8 +913,7 @@ namespace detail {
     POET_FORCEINLINE void tail_binary_ct(std::size_t count, Callable &callable, T index) {
         if constexpr (N <= 1) {
         } else {
-            // NOLINTNEXTLINE(modernize-use-trailing-return-type)
-            constexpr std::size_t half = []() constexpr {
+            constexpr std::size_t half = []() constexpr -> std::size_t {
                 std::size_t pow2 = 1;
                 while (pow2 * 2 < N) { pow2 *= 2; }
                 return pow2;
