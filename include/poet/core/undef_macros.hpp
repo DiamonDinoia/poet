@@ -109,6 +109,22 @@
 #undef POET_POP_OPTIMIZE
 #endif
 
+#ifdef POET_PUSH_OPTIMIZE_BASE_
+#undef POET_PUSH_OPTIMIZE_BASE_
+#endif
+
+#ifdef POET_PUSH_VECTOR_WIDTH_
+#undef POET_PUSH_VECTOR_WIDTH_
+#endif
+
+#ifdef POET_PUSH_SVE_BITS_STR_
+#undef POET_PUSH_SVE_BITS_STR_
+#endif
+
+#ifdef POET_PUSH_SVE_BITS_VAL_
+#undef POET_PUSH_SVE_BITS_VAL_
+#endif
+
 // ============================================================================
 // Undefine POET_HIGH_OPTIMIZATION
 // ============================================================================

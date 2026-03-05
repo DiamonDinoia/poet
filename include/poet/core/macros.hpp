@@ -257,10 +257,37 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 //    blocks optimizations even within the same TU; safe for header-only POET).
 // -fvect-cost-model=cheap: allow vectorization even when GCC's cost model is
 //   uncertain (helps SLP-vectorize independent accumulator chains in static_for).
-#define POET_PUSH_OPTIMIZE                                                                                    \
+//
+// Vector width: prefer the widest SIMD width enabled at compile time.
+//   GCC 13/14 sometimes drop to 128-bit even with AVX2; -mprefer-vector-width
+//   ensures hot paths use the full register width. On AArch64 SVE, -msve-vector-bits
+//   locks the VL so the compiler can unroll without predication overhead.
+//   Uses #pragma GCC target (not optimize) since these are machine flags.
+//   Scoped to push/pop, so it does not affect user code outside POET internals.
+//   On SSE-only x86 and NEON (fixed 128-bit): no target pragma needed.
+
+// -- Internal: optimization flags common to all GCC hot paths
+#define POET_PUSH_OPTIMIZE_BASE_                                                                              \
     _Pragma("GCC push_options") _Pragma("GCC optimize(\"-fira-hoist-pressure\")")                             \
       _Pragma("GCC optimize(\"-fno-ira-share-spill-slots\")") _Pragma("GCC optimize(\"-frename-registers\")") \
         _Pragma("GCC optimize(\"-fno-semantic-interposition\")") _Pragma("GCC optimize(\"-fvect-cost-model=cheap\")")
+
+// -- Internal: target pragma for widest available vector width
+#if defined(__AVX512F__)
+#define POET_PUSH_VECTOR_WIDTH_ _Pragma("GCC target(\"prefer-vector-width=512\")")
+#elif defined(__AVX2__) || defined(__AVX__)
+#define POET_PUSH_VECTOR_WIDTH_ _Pragma("GCC target(\"prefer-vector-width=256\")")
+#elif defined(__ARM_FEATURE_SVE_BITS) && __ARM_FEATURE_SVE_BITS > 0
+// SVE with known VL (e.g. -msve-vector-bits=256): lock it for the hot path.
+#define POET_PUSH_SVE_BITS_STR_(x) #x
+#define POET_PUSH_SVE_BITS_VAL_(x) POET_PUSH_SVE_BITS_STR_(x)
+#define POET_PUSH_VECTOR_WIDTH_ \
+    _Pragma("GCC target(\"sve-vector-bits=" POET_PUSH_SVE_BITS_VAL_(__ARM_FEATURE_SVE_BITS) "\")")
+#else
+#define POET_PUSH_VECTOR_WIDTH_
+#endif
+
+#define POET_PUSH_OPTIMIZE POET_PUSH_OPTIMIZE_BASE_ POET_PUSH_VECTOR_WIDTH_
 #define POET_POP_OPTIMIZE _Pragma("GCC pop_options")
 #else
 // Without -O3: Enable -O3 for this section
@@ -296,26 +323,6 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 #define POET_CPP20_CONSTEVAL consteval
 #else
 #define POET_CPP20_CONSTEVAL constexpr
-#endif
-
-// ============================================================================
-// POET_PREFER_WIDE_VECTORS (opt-in)
-// ============================================================================
-/// When users define POET_PREFER_WIDE_VECTORS (e.g., -DPOET_PREFER_WIDE_VECTORS),
-/// instructs GCC to prefer wider vector registers. This fixes a regression in
-/// GCC-13/14 where native builds drop to 128-bit vectors despite AVX2 being
-/// available.
-///
-/// Off by default — opt in only when your workload benefits from wider vectors.
-/// Latency-sensitive code with few independent chains may prefer 128-bit.
-#ifdef POET_PREFER_WIDE_VECTORS
-#if defined(__GNUC__) && !defined(__clang__)
-#if defined(__AVX512F__)
-_Pragma("GCC optimize(\"-mprefer-vector-width=512\")")
-#elif defined(__AVX2__) || defined(__AVX__)
-_Pragma("GCC optimize(\"-mprefer-vector-width=256\")")
-#endif
-#endif
 #endif
 
 #endif// POET_CORE_MACROS_HPP

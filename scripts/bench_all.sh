@@ -59,6 +59,8 @@ BENCH_TARGETS=(
     poet_dispatch_optimization_bench
     poet_static_for_bench
     poet_dynamic_for_bench
+    poet_dynamic_for_forms_bench
+    poet_dynamic_for_emission_bench
 )
 
 BENCH_NAMES=(
@@ -67,6 +69,8 @@ BENCH_NAMES=(
     dispatch_optimization_bench
     static_for_bench
     dynamic_for_bench
+    dynamic_for_forms_bench
+    dynamic_for_emission_bench
 )
 
 # ── Build & run loop ─────────────────────────────────────────────────────────

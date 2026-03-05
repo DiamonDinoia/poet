@@ -51,6 +51,8 @@ _poet_configure_benchmark_target(poet_dispatch_optimization_bench dispatch_optim
 # ── Register-tuned benchmarks (default ISA) ────────────────────────────────
 _poet_configure_benchmark_target(poet_static_for_bench static_for_bench.cpp)
 _poet_configure_benchmark_target(poet_dynamic_for_bench dynamic_for_bench.cpp)
+_poet_configure_benchmark_target(poet_dynamic_for_forms_bench dynamic_for_forms_bench.cpp)
+_poet_configure_benchmark_target(poet_dynamic_for_emission_bench dynamic_for_emission_bench.cpp)
 
 # ── Register-tuned benchmarks (-march=native) ─────────────────────────────
 if(COMPILER_SUPPORTS_MARCH_NATIVE)
@@ -63,13 +65,19 @@ if(COMPILER_SUPPORTS_MARCH_NATIVE)
   _poet_configure_benchmark_target(poet_dynamic_for_bench_native dynamic_for_bench.cpp)
   target_compile_options(poet_dynamic_for_bench_native PRIVATE -march=native)
 
+  _poet_configure_benchmark_target(poet_dynamic_for_forms_bench_native dynamic_for_forms_bench.cpp)
+  target_compile_options(poet_dynamic_for_forms_bench_native PRIVATE -march=native)
+
+  _poet_configure_benchmark_target(poet_dynamic_for_emission_bench_native dynamic_for_emission_bench.cpp)
+  target_compile_options(poet_dynamic_for_emission_bench_native PRIVATE -march=native)
+
   message(STATUS "POET: building native benchmarks (poet_*_bench_native)")
 endif()
 
 
 # ── Umbrella build target (CI uses --target poet_benchmarks) ───────────────
 add_custom_target(poet_benchmarks
-  DEPENDS poet_compiler_comparison_bench poet_dispatch_bench poet_dispatch_optimization_bench poet_static_for_bench poet_dynamic_for_bench
+  DEPENDS poet_compiler_comparison_bench poet_dispatch_bench poet_dispatch_optimization_bench poet_static_for_bench poet_dynamic_for_bench poet_dynamic_for_forms_bench poet_dynamic_for_emission_bench
 )
 
 # ── Run targets ────────────────────────────────────────────────────────────
@@ -78,7 +86,9 @@ add_custom_target(poet_run_bench
   COMMAND $<TARGET_FILE:poet_dispatch_optimization_bench>
   COMMAND $<TARGET_FILE:poet_static_for_bench>
   COMMAND $<TARGET_FILE:poet_dynamic_for_bench>
-  DEPENDS poet_dispatch_bench poet_dispatch_optimization_bench poet_static_for_bench poet_dynamic_for_bench
+  COMMAND $<TARGET_FILE:poet_dynamic_for_forms_bench>
+  COMMAND $<TARGET_FILE:poet_dynamic_for_emission_bench>
+  DEPENDS poet_dispatch_bench poet_dispatch_optimization_bench poet_static_for_bench poet_dynamic_for_bench poet_dynamic_for_forms_bench poet_dynamic_for_emission_bench
   USES_TERMINAL
   COMMENT "Running POET benchmarks"
 )
@@ -92,7 +102,9 @@ if(COMPILER_SUPPORTS_MARCH_NATIVE)
     COMMAND $<TARGET_FILE:poet_dispatch_bench>
     COMMAND $<TARGET_FILE:poet_static_for_bench_native>
     COMMAND $<TARGET_FILE:poet_dynamic_for_bench_native>
-    DEPENDS poet_dispatch_bench poet_static_for_bench_native poet_dynamic_for_bench_native
+    COMMAND $<TARGET_FILE:poet_dynamic_for_forms_bench_native>
+    COMMAND $<TARGET_FILE:poet_dynamic_for_emission_bench_native>
+    DEPENDS poet_dispatch_bench poet_static_for_bench_native poet_dynamic_for_bench_native poet_dynamic_for_forms_bench_native poet_dynamic_for_emission_bench_native
     USES_TERMINAL
     COMMENT "Running POET benchmarks (-march=native)"
   )
@@ -109,7 +121,9 @@ if(POET_BUILD_TESTS)
     add_test(NAME poet.bench.dispatch_optimization COMMAND $<TARGET_FILE:poet_dispatch_optimization_bench>)
     add_test(NAME poet.bench.static_for COMMAND $<TARGET_FILE:poet_static_for_bench>)
     add_test(NAME poet.bench.dynamic_for COMMAND $<TARGET_FILE:poet_dynamic_for_bench>)
-    set_tests_properties(poet.bench.dispatch poet.bench.dispatch_optimization poet.bench.static_for poet.bench.dynamic_for
+    add_test(NAME poet.bench.dynamic_for_forms COMMAND $<TARGET_FILE:poet_dynamic_for_forms_bench>)
+    add_test(NAME poet.bench.dynamic_for_emission COMMAND $<TARGET_FILE:poet_dynamic_for_emission_bench>)
+    set_tests_properties(poet.bench.dispatch poet.bench.dispatch_optimization poet.bench.static_for poet.bench.dynamic_for poet.bench.dynamic_for_forms poet.bench.dynamic_for_emission
       PROPERTIES LABELS benchmarks)
   endif()
 endif()
