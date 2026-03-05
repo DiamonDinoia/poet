@@ -274,10 +274,37 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 //    blocks optimizations even within the same TU; safe for header-only POET).
 // -fvect-cost-model=cheap: allow vectorization even when GCC's cost model is
 //   uncertain (helps SLP-vectorize independent accumulator chains in static_for).
-#define POET_PUSH_OPTIMIZE                                                                                    \
+//
+// Vector width: prefer the widest SIMD width enabled at compile time.
+//   GCC 13/14 sometimes drop to 128-bit even with AVX2; -mprefer-vector-width
+//   ensures hot paths use the full register width. On AArch64 SVE, -msve-vector-bits
+//   locks the VL so the compiler can unroll without predication overhead.
+//   Uses #pragma GCC target (not optimize) since these are machine flags.
+//   Scoped to push/pop, so it does not affect user code outside POET internals.
+//   On SSE-only x86 and NEON (fixed 128-bit): no target pragma needed.
+
+// -- Internal: optimization flags common to all GCC hot paths
+#define POET_PUSH_OPTIMIZE_BASE_                                                                              \
     _Pragma("GCC push_options") _Pragma("GCC optimize(\"-fira-hoist-pressure\")")                             \
       _Pragma("GCC optimize(\"-fno-ira-share-spill-slots\")") _Pragma("GCC optimize(\"-frename-registers\")") \
         _Pragma("GCC optimize(\"-fno-semantic-interposition\")") _Pragma("GCC optimize(\"-fvect-cost-model=cheap\")")
+
+// -- Internal: target pragma for widest available vector width
+#if defined(__AVX512F__)
+#define POET_PUSH_VECTOR_WIDTH_ _Pragma("GCC target(\"prefer-vector-width=512\")")
+#elif defined(__AVX2__) || defined(__AVX__)
+#define POET_PUSH_VECTOR_WIDTH_ _Pragma("GCC target(\"prefer-vector-width=256\")")
+#elif defined(__ARM_FEATURE_SVE_BITS) && __ARM_FEATURE_SVE_BITS > 0
+// SVE with known VL (e.g. -msve-vector-bits=256): lock it for the hot path.
+#define POET_PUSH_SVE_BITS_STR_(x) #x
+#define POET_PUSH_SVE_BITS_VAL_(x) POET_PUSH_SVE_BITS_STR_(x)
+#define POET_PUSH_VECTOR_WIDTH_ \
+    _Pragma("GCC target(\"sve-vector-bits=" POET_PUSH_SVE_BITS_VAL_(__ARM_FEATURE_SVE_BITS) "\")")
+#else
+#define POET_PUSH_VECTOR_WIDTH_
+#endif
+
+#define POET_PUSH_OPTIMIZE POET_PUSH_OPTIMIZE_BASE_ POET_PUSH_VECTOR_WIDTH_
 #define POET_POP_OPTIMIZE _Pragma("GCC pop_options")
 #else
 // Without -O3: Enable -O3 for this section
@@ -315,30 +342,10 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 #define POET_CPP20_CONSTEVAL constexpr
 #endif
 
-// ============================================================================
-// POET_PREFER_WIDE_VECTORS (opt-in)
-// ============================================================================
-/// When users define POET_PREFER_WIDE_VECTORS (e.g., -DPOET_PREFER_WIDE_VECTORS),
-/// instructs GCC to prefer wider vector registers. This fixes a regression in
-/// GCC-13/14 where native builds drop to 128-bit vectors despite AVX2 being
-/// available.
-///
-/// Off by default — opt in only when your workload benefits from wider vectors.
-/// Latency-sensitive code with few independent chains may prefer 128-bit.
-#ifdef POET_PREFER_WIDE_VECTORS
-#if defined(__GNUC__) && !defined(__clang__)
-#if defined(__AVX512F__)
-_Pragma("GCC optimize(\"-mprefer-vector-width=512\")")
-#elif defined(__AVX2__) || defined(__AVX__)
-_Pragma("GCC optimize(\"-mprefer-vector-width=256\")")
-#endif
-#endif
-#endif
-
 // END_FILE: include/poet/core/macros.hpp
 /* End inline (angle): include/poet/core/macros.hpp */
-/* Begin inline (angle): include/poet/core/register_info.hpp */
-// BEGIN_FILE: include/poet/core/register_info.hpp
+/* Begin inline (angle): include/poet/core/cpu_info.hpp */
+// BEGIN_FILE: include/poet/core/cpu_info.hpp
 
 #include <cstddef>
 /* Begin inline (angle): include/poet/core/macros.hpp */
@@ -390,6 +397,21 @@ struct register_info {
 
     /// Instruction set this info describes
     instruction_set isa;
+};
+
+// ============================================================================
+// Cache Line Size Information
+// ============================================================================
+
+/// Information about cache line sizes for alignment and padding decisions.
+struct cache_line_info {
+    /// Minimum offset between two objects to avoid false sharing.
+    /// Pad/align to this size when objects are accessed by different threads.
+    size_t destructive_size;
+
+    /// Maximum size of contiguous memory that benefits from true sharing.
+    /// Pack related data within this size when accessed by the same thread.
+    size_t constructive_size;
 };
 
 // ============================================================================
@@ -586,6 +608,45 @@ namespace detail {
         }
     }
 
+    /// Detect cache line sizes at compile time.
+    /// Priority: GCC/Clang compiler macros > ISA-based fallback.
+    POET_CPP20_CONSTEVAL auto detect_cache_line_info() noexcept -> cache_line_info {
+#if defined(__GCC_DESTRUCTIVE_SIZE) && defined(__GCC_CONSTRUCTIVE_SIZE)
+        return cache_line_info{ __GCC_DESTRUCTIVE_SIZE, __GCC_CONSTRUCTIVE_SIZE };
+#else
+        // ISA-based fallback using the same ISA detection
+        switch (detect_instruction_set()) {
+            // x86: universally 64-byte cache lines
+        case instruction_set::sse2:
+        case instruction_set::sse4_2:
+        case instruction_set::avx:
+        case instruction_set::avx2:
+        case instruction_set::avx_512:
+            return cache_line_info{ 64, 64 };
+
+            // ARM: 64-byte cache lines (conservative for SVE/SVE2)
+        case instruction_set::arm_neon:
+        case instruction_set::arm_sve:
+        case instruction_set::arm_sve2:
+            return cache_line_info{ 64, 64 };
+
+            // PowerPC: 128-byte cache lines
+        case instruction_set::ppc_altivec:
+        case instruction_set::ppc_vsx:
+            return cache_line_info{ 128, 128 };
+
+            // MIPS: 32-byte cache lines
+        case instruction_set::mips_msa:
+            return cache_line_info{ 32, 32 };
+
+            // Generic fallback
+        case instruction_set::generic:
+        default:
+            return cache_line_info{ 64, 64 };
+        }
+#endif
+    }
+
 }// namespace detail
 
 // ============================================================================
@@ -619,9 +680,18 @@ POET_CPP20_CONSTEVAL auto vector_lanes_64bit() noexcept -> size_t { return avail
 /// Number of 32-bit lanes in a vector for the detected instruction set.
 POET_CPP20_CONSTEVAL auto vector_lanes_32bit() noexcept -> size_t { return available_registers().lanes_32bit; }
 
+/// Get cache line information for the current compile target.
+POET_CPP20_CONSTEVAL auto cache_line() noexcept -> cache_line_info { return detail::detect_cache_line_info(); }
+
+/// Minimum offset between objects to avoid false sharing (destructive interference).
+POET_CPP20_CONSTEVAL auto destructive_interference_size() noexcept -> size_t { return cache_line().destructive_size; }
+
+/// Maximum size for true sharing benefit (constructive interference).
+POET_CPP20_CONSTEVAL auto constructive_interference_size() noexcept -> size_t { return cache_line().constructive_size; }
+
 }// namespace poet
-// END_FILE: include/poet/core/register_info.hpp
-/* End inline (angle): include/poet/core/register_info.hpp */
+// END_FILE: include/poet/core/cpu_info.hpp
+/* End inline (angle): include/poet/core/cpu_info.hpp */
 /* Begin inline (angle): include/poet/core/dynamic_for.hpp */
 // BEGIN_FILE: include/poet/core/dynamic_for.hpp
 
@@ -818,7 +888,12 @@ namespace detail {
     POET_FORCEINLINE void tail_binary(std::size_t count, Callable &callable, T index, T stride) {
         if constexpr (N <= 1) {
         } else {
-            constexpr std::size_t half = N / 2;
+            // NOLINTNEXTLINE(modernize-use-trailing-return-type)
+            constexpr std::size_t half = []() constexpr {
+                std::size_t pow2 = 1;
+                while (pow2 * 2 < N) { pow2 *= 2; }
+                return pow2;
+            }();
             const std::size_t rem = (count >= half) ? (count - half) : count;
             tail_binary<half, FormTag>(rem, callable, index, stride);
             if (count >= half) {
@@ -839,7 +914,12 @@ namespace detail {
     POET_FORCEINLINE void tail_binary_ct(std::size_t count, Callable &callable, T index) {
         if constexpr (N <= 1) {
         } else {
-            constexpr std::size_t half = N / 2;
+            // NOLINTNEXTLINE(modernize-use-trailing-return-type)
+            constexpr std::size_t half = []() constexpr {
+                std::size_t pow2 = 1;
+                while (pow2 * 2 < N) { pow2 *= 2; }
+                return pow2;
+            }();
             const std::size_t rem = (count >= half) ? (count - half) : count;
             tail_binary_ct<half, Step, FormTag>(rem, callable, index);
             if (count >= half) {
@@ -2605,6 +2685,22 @@ template<std::ptrdiff_t End, typename Func> POET_FORCEINLINE constexpr void stat
 
 #ifdef POET_POP_OPTIMIZE
 #undef POET_POP_OPTIMIZE
+#endif
+
+#ifdef POET_PUSH_OPTIMIZE_BASE_
+#undef POET_PUSH_OPTIMIZE_BASE_
+#endif
+
+#ifdef POET_PUSH_VECTOR_WIDTH_
+#undef POET_PUSH_VECTOR_WIDTH_
+#endif
+
+#ifdef POET_PUSH_SVE_BITS_STR_
+#undef POET_PUSH_SVE_BITS_STR_
+#endif
+
+#ifdef POET_PUSH_SVE_BITS_VAL_
+#undef POET_PUSH_SVE_BITS_VAL_
 #endif
 
 // ============================================================================
