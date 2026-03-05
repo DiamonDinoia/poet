@@ -110,10 +110,10 @@
 #endif
 
 // ============================================================================
-// Undefine POET_RESTRICT
+// Undefine POET_HIGH_OPTIMIZATION
 // ============================================================================
-#ifdef POET_RESTRICT
-#undef POET_RESTRICT
+#ifdef POET_HIGH_OPTIMIZATION
+#undef POET_HIGH_OPTIMIZATION
 #endif
 
 // ============================================================================
