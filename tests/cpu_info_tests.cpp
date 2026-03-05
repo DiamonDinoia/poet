@@ -1,5 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
-#include <poet/core/register_info.hpp>
+#include <poet/core/cpu_info.hpp>
 #include <type_traits>
 
 #ifdef POET_HAS_HW_DETECTION

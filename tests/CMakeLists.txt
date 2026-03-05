@@ -75,6 +75,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_CROSSCOMPILING AND EXISTS "/
     set(POET_HW_GP_REGISTERS 31)
   endif()
 
+  # Detect cache line size from sysfs
+  set(POET_HW_CACHE_LINE_SIZE 0)
+  if(EXISTS "/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size")
+    file(READ "/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size" _cache_line_raw)
+    string(STRIP "${_cache_line_raw}" POET_HW_CACHE_LINE_SIZE)
+    message(STATUS "POET: detected hardware cache line size ${POET_HW_CACHE_LINE_SIZE}")
+  endif()
+
   if(DEFINED POET_HW_ISA)
     set(POET_HW_LANES_64BIT "${POET_HW_VECTOR_WIDTH_BITS}")
     math(EXPR POET_HW_LANES_64BIT "${POET_HW_VECTOR_WIDTH_BITS} / 64")
@@ -106,11 +114,14 @@ set(DYNAMIC_FOR_TEST_SRCS
 set(STATIC_FOR_TEST_SRCS
   static_for_tests.cpp
 )
-set(REGISTER_INFO_TEST_SRCS
-  register_info_tests.cpp
+set(CPU_INFO_TEST_SRCS
+  cpu_info_tests.cpp
 )
 set(DISPATCH_TEST_SRCS
   dispatch_tests.cpp
+)
+set(CACHE_LINE_INFO_TEST_SRCS
+  cache_line_info_tests.cpp
 )
 option(POET_ENABLE_TEST_PCH "Enable precompiled headers for test targets" ON)
 
@@ -183,7 +194,8 @@ macro(add_poet_tests_suite suite_target cxx_feature)
     ${suite_target}_headers
     ${suite_target}_dynamic_for
     ${suite_target}_static_for
-    ${suite_target}_register_info
+    ${suite_target}_cpu_info
+    ${suite_target}_cache_line_info
     ${suite_target}_dispatch
   )
 
@@ -191,12 +203,17 @@ macro(add_poet_tests_suite suite_target cxx_feature)
   add_poet_test_exec(${suite_target}_headers ${cxx_feature} ${HEADERS_TEST_SRCS})
   add_poet_test_exec(${suite_target}_dynamic_for ${cxx_feature} ${DYNAMIC_FOR_TEST_SRCS})
   add_poet_test_exec(${suite_target}_static_for ${cxx_feature} ${STATIC_FOR_TEST_SRCS})
-  add_poet_test_exec(${suite_target}_register_info ${cxx_feature} ${REGISTER_INFO_TEST_SRCS})
-  # Compile register_info tests with -march=native so POET detects the full
+  add_poet_test_exec(${suite_target}_cpu_info ${cxx_feature} ${CPU_INFO_TEST_SRCS})
+  # Compile cpu_info tests with -march=native so POET detects the full
   # hardware ISA, then validate against the /proc/cpuinfo ground truth.
   if(POET_HW_DETECTION_AVAILABLE)
-    target_compile_options(${suite_target}_register_info PRIVATE -march=native)
-    target_compile_definitions(${suite_target}_register_info PRIVATE POET_HAS_HW_DETECTION)
+    target_compile_options(${suite_target}_cpu_info PRIVATE -march=native)
+    target_compile_definitions(${suite_target}_cpu_info PRIVATE POET_HAS_HW_DETECTION)
+  endif()
+  add_poet_test_exec(${suite_target}_cache_line_info ${cxx_feature} ${CACHE_LINE_INFO_TEST_SRCS})
+  if(POET_HW_DETECTION_AVAILABLE)
+    target_compile_options(${suite_target}_cache_line_info PRIVATE -march=native)
+    target_compile_definitions(${suite_target}_cache_line_info PRIVATE POET_HAS_HW_DETECTION)
   endif()
   add_poet_test_exec(${suite_target}_dispatch ${cxx_feature} ${DISPATCH_TEST_SRCS})
 

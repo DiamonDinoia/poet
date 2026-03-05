@@ -8,7 +8,7 @@ Core primitives
 - static_for — compile-time unrolled iteration for integer ranges or template packs.
 - dynamic_for — runtime loops emitted as compile-time unrolled blocks for low-overhead iteration.
 - dispatch / DispatchSet — map runtime integers or tuples to compile-time non-type template parameters for zero-cost specialization.
-- register_info — compile-time CPU register and SIMD capability detection for tuning unroll factors and block sizes to the target ISA.
+- cpu_info — compile-time CPU register, SIMD capability, and cache line detection for tuning unroll factors, block sizes, and alignment to the target ISA.
 
 Why it matters
 --------------

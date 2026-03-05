@@ -51,6 +51,21 @@ struct register_info {
 };
 
 // ============================================================================
+// Cache Line Size Information
+// ============================================================================
+
+/// Information about cache line sizes for alignment and padding decisions.
+struct cache_line_info {
+    /// Minimum offset between two objects to avoid false sharing.
+    /// Pad/align to this size when objects are accessed by different threads.
+    size_t destructive_size;
+
+    /// Maximum size of contiguous memory that benefits from true sharing.
+    /// Pack related data within this size when accessed by the same thread.
+    size_t constructive_size;
+};
+
+// ============================================================================
 // Compile-Time Instruction Set Detection
 // ============================================================================
 
@@ -244,6 +259,45 @@ namespace detail {
         }
     }
 
+    /// Detect cache line sizes at compile time.
+    /// Priority: GCC/Clang compiler macros > ISA-based fallback.
+    POET_CPP20_CONSTEVAL auto detect_cache_line_info() noexcept -> cache_line_info {
+#if defined(__GCC_DESTRUCTIVE_SIZE) && defined(__GCC_CONSTRUCTIVE_SIZE)
+        return cache_line_info{ __GCC_DESTRUCTIVE_SIZE, __GCC_CONSTRUCTIVE_SIZE };
+#else
+        // ISA-based fallback using the same ISA detection
+        switch (detect_instruction_set()) {
+            // x86: universally 64-byte cache lines
+        case instruction_set::sse2:
+        case instruction_set::sse4_2:
+        case instruction_set::avx:
+        case instruction_set::avx2:
+        case instruction_set::avx_512:
+            return cache_line_info{ 64, 64 };
+
+            // ARM: 64-byte cache lines (conservative for SVE/SVE2)
+        case instruction_set::arm_neon:
+        case instruction_set::arm_sve:
+        case instruction_set::arm_sve2:
+            return cache_line_info{ 64, 64 };
+
+            // PowerPC: 128-byte cache lines
+        case instruction_set::ppc_altivec:
+        case instruction_set::ppc_vsx:
+            return cache_line_info{ 128, 128 };
+
+            // MIPS: 32-byte cache lines
+        case instruction_set::mips_msa:
+            return cache_line_info{ 32, 32 };
+
+            // Generic fallback
+        case instruction_set::generic:
+        default:
+            return cache_line_info{ 64, 64 };
+        }
+#endif
+    }
+
 }// namespace detail
 
 // ============================================================================
@@ -276,5 +330,14 @@ POET_CPP20_CONSTEVAL auto vector_lanes_64bit() noexcept -> size_t { return avail
 
 /// Number of 32-bit lanes in a vector for the detected instruction set.
 POET_CPP20_CONSTEVAL auto vector_lanes_32bit() noexcept -> size_t { return available_registers().lanes_32bit; }
+
+/// Get cache line information for the current compile target.
+POET_CPP20_CONSTEVAL auto cache_line() noexcept -> cache_line_info { return detail::detect_cache_line_info(); }
+
+/// Minimum offset between objects to avoid false sharing (destructive interference).
+POET_CPP20_CONSTEVAL auto destructive_interference_size() noexcept -> size_t { return cache_line().destructive_size; }
+
+/// Maximum size for true sharing benefit (constructive interference).
+POET_CPP20_CONSTEVAL auto constructive_interference_size() noexcept -> size_t { return cache_line().constructive_size; }
 
 }// namespace poet
