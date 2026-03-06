@@ -5,6 +5,7 @@
 [![C++ Standard](https://img.shields.io/badge/C%2B%2B-17%2B-lightblue)](https://en.cppreference.com/w/cpp/17)
 [![Coverage](https://codecov.io/gh/DiamonDinoia/poet/branch/main/graph/badge.svg)](https://codecov.io/gh/DiamonDinoia/poet)
 [![Docs Status](https://readthedocs.org/projects/poet/badge/?version=latest)](https://poet.readthedocs.io/en/latest/)
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json&repository=DiamonDinoia/poet)](https://codspeed.io/DiamonDinoia/poet)
 
 POET is a small, header-only C++ utility library that provides compile-time oriented loop and dispatch
 primitives to make high-performance metaprogramming simpler and safer. It focuses on three complementary
@@ -67,6 +68,10 @@ across both GCC and Clang, showing that the patterns are robust and not
 compiler-specific.
 
 ![cross-compiler overview](https://raw.githubusercontent.com/DiamonDinoia/poet/benchmark-results/benchmark-results/cross_compiler_overview.svg)
+
+**Performance tracking** — [CodSpeed dashboard](https://codspeed.io/DiamonDinoia/poet)
+tracks benchmark regressions on every push and PR using instruction-level
+instrumentation, ensuring no silent performance degradation.
 
 ## Basic usage examples
 
