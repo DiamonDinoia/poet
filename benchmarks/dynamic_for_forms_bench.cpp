@@ -9,13 +9,10 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <iostream>
 
-#include <nanobench.h>
+#include <benchmark/benchmark.h>
 
 #include <poet/poet.hpp>
-
-using namespace std::chrono_literals;
 
 namespace {
 
@@ -54,136 +51,139 @@ std::uint32_t next_salt() noexcept {
     return s;
 }
 
-template<typename Fn> void run(ankerl::nanobench::Bench &b, std::uint64_t batch, const char *name, Fn &&fn) {
-    b.batch(batch).run(name, [fn = std::forward<Fn>(fn)]() mutable { ankerl::nanobench::doNotOptimizeAway(fn()); });
-}
-
 template<std::size_t N> double reduce(const std::array<double, N> &a) {
     double t = 0.0;
     for (double v : a) t += v;
     return t;
 }
 
+constexpr std::size_t kN = 10000;
+static std::array<double, kN> out{};
+
 }// namespace
 
-int main() {
-    {
-        std::cout << "\n=== dynamic_for Forms Benchmark ===\n";
-        std::cout << "ISA:              " << static_cast<unsigned>(regs.isa) << "\n";
-        std::cout << "Vector width:     " << regs.vector_width_bits << " bits\n";
-        std::cout << "Lanes (64-bit):   " << lanes_64 << "\n";
-        std::cout << "Optimal accums:   " << optimal_accs << "  (lanes_64 * 2)\n\n";
-    }
+// ════════════════════════════════════════════════════════════════════════
+// Section 1: Accumulation (serial dependency)
+// ════════════════════════════════════════════════════════════════════════
 
+static void BM_acc_plain_for(benchmark::State &state) {
     const auto salt = next_salt();
-
-    // ════════════════════════════════════════════════════════════════════════
-    // Section 1: Accumulation (serial dependency)
-    //
-    // Lane form with per-lane accumulators breaks the serial dependency
-    // chain, enabling ILP. Index-only and plain for are serial.
-    // ════════════════════════════════════════════════════════════════════════
-    {
-        constexpr std::size_t N = 10000;
-
-        ankerl::nanobench::Bench b;
-        b.minEpochTime(100ms).relative(true);
-        b.title("Accumulation: plain for vs index-only vs lane form (N=10000)");
-
-        run(b, N, "plain for (1 acc)", [salt] {
-            double acc = 0.0;
-            for (std::size_t i = 0; i < N; ++i) acc += heavy_work(i, salt);
-            return acc;
-        });
-
-        run(b, N, "dynamic_for index-only (1 acc)", [salt] {
-            double acc = 0.0;
-            poet::dynamic_for<optimal_accs>(
-              std::size_t{ 0 }, std::size_t{ N }, [&acc, salt](std::size_t i) { acc += heavy_work(i, salt); });
-            return acc;
-        });
-
-        run(b, N, "dynamic_for lane form (optimal accs)", [salt] {
-            std::array<double, optimal_accs> accs{};
-            poet::dynamic_for<optimal_accs>(
-              std::size_t{ 0 }, std::size_t{ N }, [&accs, salt](auto lane_c, std::size_t i) {
-                  constexpr auto lane = decltype(lane_c)::value;
-                  accs[lane] += heavy_work(i, salt);
-              });
-            return reduce(accs);
-        });
+    for (auto _ : state) {
+        double acc = 0.0;
+        for (std::size_t i = 0; i < kN; ++i) acc += heavy_work(i, salt);
+        benchmark::DoNotOptimize(acc);
     }
-
-    // ════════════════════════════════════════════════════════════════════════
-    // Section 2: Element-wise independent work
-    //
-    // Each iteration is independent (out[i] = heavy_work(i)). The body
-    // dominates, so all three forms should be roughly equal.
-    // ════════════════════════════════════════════════════════════════════════
-    {
-        constexpr std::size_t N = 10000;
-        static std::array<double, N> out{};
-
-        ankerl::nanobench::Bench b;
-        b.minEpochTime(100ms).relative(true);
-        b.title("Element-wise: plain for vs index-only vs lane form (N=10000)");
-
-        run(b, N, "plain for", [salt] {
-            for (std::size_t i = 0; i < N; ++i) out[i] = heavy_work(i, salt);
-            return out[N / 2];
-        });
-
-        run(b, N, "dynamic_for index-only", [salt] {
-            poet::dynamic_for<optimal_accs>(
-              std::size_t{ 0 }, std::size_t{ N }, [salt](std::size_t i) { out[i] = heavy_work(i, salt); });
-            return out[N / 2];
-        });
-
-        run(b, N, "dynamic_for lane form (unused lane)", [salt] {
-            poet::dynamic_for<optimal_accs>(std::size_t{ 0 }, std::size_t{ N }, [salt](auto /*lane_c*/, std::size_t i) {
-                out[i] = heavy_work(i, salt);
-            });
-            return out[N / 2];
-        });
-    }
-
-    // ════════════════════════════════════════════════════════════════════════
-    // Section 3: Small N tail overhead
-    //
-    // N below Unroll=8. Light body (xorshift32) to expose dispatch overhead.
-    // ════════════════════════════════════════════════════════════════════════
-    {
-        auto run_small_n = [](std::size_t n, std::uint32_t s) {
-            const std::string suffix = " (N=" + std::to_string(n) + ")";
-
-            ankerl::nanobench::Bench b;
-            b.minEpochTime(100ms).relative(true);
-            b.title("Small N overhead" + suffix);
-
-            b.batch(n).run(("plain for" + suffix).c_str(), [n, s] {
-                std::uint32_t acc = s;
-                for (std::size_t i = 0; i < n; ++i) acc = xorshift32(acc + static_cast<std::uint32_t>(i));
-                ankerl::nanobench::doNotOptimizeAway(acc);
-            });
-
-            b.batch(n).run(("dynamic_for index-only" + suffix).c_str(), [n, s] {
-                std::uint32_t acc = s;
-                poet::dynamic_for<8>(std::size_t{ 0 }, n, [&acc](std::size_t i) {
-                    acc = xorshift32(acc + static_cast<std::uint32_t>(i));
-                });
-                ankerl::nanobench::doNotOptimizeAway(acc);
-            });
-
-            b.batch(n).run(("dynamic_for lane form" + suffix).c_str(), [n, s] {
-                std::uint32_t acc = s;
-                poet::dynamic_for<8>(std::size_t{ 0 }, n, [&acc](auto /*lane_c*/, std::size_t i) {
-                    acc = xorshift32(acc + static_cast<std::uint32_t>(i));
-                });
-                ankerl::nanobench::doNotOptimizeAway(acc);
-            });
-        };
-
-        run_small_n(3, salt);
-        run_small_n(7, salt);
-    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(kN));
 }
+BENCHMARK(BM_acc_plain_for);
+
+static void BM_acc_index_only(benchmark::State &state) {
+    const auto salt = next_salt();
+    for (auto _ : state) {
+        double acc = 0.0;
+        poet::dynamic_for<optimal_accs>(
+          std::size_t{ 0 }, std::size_t{ kN }, [&acc, salt](std::size_t i) { acc += heavy_work(i, salt); });
+        benchmark::DoNotOptimize(acc);
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(kN));
+}
+BENCHMARK(BM_acc_index_only);
+
+static void BM_acc_lane_form(benchmark::State &state) {
+    const auto salt = next_salt();
+    for (auto _ : state) {
+        std::array<double, optimal_accs> accs{};
+        poet::dynamic_for<optimal_accs>(
+          std::size_t{ 0 }, std::size_t{ kN }, [&accs, salt](auto lane_c, std::size_t i) {
+              constexpr auto lane = decltype(lane_c)::value;
+              accs[lane] += heavy_work(i, salt);
+          });
+        benchmark::DoNotOptimize(reduce(accs));
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(kN));
+}
+BENCHMARK(BM_acc_lane_form);
+
+// ════════════════════════════════════════════════════════════════════════
+// Section 2: Element-wise independent work
+// ════════════════════════════════════════════════════════════════════════
+
+static void BM_elem_plain_for(benchmark::State &state) {
+    const auto salt = next_salt();
+    for (auto _ : state) {
+        for (std::size_t i = 0; i < kN; ++i) out[i] = heavy_work(i, salt);
+        benchmark::DoNotOptimize(out[kN / 2]);
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(kN));
+}
+BENCHMARK(BM_elem_plain_for);
+
+static void BM_elem_index_only(benchmark::State &state) {
+    const auto salt = next_salt();
+    for (auto _ : state) {
+        poet::dynamic_for<optimal_accs>(
+          std::size_t{ 0 }, std::size_t{ kN }, [salt](std::size_t i) { out[i] = heavy_work(i, salt); });
+        benchmark::DoNotOptimize(out[kN / 2]);
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(kN));
+}
+BENCHMARK(BM_elem_index_only);
+
+static void BM_elem_lane_form(benchmark::State &state) {
+    const auto salt = next_salt();
+    for (auto _ : state) {
+        poet::dynamic_for<optimal_accs>(std::size_t{ 0 }, std::size_t{ kN }, [salt](auto /*lane_c*/, std::size_t i) {
+            out[i] = heavy_work(i, salt);
+        });
+        benchmark::DoNotOptimize(out[kN / 2]);
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(kN));
+}
+BENCHMARK(BM_elem_lane_form);
+
+// ════════════════════════════════════════════════════════════════════════
+// Section 3: Small N tail overhead
+// ════════════════════════════════════════════════════════════════════════
+
+template<std::size_t SmallN> static void BM_small_plain_for(benchmark::State &state) {
+    const auto salt = next_salt();
+    for (auto _ : state) {
+        std::uint32_t acc = salt;
+        for (std::size_t i = 0; i < SmallN; ++i) acc = xorshift32(acc + static_cast<std::uint32_t>(i));
+        benchmark::DoNotOptimize(acc);
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(SmallN));
+}
+
+template<std::size_t SmallN> static void BM_small_index_only(benchmark::State &state) {
+    const auto salt = next_salt();
+    for (auto _ : state) {
+        std::uint32_t acc = salt;
+        poet::dynamic_for<8>(std::size_t{ 0 }, SmallN, [&acc](std::size_t i) {
+            acc = xorshift32(acc + static_cast<std::uint32_t>(i));
+        });
+        benchmark::DoNotOptimize(acc);
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(SmallN));
+}
+
+template<std::size_t SmallN> static void BM_small_lane_form(benchmark::State &state) {
+    const auto salt = next_salt();
+    for (auto _ : state) {
+        std::uint32_t acc = salt;
+        poet::dynamic_for<8>(std::size_t{ 0 }, SmallN, [&acc](auto /*lane_c*/, std::size_t i) {
+            acc = xorshift32(acc + static_cast<std::uint32_t>(i));
+        });
+        benchmark::DoNotOptimize(acc);
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(SmallN));
+}
+
+BENCHMARK(BM_small_plain_for<3>)->Name("BM_small_plain_for_N3");
+BENCHMARK(BM_small_index_only<3>)->Name("BM_small_index_only_N3");
+BENCHMARK(BM_small_lane_form<3>)->Name("BM_small_lane_form_N3");
+BENCHMARK(BM_small_plain_for<7>)->Name("BM_small_plain_for_N7");
+BENCHMARK(BM_small_index_only<7>)->Name("BM_small_index_only_N7");
+BENCHMARK(BM_small_lane_form<7>)->Name("BM_small_lane_form_N7");
+
+BENCHMARK_MAIN();

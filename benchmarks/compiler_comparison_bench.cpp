@@ -11,14 +11,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <iostream>
 #include <string>
 
-#include <nanobench.h>
+#include <benchmark/benchmark.h>
 
 #include <poet/poet.hpp>
-
-using namespace std::chrono_literals;
 
 namespace {
 
@@ -57,10 +54,6 @@ static inline double heavy_work(std::size_t i, std::uint32_t salt) noexcept {
     return x;
 }
 
-template<typename Fn> void run(ankerl::nanobench::Bench &b, std::uint64_t batch, const char *name, Fn &&fn) {
-    b.batch(batch).run(name, [fn = std::forward<Fn>(fn)]() mutable { ankerl::nanobench::doNotOptimizeAway(fn()); });
-}
-
 template<std::size_t N> double reduce(const std::array<double, N> &a) {
     double t = 0.0;
     for (double v : a) t += v;
@@ -71,10 +64,8 @@ template<std::size_t N> double reduce(const std::array<double, N> &a) {
 // Section 1: Dispatch Baselines
 // ═════════════════════════════════════════════════════════════════════════════
 
-// Kernel: given a compile-time or runtime int, do a small computation
 inline int dispatch_work(int val, int scale) noexcept { return val * val + scale; }
 
-// 1a. if-else chain (8 branches)
 int dispatch_if_else(int val, int scale) noexcept {
     if (val == 1) return dispatch_work(1, scale);
     if (val == 2) return dispatch_work(2, scale);
@@ -87,7 +78,6 @@ int dispatch_if_else(int val, int scale) noexcept {
     return -1;
 }
 
-// 1b. switch statement (8 cases)
 int dispatch_switch(int val, int scale) noexcept {
     switch (val) {
     case 1:
@@ -111,12 +101,10 @@ int dispatch_switch(int val, int scale) noexcept {
     }
 }
 
-// 1c. Raw function pointer array (manual, no POET)
 using dispatch_fn_t = int (*)(int);
 
 template<int V> int dispatch_stub(int scale) noexcept { return dispatch_work(V, scale); }
 
-// Table covers values 1..8, indexed as [val - 1]
 static constexpr std::array<dispatch_fn_t, 8> dispatch_table = {
     dispatch_stub<1>,
     dispatch_stub<2>,
@@ -134,7 +122,6 @@ int dispatch_fnptr(int val, int scale) noexcept {
     return -1;
 }
 
-// 1d. POET dispatch
 struct dispatch_kernel {
     template<int V> int operator()(int scale) const { return dispatch_work(V, scale); }
 };
@@ -157,7 +144,6 @@ void saxpy_init() {
     }
 }
 
-// 2a. Plain for loop
 float saxpy_plain(float a, float b) noexcept {
     for (std::size_t i = 0; i < kSaxpyN; ++i) saxpy_y[i] = a * saxpy_x[i] + b;
     float sum = 0.0f;
@@ -165,7 +151,6 @@ float saxpy_plain(float a, float b) noexcept {
     return sum;
 }
 
-// Portable restrict qualifier (POET macros are cleaned up by undef_macros.hpp).
 #if defined(_MSC_VER)
 #define BENCH_RESTRICT __restrict
 #elif defined(__GNUC__) || defined(__clang__)
@@ -174,7 +159,6 @@ float saxpy_plain(float a, float b) noexcept {
 #define BENCH_RESTRICT
 #endif
 
-// Portable alignment-hint helper: returns ptr with a compile-time alignment promise.
 template<std::size_t Align, typename T> inline T *bench_assume_aligned(T *ptr) noexcept {
 #if defined(__GNUC__) || defined(__clang__)
     return static_cast<T *>(__builtin_assume_aligned(ptr, Align));
@@ -186,7 +170,6 @@ template<std::size_t Align, typename T> inline T *bench_assume_aligned(T *ptr) n
 #endif
 }
 
-// 2b. With alignment hints
 float saxpy_aligned(float a, float b) noexcept {
     const float *BENCH_RESTRICT xp = bench_assume_aligned<64>(static_cast<const float *>(saxpy_x));
     float *BENCH_RESTRICT yp = bench_assume_aligned<64>(saxpy_y);
@@ -196,7 +179,6 @@ float saxpy_aligned(float a, float b) noexcept {
     return sum;
 }
 
-// 2c. With restrict only (no alignment hint)
 float saxpy_restrict(float a, float b) noexcept {
     float *BENCH_RESTRICT yp = saxpy_y;
     const float *BENCH_RESTRICT xp = saxpy_x;
@@ -210,8 +192,8 @@ float saxpy_restrict(float a, float b) noexcept {
 // Section 3: N Sweep for dynamic_for
 // ═════════════════════════════════════════════════════════════════════════════
 
-constexpr auto regs = poet::available_registers();
-constexpr std::size_t tuned_accs = regs.lanes_64bit * 2;
+constexpr auto bench_regs = poet::available_registers();
+constexpr std::size_t tuned_accs = bench_regs.lanes_64bit * 2;
 
 template<std::size_t NumAccs> double hand_unrolled_multi_acc(std::size_t count, std::uint32_t salt) {
     std::array<double, NumAccs> accs{};
@@ -225,27 +207,6 @@ template<std::size_t NumAccs> double hand_unrolled_multi_acc(std::size_t count, 
     return reduce(accs);
 }
 
-template<std::size_t N> void run_sweep(ankerl::nanobench::Bench &b, std::uint32_t salt) {
-    const std::string suffix = " (N=" + std::to_string(N) + ")";
-
-    run(b, N, ("sweep 1-acc" + suffix).c_str(), [salt] {
-        double acc = 0.0;
-        for (std::size_t i = 0; i < N; ++i) acc += heavy_work(i, salt);
-        return acc;
-    });
-
-    run(b, N, ("sweep tuned-acc" + suffix).c_str(), [salt] { return hand_unrolled_multi_acc<tuned_accs>(N, salt); });
-
-    run(b, N, ("sweep dynamic_for" + suffix).c_str(), [salt] {
-        std::array<double, tuned_accs> accs{};
-        poet::dynamic_for<tuned_accs>(std::size_t{ 0 }, std::size_t{ N }, [&accs, salt](auto lane_c, std::size_t i) {
-            constexpr auto lane = decltype(lane_c)::value;
-            accs[lane] += heavy_work(i, salt);
-        });
-        return reduce(accs);
-    });
-}
-
 // ═════════════════════════════════════════════════════════════════════════════
 // Section 4: Template Inlining Depth
 // ═════════════════════════════════════════════════════════════════════════════
@@ -255,109 +216,154 @@ template<std::size_t N> struct InlineAccFunctor {
     template<auto I> void operator()() { acc += static_cast<std::uint64_t>(I) * 3 + 1; }
 };
 
-template<std::size_t N> void run_inline_test(ankerl::nanobench::Bench &b) {
-    const std::string suffix = " (N=" + std::to_string(N) + ")";
-
-    b.batch(N).run(("inline plain-loop" + suffix).c_str(), [&] {
-        std::uint64_t acc = 0;
-        for (std::size_t i = 0; i < N; ++i) acc += i * 3 + 1;
-        ankerl::nanobench::doNotOptimizeAway(acc);
-    });
-
-    b.batch(N).run(("inline static_for" + suffix).c_str(), [&] {
-        std::uint64_t acc = 0;
-        poet::static_for<0, static_cast<std::intmax_t>(N)>(InlineAccFunctor<N>{ .acc = acc });
-        ankerl::nanobench::doNotOptimizeAway(acc);
-    });
-}
-
 }// namespace
 
-int main() {
-    {
-        std::cout << "\n=== Compiler Comparison Benchmark ===\n";
-        std::cout << "ISA:              " << static_cast<unsigned>(regs.isa) << "\n";
-        std::cout << "Vector registers: " << regs.vector_registers << "\n";
-        std::cout << "Vector width:     " << regs.vector_width_bits << " bits\n";
-        std::cout << "Lanes (64-bit):   " << regs.lanes_64bit << "\n";
-        std::cout << "Tuned accums:     " << tuned_accs << "  (lanes_64 * 2)\n\n";
+// ── Section 1: Dispatch Baselines ────────────────────────────────────────
+
+static void BM_dispatch_if_else(benchmark::State &state) {
+    for (auto _ : state) {
+        auto v = 1 + (next_noise() & 7);
+        benchmark::DoNotOptimize(v);
+        benchmark::DoNotOptimize(dispatch_if_else(v, 2));
     }
-
-    // ── Section 1: Dispatch Baselines ────────────────────────────────────────
-    {
-        ankerl::nanobench::Bench b;
-        b.minEpochTime(100ms).relative(true);
-        b.title("Dispatch baselines: if-else / switch / fn-ptr / POET (8 branches)");
-
-        b.run("dispatch if-else", [&] {
-            auto v = 1 + (next_noise() & 7);// values in [1,8]
-            ankerl::nanobench::doNotOptimizeAway(v);
-            ankerl::nanobench::doNotOptimizeAway(dispatch_if_else(v, 2));
-        });
-
-        b.run("dispatch switch", [&] {
-            auto v = 1 + (next_noise() & 7);
-            ankerl::nanobench::doNotOptimizeAway(v);
-            ankerl::nanobench::doNotOptimizeAway(dispatch_switch(v, 2));
-        });
-
-        b.run("dispatch fn-ptr", [&] {
-            auto v = 1 + (next_noise() & 7);
-            ankerl::nanobench::doNotOptimizeAway(v);
-            ankerl::nanobench::doNotOptimizeAway(dispatch_fnptr(v, 2));
-        });
-
-        b.run("dispatch POET", [&] {
-            auto v = 1 + (next_noise() & 7);
-            ankerl::nanobench::doNotOptimizeAway(v);
-            ankerl::nanobench::doNotOptimizeAway(
-              poet::dispatch(dispatch_kernel{}, poet::DispatchParam<dispatch_range>{ v }, 2));
-        });
-    }
-
-    // ── Section 2: Vectorization Probe ───────────────────────────────────────
-    {
-        saxpy_init();
-        const float a = 2.5f;
-        const float b_val = 1.0f;
-
-        ankerl::nanobench::Bench bench;
-        bench.minEpochTime(100ms).relative(true);
-        bench.title("Vectorization probe: saxpy + reduce (N=" + std::to_string(kSaxpyN) + ")");
-
-        bench.batch(kSaxpyN).run("saxpy plain", [&] { ankerl::nanobench::doNotOptimizeAway(saxpy_plain(a, b_val)); });
-
-        bench.batch(kSaxpyN).run(
-          "saxpy aligned", [&] { ankerl::nanobench::doNotOptimizeAway(saxpy_aligned(a, b_val)); });
-
-        bench.batch(kSaxpyN).run(
-          "saxpy restrict", [&] { ankerl::nanobench::doNotOptimizeAway(saxpy_restrict(a, b_val)); });
-    }
-
-    // ── Section 3: N Sweep for dynamic_for ───────────────────────────────────
-    {
-        const auto salt = next_salt();
-
-        ankerl::nanobench::Bench b;
-        b.minEpochTime(100ms).relative(true);
-        b.title("N sweep: 1-acc vs tuned-acc vs dynamic_for");
-
-        run_sweep<64>(b, salt);
-        run_sweep<512>(b, salt);
-        run_sweep<4096>(b, salt);
-        run_sweep<32768>(b, salt);
-    }
-
-    // ── Section 4: Template Inlining Depth ───────────────────────────────────
-    {
-        ankerl::nanobench::Bench b;
-        b.minEpochTime(100ms).relative(true);
-        b.title("Template inlining: plain loop vs static_for (trivial body)");
-
-        run_inline_test<4>(b);
-        run_inline_test<8>(b);
-        run_inline_test<16>(b);
-    }
-
-    return 0;
 }
+BENCHMARK(BM_dispatch_if_else);
+
+static void BM_dispatch_switch(benchmark::State &state) {
+    for (auto _ : state) {
+        auto v = 1 + (next_noise() & 7);
+        benchmark::DoNotOptimize(v);
+        benchmark::DoNotOptimize(dispatch_switch(v, 2));
+    }
+}
+BENCHMARK(BM_dispatch_switch);
+
+static void BM_dispatch_fnptr(benchmark::State &state) {
+    for (auto _ : state) {
+        auto v = 1 + (next_noise() & 7);
+        benchmark::DoNotOptimize(v);
+        benchmark::DoNotOptimize(dispatch_fnptr(v, 2));
+    }
+}
+BENCHMARK(BM_dispatch_fnptr);
+
+static void BM_dispatch_poet(benchmark::State &state) {
+    for (auto _ : state) {
+        auto v = 1 + (next_noise() & 7);
+        benchmark::DoNotOptimize(v);
+        benchmark::DoNotOptimize(
+          poet::dispatch(dispatch_kernel{}, poet::DispatchParam<dispatch_range>{ v }, 2));
+    }
+}
+BENCHMARK(BM_dispatch_poet);
+
+// ── Section 2: Vectorization Probe ───────────────────────────────────────
+
+static void BM_saxpy_plain(benchmark::State &state) {
+    saxpy_init();
+    const float a = 2.5f;
+    const float b_val = 1.0f;
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(saxpy_plain(a, b_val));
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(kSaxpyN));
+}
+BENCHMARK(BM_saxpy_plain);
+
+static void BM_saxpy_aligned(benchmark::State &state) {
+    saxpy_init();
+    const float a = 2.5f;
+    const float b_val = 1.0f;
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(saxpy_aligned(a, b_val));
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(kSaxpyN));
+}
+BENCHMARK(BM_saxpy_aligned);
+
+static void BM_saxpy_restrict(benchmark::State &state) {
+    saxpy_init();
+    const float a = 2.5f;
+    const float b_val = 1.0f;
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(saxpy_restrict(a, b_val));
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(kSaxpyN));
+}
+BENCHMARK(BM_saxpy_restrict);
+
+// ── Section 3: N Sweep ──────────────────────────────────────────────────
+
+template<std::size_t SweepN> static void BM_sweep_1acc(benchmark::State &state) {
+    const auto salt = next_salt();
+    for (auto _ : state) {
+        double acc = 0.0;
+        for (std::size_t i = 0; i < SweepN; ++i) acc += heavy_work(i, salt);
+        benchmark::DoNotOptimize(acc);
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(SweepN));
+}
+
+template<std::size_t SweepN> static void BM_sweep_tuned_acc(benchmark::State &state) {
+    const auto salt = next_salt();
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(hand_unrolled_multi_acc<tuned_accs>(SweepN, salt));
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(SweepN));
+}
+
+template<std::size_t SweepN> static void BM_sweep_dynamic_for(benchmark::State &state) {
+    const auto salt = next_salt();
+    for (auto _ : state) {
+        std::array<double, tuned_accs> accs{};
+        poet::dynamic_for<tuned_accs>(
+          std::size_t{ 0 }, std::size_t{ SweepN }, [&accs, salt](auto lane_c, std::size_t i) {
+              constexpr auto lane = decltype(lane_c)::value;
+              accs[lane] += heavy_work(i, salt);
+          });
+        benchmark::DoNotOptimize(reduce(accs));
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(SweepN));
+}
+
+BENCHMARK(BM_sweep_1acc<64>)->Name("BM_sweep_1acc_N64");
+BENCHMARK(BM_sweep_tuned_acc<64>)->Name("BM_sweep_tuned_acc_N64");
+BENCHMARK(BM_sweep_dynamic_for<64>)->Name("BM_sweep_dynamic_for_N64");
+BENCHMARK(BM_sweep_1acc<512>)->Name("BM_sweep_1acc_N512");
+BENCHMARK(BM_sweep_tuned_acc<512>)->Name("BM_sweep_tuned_acc_N512");
+BENCHMARK(BM_sweep_dynamic_for<512>)->Name("BM_sweep_dynamic_for_N512");
+BENCHMARK(BM_sweep_1acc<4096>)->Name("BM_sweep_1acc_N4096");
+BENCHMARK(BM_sweep_tuned_acc<4096>)->Name("BM_sweep_tuned_acc_N4096");
+BENCHMARK(BM_sweep_dynamic_for<4096>)->Name("BM_sweep_dynamic_for_N4096");
+BENCHMARK(BM_sweep_1acc<32768>)->Name("BM_sweep_1acc_N32768");
+BENCHMARK(BM_sweep_tuned_acc<32768>)->Name("BM_sweep_tuned_acc_N32768");
+BENCHMARK(BM_sweep_dynamic_for<32768>)->Name("BM_sweep_dynamic_for_N32768");
+
+// ── Section 4: Template Inlining Depth ───────────────────────────────────
+
+template<std::size_t InlineN> static void BM_inline_plain_loop(benchmark::State &state) {
+    for (auto _ : state) {
+        std::uint64_t acc = 0;
+        for (std::size_t i = 0; i < InlineN; ++i) acc += i * 3 + 1;
+        benchmark::DoNotOptimize(acc);
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(InlineN));
+}
+
+template<std::size_t InlineN> static void BM_inline_static_for(benchmark::State &state) {
+    for (auto _ : state) {
+        std::uint64_t acc = 0;
+        poet::static_for<0, static_cast<std::intmax_t>(InlineN)>(InlineAccFunctor<InlineN>{ .acc = acc });
+        benchmark::DoNotOptimize(acc);
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(InlineN));
+}
+
+BENCHMARK(BM_inline_plain_loop<4>)->Name("BM_inline_plain_loop_N4");
+BENCHMARK(BM_inline_static_for<4>)->Name("BM_inline_static_for_N4");
+BENCHMARK(BM_inline_plain_loop<8>)->Name("BM_inline_plain_loop_N8");
+BENCHMARK(BM_inline_static_for<8>)->Name("BM_inline_static_for_N8");
+BENCHMARK(BM_inline_plain_loop<16>)->Name("BM_inline_plain_loop_N16");
+BENCHMARK(BM_inline_static_for<16>)->Name("BM_inline_static_for_N16");
+
+BENCHMARK_MAIN();
