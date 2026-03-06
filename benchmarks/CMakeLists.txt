@@ -39,7 +39,6 @@ function(_poet_configure_benchmark_target TARGET_NAME)
   else()
     target_compile_features(${TARGET_NAME} PRIVATE cxx_std_20)
   endif()
-  poet_enable_warnings(${TARGET_NAME})
   poet_enable_sanitizers(${TARGET_NAME})
 endfunction()
 
