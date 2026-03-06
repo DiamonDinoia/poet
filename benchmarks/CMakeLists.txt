@@ -34,11 +34,6 @@ function(_poet_configure_benchmark_target TARGET_NAME)
       poet::poet
       benchmark::benchmark
   )
-  # Suppress warnings from benchmark (and CodSpeed) headers in our TUs.
-  get_target_property(_bench_inc benchmark::benchmark INTERFACE_INCLUDE_DIRECTORIES)
-  if(_bench_inc)
-    target_include_directories(${TARGET_NAME} SYSTEM PRIVATE ${_bench_inc})
-  endif()
   if(cxx_std_23 IN_LIST CMAKE_CXX_COMPILE_FEATURES)
     target_compile_features(${TARGET_NAME} PRIVATE cxx_std_23)
   else()

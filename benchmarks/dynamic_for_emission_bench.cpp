@@ -11,7 +11,10 @@
 #include <cstdint>
 #include <iostream>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-conversion"
 #include <benchmark/benchmark.h>
+#pragma GCC diagnostic pop
 
 #include <poet/poet.hpp>
 
