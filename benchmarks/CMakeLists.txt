@@ -3,7 +3,8 @@ include(FetchContent)
 FetchContent_Declare(
   google_benchmark
   GIT_REPOSITORY https://github.com/CodSpeedHQ/codspeed-cpp
-  SOURCE_SUBDIR google_benchmark
+  SOURCE_SUBDIR
+  google_benchmark
   GIT_TAG main
 )
 
@@ -11,6 +12,17 @@ set(BENCHMARK_DOWNLOAD_DEPENDENCIES ON)
 set(BENCHMARK_ENABLE_WERROR OFF CACHE BOOL "" FORCE)
 set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(google_benchmark)
+
+# Suppress warnings from google_benchmark and CodSpeed headers by marking their
+# include directories as SYSTEM. This prevents -Werror from breaking the build
+# due to sign-conversion warnings in third-party headers (measurement.hpp).
+get_target_property(_bench_inc benchmark INTERFACE_INCLUDE_DIRECTORIES)
+if(_bench_inc)
+  set_target_properties(
+    benchmark
+    PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_bench_inc}"
+  )
+endif()
 
 include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag("-march=native" COMPILER_SUPPORTS_MARCH_NATIVE)
@@ -55,7 +67,8 @@ if(COMPILER_SUPPORTS_MARCH_NATIVE)
     poet_compiler_comparison_bench_native compiler_comparison_bench.cpp
   )
   target_compile_options(
-    poet_compiler_comparison_bench_native PRIVATE -march=native
+    poet_compiler_comparison_bench_native
+    PRIVATE -march=native
   )
 
   _poet_configure_benchmark_target(
@@ -72,14 +85,16 @@ if(COMPILER_SUPPORTS_MARCH_NATIVE)
     poet_dynamic_for_forms_bench_native dynamic_for_forms_bench.cpp
   )
   target_compile_options(
-    poet_dynamic_for_forms_bench_native PRIVATE -march=native
+    poet_dynamic_for_forms_bench_native
+    PRIVATE -march=native
   )
 
   _poet_configure_benchmark_target(
     poet_dynamic_for_emission_bench_native dynamic_for_emission_bench.cpp
   )
   target_compile_options(
-    poet_dynamic_for_emission_bench_native PRIVATE -march=native
+    poet_dynamic_for_emission_bench_native
+    PRIVATE -march=native
   )
 
   message(STATUS "POET: building native benchmarks (poet_*_bench_native)")
