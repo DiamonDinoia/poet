@@ -48,6 +48,25 @@
 #endif
 
 // ============================================================================
+// POET_ALWAYS_INLINE_LAMBDA
+// ============================================================================
+/// Forces inlining of lambda call operators. Place after the parameter list:
+///
+///   auto fn = [&](auto x) POET_ALWAYS_INLINE_LAMBDA { return x; };
+///
+/// Uses __attribute__((always_inline)) on GCC/Clang (the only syntax that
+/// applies to the call operator) and [[msvc::forceinline]] on MSVC.
+/// GCC 15+ / Clang 22+: attributed generic lambdas must be assigned to a
+/// variable before passing to template functions.
+#if defined(_MSC_VER) && !defined(__clang__)
+#define POET_ALWAYS_INLINE_LAMBDA [[msvc::forceinline]]
+#elif defined(__GNUC__) || defined(__clang__)
+#define POET_ALWAYS_INLINE_LAMBDA __attribute__((always_inline))
+#else
+#define POET_ALWAYS_INLINE_LAMBDA
+#endif
+
+// ============================================================================
 // POET_ASSUME
 // ============================================================================
 /// Generic assumption hint. UB if expression is false at runtime.
@@ -616,15 +635,12 @@ namespace detail {
 #else
         // ISA-based fallback using the same ISA detection
         switch (detect_instruction_set()) {
-            // x86: universally 64-byte cache lines
+            // x86 and ARM: 64-byte cache lines (conservative for SVE/SVE2)
         case instruction_set::sse2:
         case instruction_set::sse4_2:
         case instruction_set::avx:
         case instruction_set::avx2:
         case instruction_set::avx_512:
-            return cache_line_info{ 64, 64 };
-
-            // ARM: 64-byte cache lines (conservative for SVE/SVE2)
         case instruction_set::arm_neon:
         case instruction_set::arm_sve:
         case instruction_set::arm_sve2:
@@ -1122,7 +1138,7 @@ POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, T3 step, Func &&fu
     using T = std::common_type_t<T1, T2, T3>;
     const T stride = static_cast<T>(step);
 
-    auto run = [&](auto &callable) -> void {
+    auto run = [&](auto &callable) POET_ALWAYS_INLINE_LAMBDA -> void {
         using callable_t = std::remove_reference_t<decltype(callable)>;
         using form_tag = detail::callable_form_t<callable_t, T>;
         if (stride == static_cast<T>(1)) {
@@ -1161,7 +1177,7 @@ POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, Func &&func) {
 
     using T = std::common_type_t<T1, T2>;
 
-    auto run = [&](auto &callable) -> void {
+    auto run = [&](auto &callable) POET_ALWAYS_INLINE_LAMBDA -> void {
         using callable_t = std::remove_reference_t<decltype(callable)>;
         using form_tag = detail::callable_form_t<callable_t, T>;
         detail::dynamic_for_impl_ct_stride<Step, T, callable_t, Unroll>(
@@ -2252,8 +2268,8 @@ namespace detail {
 
         // Expand over all allowed tuple sequences using || fold for true short-circuiting.
         const bool matched = std::apply(
-          [&](auto... seqs) -> bool {
-              return ([&](auto &seq) -> bool {
+          [&](auto... seqs) POET_ALWAYS_INLINE_LAMBDA -> bool {
+              return ([&](auto &seq) POET_ALWAYS_INLINE_LAMBDA -> bool {
                   using SeqType = std::decay_t<decltype(seq)>;
                   auto result = seq_matcher<SeqType, result_type, RuntimeTuple, FunctorT, Args...>::match_and_call(
                     runtime_tuple, functor_copy, std::forward<Args>(args)...);
@@ -2543,7 +2559,7 @@ POET_FORCEINLINE constexpr void static_for(Func &&func) {
 
     using callable_t = std::remove_reference_t<Func>;
 
-    auto do_for = [&](auto &ref) -> void {
+    auto do_for = [&](auto &ref) POET_ALWAYS_INLINE_LAMBDA -> void {
         if constexpr (std::is_invocable_v<callable_t &, std::integral_constant<std::ptrdiff_t, Begin>>) {
             detail::run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(ref);
         } else {
@@ -2590,6 +2606,7 @@ template<std::ptrdiff_t End, typename Func> POET_FORCEINLINE constexpr void stat
 /// POET defines several utility macros for portability and optimization:
 /// - POET_UNREACHABLE: Marks unreachable code paths
 /// - POET_FORCEINLINE: Forces function inlining
+/// - POET_ALWAYS_INLINE_LAMBDA: Forces lambda call-operator inlining
 /// - POET_NOINLINE_FLATTEN: noinline+flatten for register-isolated blocks
 /// - POET_HOT_LOOP: Hot path optimization with aggressive inlining
 /// - POET_LIKELY / POET_UNLIKELY: Branch prediction hints
@@ -2640,6 +2657,13 @@ template<std::ptrdiff_t End, typename Func> POET_FORCEINLINE constexpr void stat
 // ============================================================================
 #ifdef POET_FORCEINLINE
 #undef POET_FORCEINLINE
+#endif
+
+// ============================================================================
+// Undefine POET_ALWAYS_INLINE_LAMBDA
+// ============================================================================
+#ifdef POET_ALWAYS_INLINE_LAMBDA
+#undef POET_ALWAYS_INLINE_LAMBDA
 #endif
 
 // ============================================================================
