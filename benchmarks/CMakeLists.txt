@@ -9,6 +9,7 @@ if(CODSPEED_MODE)
     OPTIONS
       "BENCHMARK_ENABLE_TESTING OFF"
       "BENCHMARK_ENABLE_INSTALL OFF"
+      "BENCHMARK_ENABLE_WERROR OFF"
   )
 else()
   # Upstream Google Benchmark for local development (works with any compiler).
