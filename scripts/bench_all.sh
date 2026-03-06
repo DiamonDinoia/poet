@@ -7,7 +7,7 @@
 #
 # Outputs:
 #   build_bench/<compiler>/<variant>/   — isolated CMake build dirs
-#   results/<compiler>/<variant>/       — benchmark text, JSON, and ASM
+#   results/<compiler>/<variant>/       — benchmark JSON and ASM
 #   results/summary/                    — aggregated Markdown/CSV/ASM reports
 
 set -euo pipefail
@@ -146,20 +146,13 @@ for compiler in "${COMPILERS[@]}"; do
             fi
 
             echo "  Running: $name ($binary)"
-            txt_file="${result_dir}/${name}.txt"
             json_file="${result_dir}/${name}.json"
 
-            # Run benchmark, capture output
-            if "$binary" > "$txt_file" 2>&1; then
-                echo "    OK: $txt_file"
+            # Run benchmark with JSON output
+            if "$binary" --benchmark_format=json --benchmark_out="$json_file" > /dev/null 2>&1; then
+                echo "    OK: $json_file"
             else
                 echo "    WARNING: $name crashed (partial output saved)"
-            fi
-
-            # Parse to JSON
-            if [[ -f "$txt_file" ]]; then
-                python3 "$SCRIPT_DIR/parse_bench.py" "$txt_file" "$json_file" 2>/dev/null || \
-                    echo "    WARNING: parse_bench.py failed for $txt_file"
             fi
 
             # Extract hot-path assembly

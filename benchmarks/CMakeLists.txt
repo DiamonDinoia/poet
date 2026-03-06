@@ -1,22 +1,25 @@
-CPMAddPackage(
-  NAME nanobench
-  GIT_REPOSITORY https://github.com/martinus/nanobench.git
-  GIT_TAG v4.3.11
-  OPTIONS "CMAKE_POLICY_VERSION_MINIMUM 3.10"
-)
-
-set(_poet_nanobench_target nanobench::nanobench)
-if(TARGET nanobench::nanobench)
-  set(_poet_nanobench_target nanobench::nanobench)
-elseif(TARGET nanobench)
-  set(_poet_nanobench_target nanobench)
-else()
-  add_library(nanobench INTERFACE)
-  target_include_directories(nanobench INTERFACE
-    ${nanobench_SOURCE_DIR}/include
-    ${nanobench_SOURCE_DIR}/src/include
+if(CODSPEED_MODE)
+  # CodSpeed compatibility layer (wraps Google Benchmark with instrumentation).
+  # The instrument-hooks C file requires Clang; use this path only in CI.
+  CPMAddPackage(
+    NAME google_benchmark
+    GIT_REPOSITORY https://github.com/CodSpeedHQ/codspeed-cpp
+    GIT_TAG v2.1.0
+    SOURCE_SUBDIR google_benchmark
+    OPTIONS
+      "BENCHMARK_ENABLE_TESTING OFF"
+      "BENCHMARK_ENABLE_INSTALL OFF"
   )
-  set(_poet_nanobench_target nanobench)
+else()
+  # Upstream Google Benchmark for local development (works with any compiler).
+  CPMAddPackage(
+    NAME google_benchmark
+    GIT_REPOSITORY https://github.com/google/benchmark.git
+    GIT_TAG v1.9.5
+    OPTIONS
+      "BENCHMARK_ENABLE_TESTING OFF"
+      "BENCHMARK_ENABLE_INSTALL OFF"
+  )
 endif()
 
 include(CheckCXXCompilerFlag)
@@ -28,7 +31,7 @@ function(_poet_configure_benchmark_target TARGET_NAME)
   target_link_libraries(${TARGET_NAME}
     PRIVATE
       poet::poet
-      ${_poet_nanobench_target}
+      benchmark::benchmark
   )
   if(cxx_std_23 IN_LIST CMAKE_CXX_COMPILE_FEATURES)
     target_compile_features(${TARGET_NAME} PRIVATE cxx_std_23)

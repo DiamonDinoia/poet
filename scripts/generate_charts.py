@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Generate SVG benchmark charts from parsed JSON results.
+"""Generate SVG benchmark charts from Google Benchmark JSON results.
 
 Usage:
     python3 scripts/generate_charts.py --results-root results --output-dir docs/benchmarks
 
-Reads results/<compiler>/default/<bench>.json and produces:
+Reads results/<compiler>/default/<bench>.json (Google Benchmark JSON) and produces:
     docs/benchmarks/dynamic_for_speedup.svg
     docs/benchmarks/static_for_speedup.svg
     docs/benchmarks/dispatch_optimization.svg
@@ -13,6 +13,7 @@ Reads results/<compiler>/default/<bench>.json and produces:
 
 import argparse
 import json
+import math
 import re
 import sys
 from collections import defaultdict
@@ -68,12 +69,12 @@ def style_chart(ax: plt.Axes, title: str):
 # ── Data loading ─────────────────────────────────────────────────────────────
 
 
-def load_results(results_root: Path) -> dict[str, dict[str, dict]]:
-    """Load all JSON results from results/<compiler>/default/<bench>.json.
+def load_results(results_root: Path) -> dict[str, dict[str, list[dict]]]:
+    """Load all Google Benchmark JSON results from results/<compiler>/default/<bench>.json.
 
-    Returns: {bench_name: {compiler: parsed_json}}
+    Returns: {bench_name: {compiler: [benchmark_entries]}}
     """
-    data: dict[str, dict[str, dict]] = defaultdict(dict)
+    data: dict[str, dict[str, list[dict]]] = defaultdict(dict)
 
     for json_file in sorted(results_root.rglob("*.json")):
         parts = json_file.relative_to(results_root).parts
@@ -91,42 +92,33 @@ def load_results(results_root: Path) -> dict[str, dict[str, dict]]:
             print(f"Warning: failed to load {json_file}: {e}", file=sys.stderr)
             continue
 
-        data[bench_name][compiler] = parsed
+        benchmarks = parsed.get("benchmarks", [])
+        if benchmarks:
+            data[bench_name][compiler] = benchmarks
 
     return dict(data)
 
 
-def find_rows(parsed: dict, table_title_pattern: str) -> list[dict]:
-    """Find all rows in tables matching a title pattern."""
-    rows = []
-    for table in parsed.get("tables", []):
-        title = table.get("title", "")
-        if re.search(table_title_pattern, title, re.IGNORECASE):
-            rows.extend(table.get("rows", []))
-    return rows
+def clean_name(name: str) -> str:
+    """Strip Google Benchmark suffixes like '/min_time:0.100'."""
+    return re.sub(r"/min_time:[0-9.]+$", "", name)
 
 
-def row_name(row: dict) -> str:
-    """Extract the string name column from a row."""
-    for v in row.values():
-        if isinstance(v, str):
-            return v
-    return ""
-
-
-def row_nsop(row: dict) -> float | None:
-    """Extract ns/op from a row."""
-    for key in ("ns/op", "ns"):
-        if key in row and isinstance(row[key], (int, float)):
-            return float(row[key])
+def find_entry(entries: list[dict], pattern: str) -> dict | None:
+    """Find first benchmark entry whose name matches pattern."""
+    for entry in entries:
+        if re.search(pattern, clean_name(entry.get("name", ""))):
+            return entry
     return None
 
 
-def row_relative(row: dict) -> float | None:
-    """Extract relative percentage from a row."""
-    for key in ("relative", "relative_pct"):
-        if key in row and isinstance(row[key], (int, float)):
-            return float(row[key])
+def entry_nsop(entry: dict | None) -> float | None:
+    """Extract cpu_time (ns) from a benchmark entry."""
+    if entry is None:
+        return None
+    cpu_time = entry.get("cpu_time")
+    if isinstance(cpu_time, (int, float)):
+        return float(cpu_time)
     return None
 
 
@@ -144,12 +136,11 @@ def generate_dynamic_for_chart(data: dict[str, dict], output: Path):
     if not compilers:
         return
 
-    # We look for the "Multi-acc" table, extracting the three methods
     method_patterns = [
-        ("for loop (1 acc)", r"for loop \(1 acc\)"),
-        ("hand-unrolled", r"for loop \(optimal"),
-        ("dynamic_for (1 acc)", r"dynamic_for \(1 acc\)"),
-        ("dynamic_for (optimal)", r"dynamic_for \(optimal"),
+        ("for loop (1 acc)", r"Multi-acc/for_loop_1_acc"),
+        ("hand-unrolled", r"Multi-acc/for_loop_optimal_accs"),
+        ("dynamic_for (1 acc)", r"Multi-acc/dynamic_for_1_acc"),
+        ("dynamic_for (optimal)", r"Multi-acc/dynamic_for_optimal_accs"),
     ]
 
     fig, ax = plt.subplots(figsize=(max(8, len(compilers) * 2.5), 5))
@@ -160,19 +151,15 @@ def generate_dynamic_for_chart(data: dict[str, dict], output: Path):
     width = 0.19
     method_colors = ["#AAAAAA", "#7FBBDA", "#8FBC8F", "#4C72B0"]
 
+    baseline = [1.0] * len(compilers)
     for mi, (label, pattern) in enumerate(method_patterns):
         values = []
         for compiler in compilers:
-            parsed = bench_data[compiler]
-            rows = find_rows(parsed, r"Multi-acc.*lane")
-            nsop = None
-            for r in rows:
-                if re.search(pattern, row_name(r)):
-                    nsop = row_nsop(r)
-                    break
+            entries = bench_data[compiler]
+            entry = find_entry(entries, pattern)
+            nsop = entry_nsop(entry)
             values.append(nsop if nsop is not None else 0)
 
-        # Normalize to baseline (first method)
         if mi == 0:
             baseline = [v if v > 0 else 1 for v in values]
 
@@ -224,20 +211,18 @@ def generate_static_for_chart(data: dict[str, dict], output: Path):
     sections = [
         (
             "Map",
-            r"Map.*static_for",
             [
-                ("for loop", r"`for loop`"),
-                ("static_for (tuned BS)", r"tuned BS"),
-                ("static_for (default BS)", r"default BS"),
+                ("for loop", r"Map/for_loop"),
+                ("static_for (tuned BS)", r"Map/static_for_tuned_BS"),
+                ("static_for (default BS)", r"Map/static_for_default_BS"),
             ],
         ),
         (
             "Multi-acc",
-            r"Multi-acc.*static_for",
             [
-                ("for loop", r"`for loop`"),
-                ("static_for (tuned BS)", r"tuned BS"),
-                ("static_for (default BS)", r"default BS"),
+                ("for loop", r"MultiAcc/for_loop"),
+                ("static_for (tuned BS)", r"MultiAcc/static_for_tuned_BS"),
+                ("static_for (default BS)", r"MultiAcc/static_for_default_BS"),
             ],
         ),
     ]
@@ -247,7 +232,7 @@ def generate_static_for_chart(data: dict[str, dict], output: Path):
 
     import numpy as np
 
-    for si, (section_title, table_pat, methods) in enumerate(sections):
+    for si, (section_title, methods) in enumerate(sections):
         ax = axes[si]
         x = np.arange(len(compilers))
         width = 0.25
@@ -256,13 +241,9 @@ def generate_static_for_chart(data: dict[str, dict], output: Path):
         for mi, (label, pattern) in enumerate(methods):
             values = []
             for compiler in compilers:
-                parsed = bench_data[compiler]
-                rows = find_rows(parsed, table_pat)
-                nsop = None
-                for r in rows:
-                    if re.search(pattern, row_name(r)):
-                        nsop = row_nsop(r)
-                        break
+                entries = bench_data[compiler]
+                entry = find_entry(entries, pattern)
+                nsop = entry_nsop(entry)
                 values.append(nsop if nsop is not None else 0)
 
             if mi == 0:
@@ -333,21 +314,13 @@ def generate_dispatch_optimization_chart(data: dict[str, dict], output: Path):
     dispatched_vals = []
 
     for compiler in compilers:
-        parsed = bench_data[compiler]
-        rows = find_rows(parsed, r"")
+        entries = bench_data[compiler]
         for n in n_values:
-            rt_nsop = None
-            disp_nsop = None
-            for r in rows:
-                name = row_name(r)
-                if f"N={n}" in name and "runtime" in name:
-                    rt_nsop = row_nsop(r)
-                elif f"N={n}" in name and "dispatched" in name:
-                    disp_nsop = row_nsop(r)
-            runtime_vals.append(rt_nsop if rt_nsop is not None else 0)
-            dispatched_vals.append(disp_nsop if disp_nsop is not None else 0)
+            rt = find_entry(entries, rf"Horner/N={n}_runtime")
+            disp = find_entry(entries, rf"Horner/N={n}_dispatched")
+            runtime_vals.append(entry_nsop(rt) or 0)
+            dispatched_vals.append(entry_nsop(disp) or 0)
 
-    # Compute speedup: runtime / dispatched
     speedups = []
     for rt, disp in zip(runtime_vals, dispatched_vals):
         if rt > 0 and disp > 0:
@@ -383,26 +356,20 @@ def generate_dispatch_optimization_chart(data: dict[str, dict], output: Path):
 
 def generate_cross_compiler_chart(data: dict[str, dict], output: Path):
     """Cross-compiler overview: speedup of POET vs baseline across all benches."""
-    # Collect speedup ratios for each compiler from each benchmark
-    # We define "POET" as the best POET method and "baseline" as the plain for loop
-
     bench_configs = {
         "dynamic_for_bench": {
-            "table_pattern": r"Multi-acc.*lane",
-            "baseline_pattern": r"for loop \(1 acc\)",
-            "poet_pattern": r"dynamic_for",
+            "baseline_pattern": r"Multi-acc/for_loop_1_acc",
+            "poet_pattern": r"Multi-acc/dynamic_for_optimal_accs",
             "label": "dynamic_for",
         },
         "static_for_bench": {
-            "table_pattern": r"Multi-acc.*static_for",
-            "baseline_pattern": r"`for loop`",
-            "poet_pattern": r"tuned BS",
+            "baseline_pattern": r"MultiAcc/for_loop",
+            "poet_pattern": r"MultiAcc/static_for_tuned_BS",
             "label": "static_for",
         },
         "dispatch_optimization_bench": {
-            "table_pattern": r"",
-            "baseline_pattern": r"N=16.*runtime",
-            "poet_pattern": r"N=16.*dispatched",
+            "baseline_pattern": r"Horner/N=16_runtime",
+            "poet_pattern": r"Horner/N=16_dispatched",
             "label": "dispatch (N=16)",
         },
     }
@@ -420,7 +387,7 @@ def generate_cross_compiler_chart(data: dict[str, dict], output: Path):
     import numpy as np
 
     bench_labels = []
-    speedup_matrix = []  # list of lists: [bench][compiler]
+    speedup_matrix = []
 
     for bench_name, cfg in bench_configs.items():
         if bench_name not in data:
@@ -432,18 +399,13 @@ def generate_cross_compiler_chart(data: dict[str, dict], output: Path):
             if compiler not in bench_data:
                 row_speedups.append(0)
                 continue
-            parsed = bench_data[compiler]
-            rows = find_rows(parsed, cfg["table_pattern"])
-            baseline_nsop = None
-            poet_nsop = None
-            for r in rows:
-                name = row_name(r)
-                if re.search(cfg["baseline_pattern"], name):
-                    baseline_nsop = row_nsop(r)
-                if re.search(cfg["poet_pattern"], name):
-                    poet_nsop = row_nsop(r)
-            if baseline_nsop and poet_nsop and poet_nsop > 0:
-                row_speedups.append(baseline_nsop / poet_nsop)
+            entries = bench_data[compiler]
+            baseline = find_entry(entries, cfg["baseline_pattern"])
+            poet = find_entry(entries, cfg["poet_pattern"])
+            b_nsop = entry_nsop(baseline)
+            p_nsop = entry_nsop(poet)
+            if b_nsop and p_nsop and p_nsop > 0:
+                row_speedups.append(b_nsop / p_nsop)
             else:
                 row_speedups.append(0)
         speedup_matrix.append(row_speedups)
@@ -497,19 +459,16 @@ def generate_average_improvement_chart(data: dict[str, dict], output: Path):
     """Average improvement: geometric mean speedup per compiler across all benchmarks."""
     bench_configs = {
         "dynamic_for_bench": {
-            "table_pattern": r"Multi-acc.*lane",
-            "baseline_pattern": r"for loop \(1 acc\)",
-            "poet_pattern": r"dynamic_for \(optimal",
+            "baseline_pattern": r"Multi-acc/for_loop_1_acc",
+            "poet_pattern": r"Multi-acc/dynamic_for_optimal_accs",
         },
         "static_for_bench": {
-            "table_pattern": r"Multi-acc.*static_for",
-            "baseline_pattern": r"`for loop`",
-            "poet_pattern": r"tuned BS",
+            "baseline_pattern": r"MultiAcc/for_loop",
+            "poet_pattern": r"MultiAcc/static_for_tuned_BS",
         },
         "dispatch_optimization_bench": {
-            "table_pattern": r"",
-            "baseline_pattern": r"N=16.*runtime",
-            "poet_pattern": r"N=16.*dispatched",
+            "baseline_pattern": r"Horner/N=16_runtime",
+            "poet_pattern": r"Horner/N=16_dispatched",
         },
     }
 
@@ -523,8 +482,6 @@ def generate_average_improvement_chart(data: dict[str, dict], output: Path):
         print("Warning: no data for average improvement chart", file=sys.stderr)
         return
 
-    import math
-
     import numpy as np
 
     geo_means = []
@@ -533,18 +490,13 @@ def generate_average_improvement_chart(data: dict[str, dict], output: Path):
         for bench_name, cfg in bench_configs.items():
             if bench_name not in data or compiler not in data[bench_name]:
                 continue
-            parsed = data[bench_name][compiler]
-            rows = find_rows(parsed, cfg["table_pattern"])
-            baseline_nsop = None
-            poet_nsop = None
-            for r in rows:
-                name = row_name(r)
-                if re.search(cfg["baseline_pattern"], name):
-                    baseline_nsop = row_nsop(r)
-                if re.search(cfg["poet_pattern"], name):
-                    poet_nsop = row_nsop(r)
-            if baseline_nsop and poet_nsop and poet_nsop > 0:
-                speedups.append(baseline_nsop / poet_nsop)
+            entries = data[bench_name][compiler]
+            baseline = find_entry(entries, cfg["baseline_pattern"])
+            poet = find_entry(entries, cfg["poet_pattern"])
+            b_nsop = entry_nsop(baseline)
+            p_nsop = entry_nsop(poet)
+            if b_nsop and p_nsop and p_nsop > 0:
+                speedups.append(b_nsop / p_nsop)
 
         if speedups:
             geo_mean = math.exp(sum(math.log(s) for s in speedups) / len(speedups))
@@ -576,7 +528,6 @@ def generate_average_improvement_chart(data: dict[str, dict], output: Path):
                 fontweight="bold",
             )
 
-    # Overall average across all compilers (excluding zeros)
     valid = [g for g in geo_means if g > 0]
     if valid:
         overall = math.exp(sum(math.log(g) for g in valid) / len(valid))

@@ -1,0 +1,41 @@
+name: CodSpeed
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  codspeed:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aminya/setup-cpp@v1
+        with:
+          compiler: llvm-20
+          cmake: true
+          ninja: true
+
+      - name: Build benchmarks
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS="-mavx2 -mfma" \
+            -DPOET_BUILD_BENCHMARKS=ON \
+            -DPOET_BUILD_TESTS=OFF \
+            -DPOET_ENABLE_SANITIZERS=OFF \
+            -DCODSPEED_MODE=instrumentation
+          cmake --build build --target poet_benchmarks -j
+
+      - uses: CodSpeedHQ/action@v4
+        with:
+          mode: simulation
+          run: |
+            for bench in build/benchmarks/poet_*_bench; do
+              [ -x "$bench" ] && "$bench"
+            done

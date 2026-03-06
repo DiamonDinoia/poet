@@ -23,11 +23,9 @@
 #include <iostream>
 #include <string>
 
-#include <nanobench.h>
+#include <benchmark/benchmark.h>
 
 #include <poet/poet.hpp>
-
-using namespace std::chrono_literals;
 
 namespace {
 
@@ -46,8 +44,6 @@ static inline std::uint32_t xorshift32(std::uint32_t x) noexcept {
     return x;
 }
 
-/// 5-deep multiply-add chain (~20 cycle latency per call).
-/// The FMA chain needs 5 broadcast constants + intermediates in vector registers.
 static inline double heavy_work(std::size_t i, std::uint32_t salt) noexcept {
     double x = static_cast<double>(static_cast<std::int32_t>(xorshift32(static_cast<std::uint32_t>(i) ^ salt)));
     x = x * 1.0000001192092896 + 0.3333333333333333;
@@ -68,8 +64,11 @@ std::uint32_t next_salt() noexcept {
     return s;
 }
 
-template<typename Fn> void run(ankerl::nanobench::Bench &b, std::uint64_t batch, const char *name, Fn &&fn) {
-    b.batch(batch).run(name, [fn = std::forward<Fn>(fn)]() mutable { ankerl::nanobench::doNotOptimizeAway(fn()); });
+template<typename Fn> void reg(const char *name, std::uint64_t batch, Fn &&fn) {
+    benchmark::RegisterBenchmark(name, [fn = std::forward<Fn>(fn), batch](benchmark::State &state) mutable {
+        for (auto _ : state) benchmark::DoNotOptimize(fn());
+        state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(batch));
+    })->MinTime(0.1);
 }
 
 template<std::size_t N> double reduce(const std::array<double, N> &a) {
@@ -102,60 +101,46 @@ template<std::size_t NumAccs> struct MultiAccFunctor {
 
 constexpr std::size_t kSweepN = 256;
 
-// Map: maximize ILP across independent iterations.
-//   Half the register file in scalar-element units lets the compiler keep
-//   vec_regs/2 independent computation chains in flight simultaneously.
 constexpr std::size_t optimal_bs_map = [] {
     auto v = vec_regs * lanes_64 / 2;
     return v < 4 ? 4 : (v > 128 ? 128 : v);
 }();
 
-// MultiAcc: empirically optimal block size = 2 SIMD registers of accumulators.
-//   Consistent with dynamic_for sweep (peak at lanes_64 * 2 = 8 on AVX2).
-//   heavy_work's 5-stage FMA chain needs ~10 registers for constants and
-//   intermediates; 2 SIMD regs of accumulators leaves ample headroom.
 constexpr std::size_t optimal_bs_multiacc = lanes_64 * 2;
 
 }// namespace
 
-int main() {
+int main(int argc, char **argv) {
     {
-        std::cout << "\n=== Register Info ===\n";
-        std::cout << "ISA:              " << static_cast<unsigned>(regs.isa) << "\n";
-        std::cout << "Vector registers: " << vec_regs << "\n";
-        std::cout << "Vector width:     " << regs.vector_width_bits << " bits\n";
-        std::cout << "Lanes (64-bit):   " << lanes_64 << "\n";
-        std::cout << "Map BS:           " << optimal_bs_map << "  (vec_regs * lanes_64 / 2)\n";
-        std::cout << "MultiAcc BS:      " << optimal_bs_multiacc << "  (lanes_64 * 2)\n\n";
+        std::cerr << "\n=== Register Info ===\n";
+        std::cerr << "ISA:              " << static_cast<unsigned>(regs.isa) << "\n";
+        std::cerr << "Vector registers: " << vec_regs << "\n";
+        std::cerr << "Vector width:     " << regs.vector_width_bits << " bits\n";
+        std::cerr << "Lanes (64-bit):   " << lanes_64 << "\n";
+        std::cerr << "Map BS:           " << optimal_bs_map << "  (vec_regs * lanes_64 / 2)\n";
+        std::cerr << "MultiAcc BS:      " << optimal_bs_multiacc << "  (lanes_64 * 2)\n\n";
     }
 
     const auto salt = next_salt();
 
     // ════════════════════════════════════════════════════════════════════════
     // Section 1: Map (N=256, heavy body)
-    //
-    // Element-wise transform: out[i] = heavy_work(i).  No serial dependency
-    // chain — every iteration is independent, so unrolling unlocks real ILP.
     // ════════════════════════════════════════════════════════════════════════
     {
-        ankerl::nanobench::Bench b;
-        b.minEpochTime(100ms).relative(true);
-        b.title("Map: static_for tuned vs default (N=" + std::to_string(kSweepN) + ", heavy body)");
-
-        run(b, kSweepN, "for loop", [salt] {
+        reg("Map/for_loop", kSweepN, [salt] {
             std::array<double, kSweepN> out{};
             for (std::size_t i = 0; i < kSweepN; ++i) out[i] = heavy_work(i, salt);
             return reduce(out);
         });
 
-        run(b, kSweepN, "static_for (tuned BS)", [salt] {
+        reg("Map/static_for_tuned_BS", kSweepN, [salt] {
             std::array<double, kSweepN> out{};
             poet::static_for<0, static_cast<std::intmax_t>(kSweepN), 1, optimal_bs_map>(
               MapFunctor<kSweepN>{ .out = out, .salt = salt });
             return reduce(out);
         });
 
-        run(b, kSweepN, "static_for (default BS)", [salt] {
+        reg("Map/static_for_default_BS", kSweepN, [salt] {
             std::array<double, kSweepN> out{};
             poet::static_for<0, static_cast<std::intmax_t>(kSweepN)>(MapFunctor<kSweepN>{ .out = out, .salt = salt });
             return reduce(out);
@@ -164,36 +149,30 @@ int main() {
 
     // ════════════════════════════════════════════════════════════════════════
     // Section 2: Multi-accumulator (N=256, heavy body)
-    //
-    // for loop baseline vs static_for tuned (BS=optimal) vs static_for
-    // default (BS=N, fully inlined).  Shows the benefit of register-aware
-    // block sizing.
     // ════════════════════════════════════════════════════════════════════════
     {
-        ankerl::nanobench::Bench b;
-        b.minEpochTime(100ms).relative(true);
-        b.title("Multi-acc: static_for tuned vs default (N=" + std::to_string(kSweepN) + ", heavy body)");
-
-        run(b, kSweepN, "for loop", [salt] {
+        reg("MultiAcc/for_loop", kSweepN, [salt] {
             double acc = 0.0;
             for (std::size_t i = 0; i < kSweepN; ++i) acc += heavy_work(i, salt);
             return acc;
         });
 
-        run(b, kSweepN, "static_for (tuned BS)", [salt] {
+        reg("MultiAcc/static_for_tuned_BS", kSweepN, [salt] {
             std::array<double, optimal_bs_multiacc> accs{};
             poet::static_for<0, static_cast<std::intmax_t>(kSweepN), 1, optimal_bs_multiacc>(
               MultiAccFunctor<optimal_bs_multiacc>{ .accs = accs, .salt = salt });
             return reduce(accs);
         });
 
-        run(b, kSweepN, "static_for (default BS)", [salt] {
-            // Default BS = N (fully inlined, no isolation).
-            // Uses single accumulator like the for loop — no multi-acc ILP.
+        reg("MultiAcc/static_for_default_BS", kSweepN, [salt] {
             std::array<double, kSweepN> accs{};
             poet::static_for<0, static_cast<std::intmax_t>(kSweepN)>(
               MultiAccFunctor<kSweepN>{ .accs = accs, .salt = salt });
             return reduce(accs);
         });
     }
+
+    benchmark::Initialize(&argc, argv);
+    benchmark::RunSpecifiedBenchmarks();
+    benchmark::Shutdown();
 }

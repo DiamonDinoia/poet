@@ -24,11 +24,9 @@
 #include <cstdint>
 #include <iostream>
 
-#include <nanobench.h>
+#include <benchmark/benchmark.h>
 
 #include <poet/poet.hpp>
-
-using namespace std::chrono_literals;
 
 namespace {
 
@@ -38,24 +36,7 @@ constexpr auto regs = poet::available_registers();
 constexpr std::size_t vec_regs = regs.vector_registers;
 constexpr std::size_t lanes_64 = regs.lanes_64bit;
 
-// Optimal unroll: 2 SIMD registers worth of scalar accumulators.
-//
-// Empirically confirmed as the throughput peak via an unroll sweep (Unroll
-// 1..32) on AVX2: performance rises from 1 to 8, then drops at 12-16 as
-// spill pressure grows.  The hot loop for Unroll=8 does reload one
-// accumulator from the stack per iteration, but the OOO scheduler hides it.
-//
-// On SSE2 (2 lanes) GCC collapses vectorized folds wider than ~4 scalars to
-// a scalar stack loop, so lanes_64 * 2 = 4 is also the ISA ceiling there.
 constexpr std::size_t optimal_accs = lanes_64 * 2;
-
-// Spill reference: 4× the optimal.
-//
-// Assembly inspection (objdump) shows the Unroll=32 hot loop body contains
-// 2667 rsp references vs 62 for optimal — clearly in deep spill territory.
-// Performance may still be competitive due to the compiler switching to a
-// different code structure (scalar + wider vectorization), but the register
-// pressure is demonstrably excessive.
 constexpr std::size_t spill_accs = optimal_accs * 4;
 
 // ── Workload ─────────────────────────────────────────────────────────────────
@@ -87,8 +68,11 @@ std::uint32_t next_salt() noexcept {
     return s;
 }
 
-template<typename Fn> void run(ankerl::nanobench::Bench &b, std::uint64_t batch, const char *name, Fn &&fn) {
-    b.batch(batch).run(name, [fn = std::forward<Fn>(fn)]() mutable { ankerl::nanobench::doNotOptimizeAway(fn()); });
+template<typename Fn> void reg(const char *name, std::uint64_t batch, Fn &&fn) {
+    benchmark::RegisterBenchmark(name, [fn = std::forward<Fn>(fn), batch](benchmark::State &state) mutable {
+        for (auto _ : state) benchmark::DoNotOptimize(fn());
+        state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(batch));
+    })->MinTime(0.1);
 }
 
 template<std::size_t N> double reduce(const std::array<double, N> &a) {
@@ -124,70 +108,56 @@ template<std::size_t Unroll> double dynamic_for_multi_acc(std::size_t count, std
 
 }// namespace
 
-int main() {
+int main(int argc, char **argv) {
     {
-        std::cout << "\n=== Register-Aware Tuning ===\n";
-        std::cout << "ISA:              " << static_cast<unsigned>(regs.isa) << "\n";
-        std::cout << "Vector registers: " << vec_regs << "\n";
-        std::cout << "Vector width:     " << regs.vector_width_bits << " bits\n";
-        std::cout << "Lanes (64-bit):   " << lanes_64 << "\n";
-        std::cout << "Optimal accums:   " << optimal_accs << "  (lanes_64 * 2)\n";
-        std::cout << "Spill accums:     " << spill_accs << "  (optimal_accs * 4)\n\n";
+        std::cerr << "\n=== Register-Aware Tuning ===\n";
+        std::cerr << "ISA:              " << static_cast<unsigned>(regs.isa) << "\n";
+        std::cerr << "Vector registers: " << vec_regs << "\n";
+        std::cerr << "Vector width:     " << regs.vector_width_bits << " bits\n";
+        std::cerr << "Lanes (64-bit):   " << lanes_64 << "\n";
+        std::cerr << "Optimal accums:   " << optimal_accs << "  (lanes_64 * 2)\n";
+        std::cerr << "Spill accums:     " << spill_accs << "  (optimal_accs * 4)\n\n";
     }
 
     const auto salt = next_salt();
 
     // ════════════════════════════════════════════════════════════════════════
     // Multi-acc: for loop (1 acc) vs hand-unrolled vs dynamic_for
-    //
-    // Shows the progression:
-    //   1. Single accumulator — serial dependency chain, no ILP
-    //   2. Hand-unrolled multi-acc — manual lane splitting
-    //   3. dynamic_for with lane callbacks — POET handles the splitting
     // ════════════════════════════════════════════════════════════════════════
     {
         constexpr std::size_t N = 10000;
 
-        ankerl::nanobench::Bench b;
-        b.minEpochTime(100ms).relative(true);
-        b.title("Multi-acc: dynamic_for lane callbacks (N=10000)");
-
-        run(b, N, "for loop (1 acc)", [salt] {
+        reg("Multi-acc/for_loop_1_acc", N, [salt] {
             double acc = 0.0;
             for (std::size_t i = 0; i < N; ++i) acc += heavy_work(i, salt);
             return acc;
         });
 
-        run(b, N, "for loop (optimal accs)", [salt] { return hand_unrolled_multi_acc<optimal_accs>(N, salt); });
+        reg("Multi-acc/for_loop_optimal_accs", N, [salt] { return hand_unrolled_multi_acc<optimal_accs>(N, salt); });
 
-        run(b, N, "dynamic_for (1 acc)", [salt] { return dynamic_for_multi_acc<1>(N, salt); });
+        reg("Multi-acc/dynamic_for_1_acc", N, [salt] { return dynamic_for_multi_acc<1>(N, salt); });
 
-        run(b, N, "dynamic_for (optimal accs)", [salt] { return dynamic_for_multi_acc<optimal_accs>(N, salt); });
+        reg("Multi-acc/dynamic_for_optimal_accs", N, [salt] { return dynamic_for_multi_acc<optimal_accs>(N, salt); });
     }
 
     // ════════════════════════════════════════════════════════════════════════
     // Unroll comparison: plain for vs optimal vs spill
-    //
-    // 1. plain for (1-acc)      — serial dependency chain, baseline
-    // 2. dynamic_for<optimal>   — lanes_64 * 2, empirically confirmed peak
-    // 3. dynamic_for<spill>     — optimal * 4, confirmed deep spill territory
-    //                             by objdump (2667 rsp refs in hot loop)
     // ════════════════════════════════════════════════════════════════════════
     {
         constexpr std::size_t N = 10000;
 
-        ankerl::nanobench::Bench b;
-        b.minEpochTime(100ms).relative(true);
-        b.title("Unroll: plain for vs optimal vs spill (N=10000)");
-
-        run(b, N, "plain for (1 acc)", [salt] {
+        reg("Unroll/plain_for_1_acc", N, [salt] {
             double acc = 0.0;
             for (std::size_t i = 0; i < N; ++i) acc += heavy_work(i, salt);
             return acc;
         });
 
-        run(b, N, "dynamic_for<optimal>", [salt] { return dynamic_for_multi_acc<optimal_accs>(N, salt); });
+        reg("Unroll/dynamic_for_optimal", N, [salt] { return dynamic_for_multi_acc<optimal_accs>(N, salt); });
 
-        run(b, N, "dynamic_for<spill>", [salt] { return dynamic_for_multi_acc<spill_accs>(N, salt); });
+        reg("Unroll/dynamic_for_spill", N, [salt] { return dynamic_for_multi_acc<spill_accs>(N, salt); });
     }
+
+    benchmark::Initialize(&argc, argv);
+    benchmark::RunSpecifiedBenchmarks();
+    benchmark::Shutdown();
 }

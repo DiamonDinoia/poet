@@ -11,11 +11,9 @@
 #include <cstdint>
 #include <iostream>
 
-#include <nanobench.h>
+#include <benchmark/benchmark.h>
 
 #include <poet/poet.hpp>
-
-using namespace std::chrono_literals;
 
 namespace {
 
@@ -54,8 +52,11 @@ std::uint32_t next_salt() noexcept {
     return s;
 }
 
-template<typename Fn> void run(ankerl::nanobench::Bench &b, std::uint64_t batch, const char *name, Fn &&fn) {
-    b.batch(batch).run(name, [fn = std::forward<Fn>(fn)]() mutable { ankerl::nanobench::doNotOptimizeAway(fn()); });
+template<typename Fn> void reg(const char *name, std::uint64_t batch, Fn &&fn) {
+    benchmark::RegisterBenchmark(name, [fn = std::forward<Fn>(fn), batch](benchmark::State &state) mutable {
+        for (auto _ : state) benchmark::DoNotOptimize(fn());
+        state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(batch));
+    })->MinTime(0.1);
 }
 
 template<std::size_t N> double reduce(const std::array<double, N> &a) {
@@ -65,11 +66,7 @@ template<std::size_t N> double reduce(const std::array<double, N> &a) {
 }
 
 // ── Hand-written emission strategies ─────────────────────────────────────────
-//
-// These inline both strategies directly — no library changes needed.
 
-/// Carried-index: idx starts at base, incremented by stride each lane.
-/// This is what dynamic_for uses internally.
 template<std::size_t Unroll, typename WorkFn>
 double carried_index_multi_acc(std::size_t count, std::size_t start, WorkFn work) {
     std::array<double, Unroll> accs{};
@@ -78,7 +75,6 @@ double carried_index_multi_acc(std::size_t count, std::size_t start, WorkFn work
     std::size_t i = start;
     std::size_t done = 0;
     for (; done < full; done += Unroll) {
-        // Carried: each lane depends on the previous lane's index
         std::size_t idx = i;
         for (std::size_t lane = 0; lane < Unroll; ++lane) {
             accs[lane] += work(idx);
@@ -93,9 +89,6 @@ double carried_index_multi_acc(std::size_t count, std::size_t start, WorkFn work
     return reduce(accs);
 }
 
-/// Computed-index: idx = base + lane, computed independently per lane.
-/// GCC's SLP vectorizer may try to pack the lane indices into a vector,
-/// potentially causing register spills on light bodies.
 template<std::size_t Unroll, typename WorkFn>
 double computed_index_multi_acc(std::size_t count, std::size_t start, WorkFn work) {
     std::array<double, Unroll> accs{};
@@ -104,7 +97,6 @@ double computed_index_multi_acc(std::size_t count, std::size_t start, WorkFn wor
     std::size_t base = start;
     std::size_t done = 0;
     for (; done < full; done += Unroll) {
-        // Computed: each lane's index is independently calculated
         for (std::size_t lane = 0; lane < Unroll; ++lane) { accs[lane] += work(base + lane); }
         base += Unroll;
     }
@@ -117,39 +109,32 @@ double computed_index_multi_acc(std::size_t count, std::size_t start, WorkFn wor
 
 }// namespace
 
-int main() {
+int main(int argc, char **argv) {
     {
-        std::cout << "\n=== dynamic_for Emission Strategy Benchmark ===\n";
-        std::cout << "ISA:              " << static_cast<unsigned>(regs.isa) << "\n";
-        std::cout << "Vector width:     " << regs.vector_width_bits << " bits\n";
-        std::cout << "Lanes (64-bit):   " << lanes_64 << "\n";
-        std::cout << "Optimal accums:   " << optimal_accs << "  (lanes_64 * 2)\n\n";
+        std::cerr << "\n=== dynamic_for Emission Strategy Benchmark ===\n";
+        std::cerr << "ISA:              " << static_cast<unsigned>(regs.isa) << "\n";
+        std::cerr << "Vector width:     " << regs.vector_width_bits << " bits\n";
+        std::cerr << "Lanes (64-bit):   " << lanes_64 << "\n";
+        std::cerr << "Optimal accums:   " << optimal_accs << "  (lanes_64 * 2)\n\n";
     }
 
     const auto salt = next_salt();
 
     // ════════════════════════════════════════════════════════════════════════
     // Section 1: Heavy body (accumulation)
-    //
-    // Body dominates index computation cost. All three variants should
-    // perform similarly.
     // ════════════════════════════════════════════════════════════════════════
     {
         constexpr std::size_t N = 10000;
 
-        ankerl::nanobench::Bench b;
-        b.minEpochTime(100ms).relative(true);
-        b.title("Heavy body emission: carried vs computed vs dynamic_for (N=10000)");
-
-        run(b, N, "carried-index (hand-written)", [salt] {
+        reg("Heavy_body/carried-index", N, [salt] {
             return carried_index_multi_acc<optimal_accs>(N, 0, [salt](std::size_t i) { return heavy_work(i, salt); });
         });
 
-        run(b, N, "computed-index (hand-written)", [salt] {
+        reg("Heavy_body/computed-index", N, [salt] {
             return computed_index_multi_acc<optimal_accs>(N, 0, [salt](std::size_t i) { return heavy_work(i, salt); });
         });
 
-        run(b, N, "dynamic_for lane form", [salt] {
+        reg("Heavy_body/dynamic_for_lane_form", N, [salt] {
             std::array<double, optimal_accs> accs{};
             poet::dynamic_for<optimal_accs>(
               std::size_t{ 0 }, std::size_t{ N }, [&accs, salt](auto lane_c, std::size_t i) {
@@ -162,30 +147,23 @@ int main() {
 
     // ════════════════════════════════════════════════════════════════════════
     // Section 2: Light body (index-visible overhead)
-    //
-    // xorshift32 body is cheap enough that index computation strategy
-    // matters. Computed-index may cause GCC SLP spills.
     // ════════════════════════════════════════════════════════════════════════
     {
         constexpr std::size_t N = 10000;
 
-        ankerl::nanobench::Bench b;
-        b.minEpochTime(100ms).relative(true);
-        b.title("Light body emission: carried vs computed vs dynamic_for (N=10000)");
-
-        run(b, N, "carried-index (hand-written)", [salt] {
+        reg("Light_body/carried-index", N, [salt] {
             return carried_index_multi_acc<optimal_accs>(N, 0, [salt](std::size_t i) {
                 return static_cast<double>(xorshift32(static_cast<std::uint32_t>(i) ^ salt));
             });
         });
 
-        run(b, N, "computed-index (hand-written)", [salt] {
+        reg("Light_body/computed-index", N, [salt] {
             return computed_index_multi_acc<optimal_accs>(N, 0, [salt](std::size_t i) {
                 return static_cast<double>(xorshift32(static_cast<std::uint32_t>(i) ^ salt));
             });
         });
 
-        run(b, N, "dynamic_for lane form", [salt] {
+        reg("Light_body/dynamic_for_lane_form", N, [salt] {
             std::array<double, optimal_accs> accs{};
             poet::dynamic_for<optimal_accs>(
               std::size_t{ 0 }, std::size_t{ N }, [&accs, salt](auto lane_c, std::size_t i) {
@@ -198,20 +176,12 @@ int main() {
 
     // ════════════════════════════════════════════════════════════════════════
     // Section 3: CT stride vs RT stride
-    //
-    // dynamic_for<Unroll, 2> (CT stride) vs dynamic_for<Unroll>(b, e, 2, f)
-    // (RT stride). Both use lane form with accumulation.
-    // N = 5000 effective iterations (range [0, 10000) stride 2).
     // ════════════════════════════════════════════════════════════════════════
     {
         constexpr std::size_t N = 10000;
         constexpr std::size_t effective_iters = 5000;
 
-        ankerl::nanobench::Bench b;
-        b.minEpochTime(100ms).relative(true);
-        b.title("CT stride vs RT stride: stride=2 lane form (effective N=5000)");
-
-        run(b, effective_iters, "dynamic_for CT stride=2", [salt] {
+        reg("Stride/dynamic_for_CT_stride_2", effective_iters, [salt] {
             std::array<double, optimal_accs> accs{};
             poet::dynamic_for<optimal_accs, 2>(
               std::size_t{ 0 }, std::size_t{ N }, [&accs, salt](auto lane_c, std::size_t i) {
@@ -221,7 +191,7 @@ int main() {
             return reduce(accs);
         });
 
-        run(b, effective_iters, "dynamic_for RT stride=2", [salt] {
+        reg("Stride/dynamic_for_RT_stride_2", effective_iters, [salt] {
             std::array<double, optimal_accs> accs{};
             poet::dynamic_for<optimal_accs>(
               std::size_t{ 0 }, std::size_t{ N }, std::size_t{ 2 }, [&accs, salt](auto lane_c, std::size_t i) {
@@ -231,4 +201,8 @@ int main() {
             return reduce(accs);
         });
     }
+
+    benchmark::Initialize(&argc, argv);
+    benchmark::RunSpecifiedBenchmarks();
+    benchmark::Shutdown();
 }

@@ -2,14 +2,12 @@
 /// \brief Dispatch benchmark: dimensionality, hit/miss, contiguous/sparse.
 
 #include <array>
-#include <chrono>
 #include <tuple>
 
-#include <nanobench.h>
+#include <benchmark/benchmark.h>
 
 #include <poet/poet.hpp>
 
-using namespace std::chrono_literals;
 namespace {
 
 struct simple_kernel {
@@ -42,116 +40,144 @@ int next_noise() {
 
 }// namespace
 
-int main() {
-    ankerl::nanobench::Bench bench;
-    bench.title("dispatch: dimensionality, hit/miss, contiguous/sparse");
-    bench.minEpochTime(100ms);
-
+int main(int argc, char **argv) {
     // ── 1D Dispatch ─────────────────────────────────────────────────────
-    bench.run("1D contiguous hit", [&] {
-        auto v = 3 + (next_noise() & 3);// values in [3,6] ⊂ [1,8]
-        ankerl::nanobench::doNotOptimizeAway(v);
-        ankerl::nanobench::doNotOptimizeAway(
-          poet::dispatch(simple_kernel{}, poet::DispatchParam<range_1d_contig>{ v }, 2));
-    });
-    bench.run("1D contiguous miss", [&] {
-        auto v = 100 + next_noise();
-        ankerl::nanobench::doNotOptimizeAway(v);
-        ankerl::nanobench::doNotOptimizeAway(
-          poet::dispatch(simple_kernel{}, poet::DispatchParam<range_1d_contig>{ v }, 2));
-    });
-    bench.run("1D non-contiguous hit", [&] {
-        constexpr std::array<int, 4> vals{ 1, 20, 50, 70 };
-        auto v = vals[next_noise() & 3];
-        ankerl::nanobench::doNotOptimizeAway(v);
-        ankerl::nanobench::doNotOptimizeAway(
-          poet::dispatch(simple_kernel{}, poet::DispatchParam<range_1d_noncontig>{ v }, 2));
-    });
-    bench.run("1D non-contiguous miss", [&] {
-        auto v = 5 + next_noise();
-        ankerl::nanobench::doNotOptimizeAway(v);
-        ankerl::nanobench::doNotOptimizeAway(
-          poet::dispatch(simple_kernel{}, poet::DispatchParam<range_1d_noncontig>{ v }, 2));
-    });
+    benchmark::RegisterBenchmark("Dispatch/1D_contiguous_hit", [](benchmark::State &state) {
+        for (auto _ : state) {
+            auto v = 3 + (next_noise() & 3);
+            benchmark::DoNotOptimize(v);
+            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, poet::DispatchParam<range_1d_contig>{ v }, 2));
+        }
+    })->MinTime(0.1);
+
+    benchmark::RegisterBenchmark("Dispatch/1D_contiguous_miss", [](benchmark::State &state) {
+        for (auto _ : state) {
+            auto v = 100 + next_noise();
+            benchmark::DoNotOptimize(v);
+            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, poet::DispatchParam<range_1d_contig>{ v }, 2));
+        }
+    })->MinTime(0.1);
+
+    benchmark::RegisterBenchmark("Dispatch/1D_non-contiguous_hit", [](benchmark::State &state) {
+        for (auto _ : state) {
+            constexpr std::array<int, 4> vals{ 1, 20, 50, 70 };
+            auto v = vals[next_noise() & 3];
+            benchmark::DoNotOptimize(v);
+            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, poet::DispatchParam<range_1d_noncontig>{ v }, 2));
+        }
+    })->MinTime(0.1);
+
+    benchmark::RegisterBenchmark("Dispatch/1D_non-contiguous_miss", [](benchmark::State &state) {
+        for (auto _ : state) {
+            auto v = 5 + next_noise();
+            benchmark::DoNotOptimize(v);
+            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, poet::DispatchParam<range_1d_noncontig>{ v }, 2));
+        }
+    })->MinTime(0.1);
 
     // ── 2D Dispatch ─────────────────────────────────────────────────────
-    bench.run("2D contiguous hit", [&] {
-        auto w = 2 + (next_noise() & 3);
-        auto h = 3 + (next_noise() & 3);
-        ankerl::nanobench::doNotOptimizeAway(w);
-        ankerl::nanobench::doNotOptimizeAway(h);
-        auto params =
-          std::make_tuple(poet::DispatchParam<range_2d_contig>{ w }, poet::DispatchParam<range_2d_contig>{ h });
-        ankerl::nanobench::doNotOptimizeAway(poet::dispatch(simple_kernel{}, params, 2));
-    });
-    bench.run("2D contiguous miss", [&] {
-        auto w = 9 + next_noise();
-        auto h = 1;
-        ankerl::nanobench::doNotOptimizeAway(w);
-        ankerl::nanobench::doNotOptimizeAway(h);
-        auto params =
-          std::make_tuple(poet::DispatchParam<range_2d_contig>{ w }, poet::DispatchParam<range_2d_contig>{ h });
-        ankerl::nanobench::doNotOptimizeAway(poet::dispatch(simple_kernel{}, params, 2));
-    });
-    bench.run("2D non-contiguous hit", [&] {
-        constexpr std::array<int, 4> vals{ 10, 20, 50, 70 };
-        auto w = vals[next_noise() & 3];
-        auto h = vals[next_noise() & 3];
-        ankerl::nanobench::doNotOptimizeAway(w);
-        ankerl::nanobench::doNotOptimizeAway(h);
-        auto params =
-          std::make_tuple(poet::DispatchParam<range_2d_noncontig>{ w }, poet::DispatchParam<range_2d_noncontig>{ h });
-        ankerl::nanobench::doNotOptimizeAway(poet::dispatch(simple_kernel{}, params, 2));
-    });
-    bench.run("2D non-contiguous miss", [&] {
-        auto w = 5 + next_noise();
-        auto h = 15;
-        ankerl::nanobench::doNotOptimizeAway(w);
-        ankerl::nanobench::doNotOptimizeAway(h);
-        auto params =
-          std::make_tuple(poet::DispatchParam<range_2d_noncontig>{ w }, poet::DispatchParam<range_2d_noncontig>{ h });
-        ankerl::nanobench::doNotOptimizeAway(poet::dispatch(simple_kernel{}, params, 2));
-    });
+    benchmark::RegisterBenchmark("Dispatch/2D_contiguous_hit", [](benchmark::State &state) {
+        for (auto _ : state) {
+            auto w = 2 + (next_noise() & 3);
+            auto h = 3 + (next_noise() & 3);
+            benchmark::DoNotOptimize(w);
+            benchmark::DoNotOptimize(h);
+            auto params =
+              std::make_tuple(poet::DispatchParam<range_2d_contig>{ w }, poet::DispatchParam<range_2d_contig>{ h });
+            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, params, 2));
+        }
+    })->MinTime(0.1);
+
+    benchmark::RegisterBenchmark("Dispatch/2D_contiguous_miss", [](benchmark::State &state) {
+        for (auto _ : state) {
+            auto w = 9 + next_noise();
+            auto h = 1;
+            benchmark::DoNotOptimize(w);
+            benchmark::DoNotOptimize(h);
+            auto params =
+              std::make_tuple(poet::DispatchParam<range_2d_contig>{ w }, poet::DispatchParam<range_2d_contig>{ h });
+            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, params, 2));
+        }
+    })->MinTime(0.1);
+
+    benchmark::RegisterBenchmark("Dispatch/2D_non-contiguous_hit", [](benchmark::State &state) {
+        for (auto _ : state) {
+            constexpr std::array<int, 4> vals{ 10, 20, 50, 70 };
+            auto w = vals[next_noise() & 3];
+            auto h = vals[next_noise() & 3];
+            benchmark::DoNotOptimize(w);
+            benchmark::DoNotOptimize(h);
+            auto params = std::make_tuple(
+              poet::DispatchParam<range_2d_noncontig>{ w }, poet::DispatchParam<range_2d_noncontig>{ h });
+            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, params, 2));
+        }
+    })->MinTime(0.1);
+
+    benchmark::RegisterBenchmark("Dispatch/2D_non-contiguous_miss", [](benchmark::State &state) {
+        for (auto _ : state) {
+            auto w = 5 + next_noise();
+            auto h = 15;
+            benchmark::DoNotOptimize(w);
+            benchmark::DoNotOptimize(h);
+            auto params = std::make_tuple(
+              poet::DispatchParam<range_2d_noncontig>{ w }, poet::DispatchParam<range_2d_noncontig>{ h });
+            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, params, 2));
+        }
+    })->MinTime(0.1);
 
     // ── 5D Dispatch (table size = 4^5 = 1024) ──────────────────────────
-    bench.run("5D contiguous hit", [&] {
-        const int n = next_noise();
-        auto params = std::make_tuple(poet::DispatchParam<range_5d_contig>{ (n + 0) & 3 },
-          poet::DispatchParam<range_5d_contig>{ (n + 1) & 3 },
-          poet::DispatchParam<range_5d_contig>{ (n + 2) & 3 },
-          poet::DispatchParam<range_5d_contig>{ (n + 3) & 3 },
-          poet::DispatchParam<range_5d_contig>{ (n + 4) & 3 });
-        ankerl::nanobench::doNotOptimizeAway(poet::dispatch(simple_kernel{}, params, 3));
-    });
-    bench.run("5D contiguous miss", [&] {
-        const int n = next_noise();
-        auto params = std::make_tuple(poet::DispatchParam<range_5d_contig>{ 5 },// out of [0,3]
-          poet::DispatchParam<range_5d_contig>{ (n + 1) & 3 },
-          poet::DispatchParam<range_5d_contig>{ (n + 2) & 3 },
-          poet::DispatchParam<range_5d_contig>{ (n + 3) & 3 },
-          poet::DispatchParam<range_5d_contig>{ (n + 4) & 3 });
-        ankerl::nanobench::doNotOptimizeAway(poet::dispatch(simple_kernel{}, params, 3));
-    });
-    bench.run("5D non-contiguous hit", [&] {
-        constexpr std::array<int, 4> vals{ 0, 10, 20, 30 };
-        const int n = next_noise();
-        auto params = std::make_tuple(poet::DispatchParam<range_5d_noncontig>{ vals[(n + 0) & 3] },
-          poet::DispatchParam<range_5d_noncontig>{ vals[(n + 1) & 3] },
-          poet::DispatchParam<range_5d_noncontig>{ vals[(n + 2) & 3] },
-          poet::DispatchParam<range_5d_noncontig>{ vals[(n + 3) & 3] },
-          poet::DispatchParam<range_5d_noncontig>{ vals[(n + 4) & 3] });
-        ankerl::nanobench::doNotOptimizeAway(poet::dispatch(simple_kernel{}, params, 3));
-    });
-    bench.run("5D non-contiguous miss", [&] {
-        constexpr std::array<int, 4> vals{ 0, 10, 20, 30 };
-        const int n = next_noise();
-        auto params = std::make_tuple(poet::DispatchParam<range_5d_noncontig>{ 5 },// not in {0,10,20,30}
-          poet::DispatchParam<range_5d_noncontig>{ vals[(n + 1) & 3] },
-          poet::DispatchParam<range_5d_noncontig>{ vals[(n + 2) & 3] },
-          poet::DispatchParam<range_5d_noncontig>{ vals[(n + 3) & 3] },
-          poet::DispatchParam<range_5d_noncontig>{ vals[(n + 4) & 3] });
-        ankerl::nanobench::doNotOptimizeAway(poet::dispatch(simple_kernel{}, params, 3));
-    });
+    benchmark::RegisterBenchmark("Dispatch/5D_contiguous_hit", [](benchmark::State &state) {
+        for (auto _ : state) {
+            const int n = next_noise();
+            auto params = std::make_tuple(poet::DispatchParam<range_5d_contig>{ (n + 0) & 3 },
+              poet::DispatchParam<range_5d_contig>{ (n + 1) & 3 },
+              poet::DispatchParam<range_5d_contig>{ (n + 2) & 3 },
+              poet::DispatchParam<range_5d_contig>{ (n + 3) & 3 },
+              poet::DispatchParam<range_5d_contig>{ (n + 4) & 3 });
+            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, params, 3));
+        }
+    })->MinTime(0.1);
 
+    benchmark::RegisterBenchmark("Dispatch/5D_contiguous_miss", [](benchmark::State &state) {
+        for (auto _ : state) {
+            const int n = next_noise();
+            auto params = std::make_tuple(poet::DispatchParam<range_5d_contig>{ 5 },
+              poet::DispatchParam<range_5d_contig>{ (n + 1) & 3 },
+              poet::DispatchParam<range_5d_contig>{ (n + 2) & 3 },
+              poet::DispatchParam<range_5d_contig>{ (n + 3) & 3 },
+              poet::DispatchParam<range_5d_contig>{ (n + 4) & 3 });
+            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, params, 3));
+        }
+    })->MinTime(0.1);
+
+    benchmark::RegisterBenchmark("Dispatch/5D_non-contiguous_hit", [](benchmark::State &state) {
+        for (auto _ : state) {
+            constexpr std::array<int, 4> vals{ 0, 10, 20, 30 };
+            const int n = next_noise();
+            auto params = std::make_tuple(poet::DispatchParam<range_5d_noncontig>{ vals[(n + 0) & 3] },
+              poet::DispatchParam<range_5d_noncontig>{ vals[(n + 1) & 3] },
+              poet::DispatchParam<range_5d_noncontig>{ vals[(n + 2) & 3] },
+              poet::DispatchParam<range_5d_noncontig>{ vals[(n + 3) & 3] },
+              poet::DispatchParam<range_5d_noncontig>{ vals[(n + 4) & 3] });
+            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, params, 3));
+        }
+    })->MinTime(0.1);
+
+    benchmark::RegisterBenchmark("Dispatch/5D_non-contiguous_miss", [](benchmark::State &state) {
+        for (auto _ : state) {
+            constexpr std::array<int, 4> vals{ 0, 10, 20, 30 };
+            const int n = next_noise();
+            auto params = std::make_tuple(poet::DispatchParam<range_5d_noncontig>{ 5 },
+              poet::DispatchParam<range_5d_noncontig>{ vals[(n + 1) & 3] },
+              poet::DispatchParam<range_5d_noncontig>{ vals[(n + 2) & 3] },
+              poet::DispatchParam<range_5d_noncontig>{ vals[(n + 3) & 3] },
+              poet::DispatchParam<range_5d_noncontig>{ vals[(n + 4) & 3] });
+            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, params, 3));
+        }
+    })->MinTime(0.1);
+
+    benchmark::Initialize(&argc, argv);
+    benchmark::RunSpecifiedBenchmarks();
+    benchmark::Shutdown();
     return 0;
 }

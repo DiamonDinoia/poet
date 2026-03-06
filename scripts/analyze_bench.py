@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Aggregate benchmark JSON results into comparison tables and ASM analysis.
 
+Reads Google Benchmark JSON output (--benchmark_out files).
+
 Usage:
     python3 analyze_bench.py [--results-root results]
                              [--output-md results/summary/bench_comparison.md]
@@ -37,7 +39,6 @@ def compiler_sort_key(name: str) -> tuple[int, int]:
     for i, c in enumerate(COMPILER_ORDER):
         if c == name:
             return (i, 0)
-    # Unknown compilers go last
     return (100, 0)
 
 
@@ -45,12 +46,12 @@ def column_key(compiler: str, variant: str) -> str:
     return f"{compiler} {variant}"
 
 
-def load_results(results_root: Path) -> dict[str, dict[str, dict]]:
-    """Load all JSON results.
+def load_results(results_root: Path) -> dict[str, dict[str, list[dict]]]:
+    """Load all Google Benchmark JSON results.
 
-    Returns: {bench_name: {column_key: parsed_json}}
+    Returns: {bench_name: {column_key: [benchmark_entries]}}
     """
-    data: dict[str, dict[str, dict]] = defaultdict(dict)
+    data: dict[str, dict[str, list[dict]]] = defaultdict(dict)
 
     for json_file in sorted(results_root.rglob("*.json")):
         # Path: results/<compiler>/<variant>/<bench>.json
@@ -67,26 +68,43 @@ def load_results(results_root: Path) -> dict[str, dict[str, dict]]:
             print(f"Warning: failed to load {json_file}: {e}", file=sys.stderr)
             continue
 
+        # Google Benchmark JSON has a "benchmarks" array
+        benchmarks = parsed.get("benchmarks", [])
+        if not benchmarks:
+            continue
+
         col = column_key(compiler, variant)
-        data[bench_name][col] = parsed
+        data[bench_name][col] = benchmarks
 
     return dict(data)
 
 
+def clean_bench_name(name: str) -> str:
+    """Strip Google Benchmark suffixes like '/min_time:0.100'."""
+    return re.sub(r"/min_time:[0-9.]+$", "", name)
+
+
+def split_bench_name(name: str) -> tuple[str, str]:
+    """Split 'Section/bench_name' into (section, bench_name)."""
+    name = clean_bench_name(name)
+    if "/" in name:
+        parts = name.split("/", 1)
+        return parts[0], parts[1]
+    return "", name
+
+
 def build_comparison_table(
-    data: dict[str, dict[str, dict]],
+    data: dict[str, dict[str, list[dict]]],
 ) -> tuple[list[str], list[dict]]:
     """Build a flat comparison table.
 
     Returns: (columns, rows) where each row is a dict with keys:
-        bench, table_title, name, <column>_nsop, <column>_rel
+        bench, section, name, <column>_nsop
     """
-    # Collect all columns
     all_cols = set()
     for bench_data in data.values():
         all_cols.update(bench_data.keys())
 
-    # Sort columns
     sorted_cols = sorted(
         all_cols,
         key=lambda c: (
@@ -101,65 +119,29 @@ def build_comparison_table(
     for bench_name in sorted(data.keys()):
         bench_data = data[bench_name]
 
-        # Collect all tables across all compilers for this bench
-        # Use the first available compiler's tables as the template
-        table_templates = {}
-        for col, parsed in bench_data.items():
-            for table in parsed.get("tables", []):
-                title = table.get("title", "")
-                if title not in table_templates:
-                    table_templates[title] = table
+        # Collect all unique benchmark names from all columns
+        all_bench_entries: dict[str, dict[str, float]] = {}
+        for col, entries in bench_data.items():
+            for entry in entries:
+                name = clean_bench_name(entry.get("name", ""))
+                if name not in all_bench_entries:
+                    all_bench_entries[name] = {}
+                cpu_time = entry.get("cpu_time", 0)
+                all_bench_entries[name][col] = cpu_time
 
-        for table_title, template in table_templates.items():
-            for row_data in template.get("rows", []):
-                # Find the name column
-                name = None
-                for key in row_data:
-                    if isinstance(row_data[key], str):
-                        name = row_data[key]
-                        break
-                if name is None:
-                    continue
+        for entry_name in all_bench_entries:
+            section, short_name = split_bench_name(entry_name)
+            flat_row = {
+                "bench": bench_name,
+                "section": section,
+                "name": short_name,
+            }
 
-                flat_row = {
-                    "bench": bench_name,
-                    "table_title": table_title,
-                    "name": name,
-                }
+            for col in sorted_cols:
+                nsop = all_bench_entries[entry_name].get(col)
+                flat_row[f"{col}_nsop"] = nsop if nsop is not None else ""
 
-                for col in sorted_cols:
-                    parsed = bench_data.get(col)
-                    if not parsed:
-                        flat_row[f"{col}_nsop"] = ""
-                        flat_row[f"{col}_rel"] = ""
-                        continue
-
-                    # Find matching table and row
-                    found = False
-                    for table in parsed.get("tables", []):
-                        if table.get("title", "") == table_title:
-                            for r in table.get("rows", []):
-                                row_name = None
-                                for key in r:
-                                    if isinstance(r[key], str):
-                                        row_name = r[key]
-                                        break
-                                if row_name == name:
-                                    # Extract ns/op and relative
-                                    nsop = r.get("ns/op", r.get("ns", ""))
-                                    rel = r.get("relative", r.get("relative_pct", ""))
-                                    flat_row[f"{col}_nsop"] = nsop
-                                    flat_row[f"{col}_rel"] = rel
-                                    found = True
-                                    break
-                            if found:
-                                break
-
-                    if not found:
-                        flat_row[f"{col}_nsop"] = ""
-                        flat_row[f"{col}_rel"] = ""
-
-                rows.append(flat_row)
+            rows.append(flat_row)
 
     return sorted_cols, rows
 
@@ -172,20 +154,18 @@ def write_markdown(columns: list[str], rows: list[dict], output: Path):
         f.write("# Benchmark Comparison\n\n")
         f.write(f"*Generated from {len(columns)} compiler/variant combinations*\n\n")
 
-        # Group rows by bench + table_title
         groups: dict[str, list[dict]] = defaultdict(list)
         for row in rows:
-            key = f"{row['bench']} / {row['table_title']}"
+            key = f"{row['bench']} / {row['section']}"
             groups[key].append(row)
 
         for group_key, group_rows in groups.items():
             f.write(f"## {group_key}\n\n")
 
-            # Header
             header = "| Benchmark |"
             sep = "|:----------|"
             for col in columns:
-                header += f" {col} |"
+                header += f" {col} (ns) |"
                 sep += "--------:|"
             f.write(header + "\n")
             f.write(sep + "\n")
@@ -194,9 +174,8 @@ def write_markdown(columns: list[str], rows: list[dict], output: Path):
                 line = f"| {row['name']} |"
                 for col in columns:
                     nsop = row.get(f"{col}_nsop", "")
-                    rel = row.get(f"{col}_rel", "")
-                    if nsop != "" and rel != "":
-                        cell = f"{nsop} ({rel}%)"
+                    if nsop != "" and isinstance(nsop, (int, float)):
+                        cell = f"{nsop:.1f}"
                     elif nsop != "":
                         cell = str(nsop)
                     else:
@@ -211,10 +190,9 @@ def write_csv(columns: list[str], rows: list[dict], output: Path):
     """Write flat CSV."""
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    fieldnames = ["bench", "table_title", "name"]
+    fieldnames = ["bench", "section", "name"]
     for col in columns:
         fieldnames.append(f"{col}_nsop")
-        fieldnames.append(f"{col}_rel")
 
     with open(output, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
@@ -245,15 +223,11 @@ def analyze_asm(results_root: Path, output: Path):
 
             text = asm_file.read_text()
 
-            # Count register usage
             ymm_count = len(re.findall(r"%ymm\d+", text))
             xmm_count = len(re.findall(r"%xmm\d+", text))
             zmm_count = len(re.findall(r"%zmm\d+", text))
-
-            # Count call instructions (inlining quality)
             call_count = len(re.findall(r"\bcall\b", text, re.IGNORECASE))
 
-            # Detect vectorization
             vectorized = ymm_count > 0 or zmm_count > 0
             vec_width = (
                 "512-bit"
@@ -277,7 +251,6 @@ def analyze_asm(results_root: Path, output: Path):
                 f.write("- **WARNING: saxpy probe may not be vectorized**\n")
             f.write("\n")
 
-        # Summary table
         f.write("## Summary\n\n")
         f.write("| Compiler | Variant | Bench | Vec Width | Calls |\n")
         f.write("|:---------|:--------|:------|:----------|------:|\n")
@@ -321,7 +294,6 @@ def main():
         print(f"Error: results root not found: {results_root}", file=sys.stderr)
         sys.exit(1)
 
-    # Load and aggregate benchmark data
     data = load_results(results_root)
     if data:
         columns, rows = build_comparison_table(data)
@@ -332,7 +304,6 @@ def main():
     else:
         print("Warning: no benchmark JSON data found", file=sys.stderr)
 
-    # Analyze assembly
     analyze_asm(results_root, Path(args.asm_md))
     print(f"Wrote {args.asm_md}")
 

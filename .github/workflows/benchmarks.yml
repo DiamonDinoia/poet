@@ -42,7 +42,7 @@ jobs:
       - name: Build benchmarks
         run: cmake --build build --target poet_benchmarks --parallel
 
-      - name: Run benchmarks and parse results
+      - name: Run benchmarks
         shell: bash
         run: |
           toolchain="${{ matrix.toolchain }}"
@@ -85,15 +85,10 @@ jobs:
             fi
 
             echo "Running: $name"
-            txt_file="${result_dir}/${name}.txt"
             json_file="${result_dir}/${name}.json"
 
-            "$binary" > "$txt_file" 2>&1 || echo "WARNING: $name exited non-zero"
-
-            if [[ -f "$txt_file" ]]; then
-              python3 scripts/parse_bench.py "$txt_file" "$json_file" || \
-                echo "WARNING: parse failed for $txt_file"
-            fi
+            "$binary" --benchmark_format=json --benchmark_out="$json_file" > /dev/null 2>&1 || \
+              echo "WARNING: $name exited non-zero"
           done
 
       - name: Upload results
