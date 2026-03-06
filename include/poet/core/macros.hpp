@@ -31,6 +31,25 @@
 #endif
 
 // ============================================================================
+// POET_ALWAYS_INLINE_LAMBDA
+// ============================================================================
+/// Forces inlining of lambda call operators. Place after the parameter list:
+///
+///   auto fn = [&](auto x) POET_ALWAYS_INLINE_LAMBDA { return x; };
+///
+/// Uses __attribute__((always_inline)) on GCC/Clang (the only syntax that
+/// applies to the call operator) and [[msvc::forceinline]] on MSVC.
+/// GCC 15+ / Clang 22+: attributed generic lambdas must be assigned to a
+/// variable before passing to template functions.
+#if defined(_MSC_VER) && !defined(__clang__)
+#define POET_ALWAYS_INLINE_LAMBDA [[msvc::forceinline]]
+#elif defined(__GNUC__) || defined(__clang__)
+#define POET_ALWAYS_INLINE_LAMBDA __attribute__((always_inline))
+#else
+#define POET_ALWAYS_INLINE_LAMBDA
+#endif
+
+// ============================================================================
 // POET_ASSUME
 // ============================================================================
 /// Generic assumption hint. UB if expression is false at runtime.

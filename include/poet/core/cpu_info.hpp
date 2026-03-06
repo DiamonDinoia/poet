@@ -267,15 +267,12 @@ namespace detail {
 #else
         // ISA-based fallback using the same ISA detection
         switch (detect_instruction_set()) {
-            // x86: universally 64-byte cache lines
+            // x86 and ARM: 64-byte cache lines (conservative for SVE/SVE2)
         case instruction_set::sse2:
         case instruction_set::sse4_2:
         case instruction_set::avx:
         case instruction_set::avx2:
         case instruction_set::avx_512:
-            return cache_line_info{ 64, 64 };
-
-            // ARM: 64-byte cache lines (conservative for SVE/SVE2)
         case instruction_set::arm_neon:
         case instruction_set::arm_sve:
         case instruction_set::arm_sve2:

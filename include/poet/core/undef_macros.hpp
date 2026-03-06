@@ -14,6 +14,7 @@
 /// POET defines several utility macros for portability and optimization:
 /// - POET_UNREACHABLE: Marks unreachable code paths
 /// - POET_FORCEINLINE: Forces function inlining
+/// - POET_ALWAYS_INLINE_LAMBDA: Forces lambda call-operator inlining
 /// - POET_NOINLINE_FLATTEN: noinline+flatten for register-isolated blocks
 /// - POET_HOT_LOOP: Hot path optimization with aggressive inlining
 /// - POET_LIKELY / POET_UNLIKELY: Branch prediction hints
@@ -64,6 +65,13 @@
 // ============================================================================
 #ifdef POET_FORCEINLINE
 #undef POET_FORCEINLINE
+#endif
+
+// ============================================================================
+// Undefine POET_ALWAYS_INLINE_LAMBDA
+// ============================================================================
+#ifdef POET_ALWAYS_INLINE_LAMBDA
+#undef POET_ALWAYS_INLINE_LAMBDA
 #endif
 
 // ============================================================================

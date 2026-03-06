@@ -425,7 +425,7 @@ POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, T3 step, Func &&fu
     using T = std::common_type_t<T1, T2, T3>;
     const T stride = static_cast<T>(step);
 
-    auto run = [&](auto &callable) -> void {
+    auto run = [&](auto &callable) POET_ALWAYS_INLINE_LAMBDA -> void {
         using callable_t = std::remove_reference_t<decltype(callable)>;
         using form_tag = detail::callable_form_t<callable_t, T>;
         if (stride == static_cast<T>(1)) {
@@ -464,7 +464,7 @@ POET_FORCEINLINE constexpr void dynamic_for(T1 begin, T2 end, Func &&func) {
 
     using T = std::common_type_t<T1, T2>;
 
-    auto run = [&](auto &callable) -> void {
+    auto run = [&](auto &callable) POET_ALWAYS_INLINE_LAMBDA -> void {
         using callable_t = std::remove_reference_t<decltype(callable)>;
         using form_tag = detail::callable_form_t<callable_t, T>;
         detail::dynamic_for_impl_ct_stride<Step, T, callable_t, Unroll>(

@@ -123,6 +123,9 @@ set(DISPATCH_TEST_SRCS
 set(CACHE_LINE_INFO_TEST_SRCS
   cache_line_info_tests.cpp
 )
+set(MACROS_TEST_SRCS
+  macros_tests.cpp
+)
 option(POET_ENABLE_TEST_PCH "Enable precompiled headers for test targets" ON)
 
 # Internal macro: applies common configuration to all test targets
@@ -197,6 +200,7 @@ macro(add_poet_tests_suite suite_target cxx_feature)
     ${suite_target}_cpu_info
     ${suite_target}_cache_line_info
     ${suite_target}_dispatch
+    ${suite_target}_macros
   )
 
   # Create separate executables for each test category to enable parallel compilation
@@ -216,6 +220,7 @@ macro(add_poet_tests_suite suite_target cxx_feature)
     target_compile_definitions(${suite_target}_cache_line_info PRIVATE POET_HAS_HW_DETECTION)
   endif()
   add_poet_test_exec(${suite_target}_dispatch ${cxx_feature} ${DISPATCH_TEST_SRCS})
+  add_poet_test_exec(${suite_target}_macros ${cxx_feature} ${MACROS_TEST_SRCS})
 
   # Create umbrella target for building all tests in this suite
   add_custom_target(${suite_target} DEPENDS ${_suite_execs})

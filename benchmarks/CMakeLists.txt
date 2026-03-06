@@ -53,7 +53,6 @@ _poet_configure_benchmark_target(poet_static_for_bench static_for_bench.cpp)
 _poet_configure_benchmark_target(poet_dynamic_for_bench dynamic_for_bench.cpp)
 _poet_configure_benchmark_target(poet_dynamic_for_forms_bench dynamic_for_forms_bench.cpp)
 _poet_configure_benchmark_target(poet_dynamic_for_emission_bench dynamic_for_emission_bench.cpp)
-
 # ── Register-tuned benchmarks (-march=native) ─────────────────────────────
 if(COMPILER_SUPPORTS_MARCH_NATIVE)
   _poet_configure_benchmark_target(poet_compiler_comparison_bench_native compiler_comparison_bench.cpp)

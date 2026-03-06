@@ -112,7 +112,7 @@ POET_FORCEINLINE constexpr void static_for(Func &&func) {
 
     using callable_t = std::remove_reference_t<Func>;
 
-    auto do_for = [&](auto &ref) -> void {
+    auto do_for = [&](auto &ref) POET_ALWAYS_INLINE_LAMBDA -> void {
         if constexpr (std::is_invocable_v<callable_t &, std::integral_constant<std::ptrdiff_t, Begin>>) {
             detail::run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(ref);
         } else {

@@ -958,8 +958,8 @@ namespace detail {
 
         // Expand over all allowed tuple sequences using || fold for true short-circuiting.
         const bool matched = std::apply(
-          [&](auto... seqs) -> bool {
-              return ([&](auto &seq) -> bool {
+          [&](auto... seqs) POET_ALWAYS_INLINE_LAMBDA -> bool {
+              return ([&](auto &seq) POET_ALWAYS_INLINE_LAMBDA -> bool {
                   using SeqType = std::decay_t<decltype(seq)>;
                   auto result = seq_matcher<SeqType, result_type, RuntimeTuple, FunctorT, Args...>::match_and_call(
                     runtime_tuple, functor_copy, std::forward<Args>(args)...);
