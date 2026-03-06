@@ -26,7 +26,8 @@ jobs:
             -DPOET_BUILD_BENCHMARKS=ON \
             -DPOET_BUILD_TESTS=OFF \
             -DPOET_ENABLE_SANITIZERS=OFF \
-            -DPOET_WARNINGS_AS_ERRORS=OFF
+            -DPOET_WARNINGS_AS_ERRORS=OFF \
+            -DBENCHMARK_ENABLE_WERROR=OFF
           cmake --build build --target poet_benchmarks --parallel
 
       - name: Run benchmarks

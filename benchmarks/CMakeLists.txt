@@ -8,6 +8,8 @@ FetchContent_Declare(
 )
 
 set(BENCHMARK_DOWNLOAD_DEPENDENCIES ON)
+set(BENCHMARK_ENABLE_WERROR OFF CACHE BOOL "" FORCE)
+set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(google_benchmark)
 
 include(CheckCXXCompilerFlag)
