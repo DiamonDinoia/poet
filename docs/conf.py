@@ -34,11 +34,11 @@ exhale_args = {
         r".*\\bdetail\\b.*",
         r".*DispatchSet::convert_tuple.*",
         r"^poet::dispatch$",
+        r"^poet::dynamic_for$",
         r"^poet::static_for$",
     ],
     # Avoid brittle overload resolution pages from generated function entries.
     "unabridgedOrphanKinds": [
-        "dir",
         "namespace",
         "class",
         "struct",
@@ -62,6 +62,7 @@ suppress_warnings = [
     "docutils",
     "cpp.duplicate_declaration",
     "duplicate_declaration.cpp",
+    "toc.not_included",
 ]
 
 

@@ -1,14 +1,10 @@
 #pragma once
 
 /// \file poet.hpp
-/// \brief Umbrella header aggregating the public POET API surface.
-///
-/// This header centralizes includes for the public headers found under
-/// include/poet/ so that downstream projects can simply include <poet/poet.hpp>
-/// to access the stable API surface.
+/// \brief Umbrella header for the public POET API.
 
 // clang-format off
-// IMPORTANT: Include order matters! macros.hpp must come first, undef_macros.hpp must come last
+// Include order matters: macros.hpp must come first and undef_macros.hpp last.
 // NOLINTBEGIN(llvm-include-order)
 #include <poet/core/macros.hpp>
 #include <poet/core/cpu_info.hpp>

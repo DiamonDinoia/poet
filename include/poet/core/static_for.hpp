@@ -1,12 +1,7 @@
 #pragma once
 
 /// \file static_for.hpp
-/// \brief Provides a compile-time loop unrolling utility.
-///
-/// This header defines `static_for`, which unrolls loops at compile-time.
-/// It is useful for iterating over template parameter packs, integer sequences,
-/// or performing other meta-programming tasks where the iteration count is known
-/// at compile-time.
+/// \brief Compile-time loop unrolling over integer ranges.
 
 #include <cstddef>
 #include <type_traits>
@@ -26,10 +21,6 @@ namespace detail {
       std::size_t Remainder>
     POET_FORCEINLINE constexpr void run_blocks(Callable &callable) {
         if constexpr (FullBlocks > 0) {
-            // Use register-isolated (noinline) blocks for multi-block loops to
-            // prevent the compiler from interleaving computations across blocks,
-            // which would cause excessive register spills on x86-64.
-            // Single-block loops are always inlined.
             if constexpr (FullBlocks > 1) {
                 emit_blocks_iso<Callable, Begin, Step, BlockSize>(callable, std::make_index_sequence<FullBlocks>{});
             } else {
@@ -42,7 +33,6 @@ namespace detail {
         }
     }
 
-    /// \brief Default block size: total iteration count, or 1 for empty ranges.
     template<std::ptrdiff_t Begin, std::ptrdiff_t End, std::ptrdiff_t Step>
     POET_CPP20_CONSTEVAL auto default_block_size() noexcept -> std::size_t {
         constexpr auto count = detail::compute_range_count<Begin, End, Step>();
@@ -51,43 +41,11 @@ namespace detail {
 
 }// namespace detail
 
-/// \brief Compile-time unrolled loop over the half-open range `[Begin, End)`.
+/// \brief Runs a compile-time unrolled loop over `[Begin, End)`.
 ///
-/// Executes a compile-time unrolled loop using the specified `Step`, where
-/// `Step` can be positive or negative. The iteration space is partitioned
-/// into blocks of `BlockSize` elements to manage template instantiation depth.
-///
-/// Callables are supported in two forms:
-/// - A callable that accepts a `std::integral_constant<std::ptrdiff_t, I>`
-///   argument. This form is constexpr-friendly and lets the implementation
-///   forward the index as a compile-time value.
-/// - A functor exposing `template <auto I>` call operators. In this case,
-///   `static_for` internally adapts the functor to the integral-constant based
-///   machinery./cle
-///
-/// The default `BlockSize` spans the entire range, so with the default block
-/// size **all iterations are fully inlined** as a single block and the compiler
-/// can optimise freely across the entire loop.
-/// Lvalue callables are preserved by reference, while rvalues are copied into
-/// a local instance for the duration of the loop.
-///
-/// ## Tuning `BlockSize` for register pressure
-///
-/// By default every iteration is fully inlined into the caller.  When the
-/// per-iteration body is heavy (hashing, FP chains, etc.) this can cause
-/// the compiler to interleave many iterations and spill registers.  Passing
-/// an explicit `BlockSize` partitions the loop into noinline blocks, each
-/// with its own register-allocation scope:
-///
-/// \code
-///   // Default: all 64 iterations fully inlined (compiler optimises freely)
-///   poet::static_for<0, 64>(func);
-///
-///   // Tuned: 8 noinline blocks of 8 (reduces register spills)
-///   poet::static_for<0, 64, 1, 8>(func);
-/// \endcode
-///
-///
+/// `func` may take `std::integral_constant<std::ptrdiff_t, I>` or expose
+/// `template <auto I> operator()()`. `BlockSize` defaults to the full range;
+/// pass a smaller value to isolate heavier bodies into separate outlined blocks.
 ///
 /// \tparam Begin Initial value of the range.
 /// \tparam End Exclusive terminator of the range.
@@ -130,14 +88,11 @@ POET_FORCEINLINE constexpr void static_for(Func &&func) {
     }
 }
 
-/// \brief Convenience overload for `static_for` iterating from 0 to `End`.
-///
-/// This is equivalent to `static_for<0, End>(func)`.
-///
-/// \tparam End Exclusive upper bound of the range.
-/// \param func Callable instance invoked once per iteration.
+#ifndef DOXYGEN_SHOULD_SKIP_THIS
+/// \brief Convenience overload for `static_for<0, End>(func)`.
 template<std::ptrdiff_t End, typename Func> POET_FORCEINLINE constexpr void static_for(Func &&func) {
     static_for<0, End>(std::forward<Func>(func));
 }
+#endif
 
 }// namespace poet
