@@ -1,0 +1,73 @@
+default_language_version:
+  python: python3
+
+repos:
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v19.1.6
+    hooks:
+      - id: clang-format
+        types_or: [c++, c]
+        exclude: '^(build.*|\.venv.*|docs/api/)'
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+        exclude: '^(docs/api/|\.gold\.hpp$)'
+      - id: trailing-whitespace
+        exclude: '^(docs/api/|\.md$)'
+        args: ['--markdown-linebreak-ext=md']
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+      - id: check-case-conflict
+      - id: check-illegal-windows-names
+      - id: check-yaml
+        exclude: '^\.github/workflows/.*\.yml$'
+      - id: check-yaml
+        name: Check GitHub Actions YAML
+        files: '^\.github/workflows/.*\.yml$'
+        args: ['--unsafe']
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+        exclude: '^docs/.*'
+      - id: check-symlinks
+      - id: destroyed-symlinks
+
+  - repo: https://github.com/BlankSpruce/gersemi
+    rev: 0.26.0
+    hooks:
+      - id: gersemi
+        exclude: '^(build.*|cmake/.*\.cmake\.in$)'
+        args:
+          - '--indent=2'
+          - '--line-length=100'
+          - '--quiet'
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.1
+    hooks:
+      - id: ruff
+        args: ['--fix', '--exit-non-zero-on-fix']
+      - id: ruff-format
+
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.21.0
+    hooks:
+      - id: markdownlint-cli2
+        exclude: '^(docs/api/)'
+        args: ['--config=.markdownlint.json']
+
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.10.0
+    hooks:
+      - id: rst-backticks
+        files: '\.rst$'
+      - id: rst-directive-colons
+        files: '\.rst$'
+      - id: rst-inline-touching-normal
+        files: '\.rst$'
+      - id: text-unicode-replacement-char
+
+ci:
+  skip: []

@@ -1,0 +1,182 @@
+# POET
+
+[![CI](https://github.com/DiamonDinoia/poet/actions/workflows/ci.yml/badge.svg)](https://github.com/DiamonDinoia/poet/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![C++ Standard](https://img.shields.io/badge/C%2B%2B-17%2B-lightblue)](https://en.cppreference.com/w/cpp/17)
+[![Coverage](https://codecov.io/gh/DiamonDinoia/poet/branch/main/graph/badge.svg)](https://codecov.io/gh/DiamonDinoia/poet)
+[![Docs Status](https://readthedocs.org/projects/poet/badge/?version=latest)](https://poet.readthedocs.io/en/latest/)
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json&repository=DiamonDinoia/poet)](https://codspeed.io/DiamonDinoia/poet)
+
+POET is a header-only C++ library for three related jobs:
+
+- `static_for`: compile-time unrolled loops
+- `dynamic_for`: runtime loops emitted as compile-time unrolled blocks
+- `dispatch` / `DispatchSet`: runtime-to-compile-time specialization
+
+It also includes `cpu_info` helpers for ISA, vector-width, and cache-line queries.
+
+## Why POET
+
+- Exposes loop structure and dispatch choices to the compiler without forcing you into handwritten template plumbing.
+- Keeps hot-path code specialized and inlinable while still accepting runtime choices.
+- Helps with the two common cases where compile-time information matters most:
+  - unrolled fixed-shape kernels
+  - runtime selection of a small set of optimized specializations
+- Stays lightweight: header-only, C++17+, and consumable from a normal CMake project.
+
+## Include
+
+```cpp
+#include <poet/poet.hpp>
+```
+
+## Examples
+
+### `static_for`
+
+```cpp
+poet::static_for<0, 4>([](auto I) {
+    constexpr int i = decltype(I)::value;
+    use_compile_time_index<i>();
+});
+```
+
+Use the optional fourth template parameter to break a large loop into smaller isolated blocks:
+
+```cpp
+poet::static_for<0, 64, 1, 8>([](auto I) {
+    work(decltype(I)::value);
+});
+```
+
+### `dynamic_for`
+
+```cpp
+poet::dynamic_for<4>(0u, n, [](std::size_t i) {
+    out[i] = f(i);
+});
+```
+
+For multi-accumulator kernels, use the lane-aware form:
+
+```cpp
+std::array<double, 4> acc{};
+poet::dynamic_for<4>(0u, n, [&](auto lane, std::size_t i) {
+    acc[decltype(lane)::value] += work(i);
+});
+```
+
+If the step is known at compile time, prefer the template overload:
+
+```cpp
+poet::dynamic_for<4, 2>(0, 16, [](int i) {
+    use(i); // 0, 2, 4, ..., 14
+});
+```
+
+The C++20 adaptor is eager and treats a range as a consecutive `[start, start + count)` sequence:
+
+```cpp
+auto r = std::views::iota(0) | std::views::take(10);
+r | poet::make_dynamic_for<4>([](int i) { use(i); });
+
+std::tuple{0, 24, 2} | poet::make_dynamic_for<4>([](int i) { use(i); });
+```
+
+### `dispatch`
+
+```cpp
+struct Impl {
+    template<int N>
+    int operator()(int x) const {
+        return N + x;
+    }
+};
+
+int choice = 2;
+int y = poet::dispatch(
+    Impl{},
+    poet::DispatchParam<poet::make_range<0, 4>>{choice},
+    10);
+```
+
+You can also pass a tuple of `DispatchParam`s:
+
+```cpp
+auto params = std::make_tuple(
+    poet::DispatchParam<poet::make_range<1, 4>>{rows},
+    poet::DispatchParam<poet::make_range<1, 4>>{cols});
+
+poet::dispatch(Kernel{}, params, data);
+```
+
+For sparse allowed combinations, use `DispatchSet`:
+
+```cpp
+using Shapes = poet::DispatchSet<int, poet::T<2, 2>, poet::T<4, 4>, poet::T<2, 4>>;
+poet::dispatch(MatMul{}, Shapes{rows, cols}, a, b, c);
+```
+
+If a missing match is an error, use `poet::throw_t`:
+
+```cpp
+auto value = poet::dispatch(
+    poet::throw_t,
+    Impl{},
+    poet::DispatchParam<poet::make_range<0, 4>>{choice},
+    10);
+```
+
+### `cpu_info`
+
+```cpp
+constexpr auto regs = poet::available_registers();
+constexpr auto line = poet::cache_line();
+```
+
+## Install
+
+POET is header-only. The simplest local integration is:
+
+```cmake
+add_subdirectory(path/to/poet)
+target_link_libraries(my_app PRIVATE poet::poet)
+```
+
+Installed-package usage:
+
+```cmake
+find_package(poet CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE poet::poet)
+```
+
+FetchContent usage:
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(
+  poet
+  GIT_REPOSITORY https://github.com/DiamonDinoia/poet.git
+  GIT_TAG main
+)
+FetchContent_MakeAvailable(poet)
+target_link_libraries(my_app PRIVATE poet::poet)
+```
+
+For non-CMake builds, add `include/` to your compiler include path.
+
+## Benchmarks
+
+POET ships with benchmarks for `static_for`, `dynamic_for`, and `dispatch`. The main takeaways are:
+
+- `dynamic_for` helps when lane-aware callbacks break dependency chains.
+- `static_for` benefits from tuned block sizes on heavier kernels.
+- `dispatch` helps when a runtime choice unlocks compile-time specialization.
+
+See [docs/guides/benchmarks.rst](docs/guides/benchmarks.rst) and the [CodSpeed dashboard](https://codspeed.io/DiamonDinoia/poet).
+
+## Docs
+
+- Guides and API docs: [poet.readthedocs.io](https://poet.readthedocs.io/en/latest/)
+- Install guide: [docs/install.rst](docs/install.rst)
+- API entry point: [include/poet/poet.hpp](include/poet/poet.hpp)
