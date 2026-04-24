@@ -28,7 +28,7 @@ The two-argument form exposes the lane within the current unrolled block:
 
    std::array<double, 4> acc{};
    poet::dynamic_for<4>(0u, n, [&](auto lane, std::size_t i) {
-       acc[decltype(lane)::value] += work(i);
+       acc[lane] += work(i);
    });
 
 This is the main performance-oriented use case. For trivial index-only work,

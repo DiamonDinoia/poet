@@ -25,7 +25,7 @@ Minimal examples:
 .. code-block:: cpp
 
    poet::static_for<0, 4>([](auto I) {
-       use_index<decltype(I)::value>();
+       use_index(I);
    });
 
    poet::dynamic_for<4>(0u, n, [](std::size_t i) {

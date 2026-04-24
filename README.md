@@ -36,8 +36,7 @@ It also includes `cpu_info` helpers for ISA, vector-width, and cache-line querie
 
 ```cpp
 poet::static_for<0, 4>([](auto I) {
-    constexpr int i = decltype(I)::value;
-    use_compile_time_index<i>();
+    use_compile_time_index(I);
 });
 ```
 
@@ -45,7 +44,7 @@ Use the optional fourth template parameter to break a large loop into smaller is
 
 ```cpp
 poet::static_for<0, 64, 1, 8>([](auto I) {
-    work(decltype(I)::value);
+    work(I);
 });
 ```
 
@@ -62,7 +61,7 @@ For multi-accumulator kernels, use the lane-aware form:
 ```cpp
 std::array<double, 4> acc{};
 poet::dynamic_for<4>(0u, n, [&](auto lane, std::size_t i) {
-    acc[decltype(lane)::value] += work(i);
+    acc[lane] += work(i);
 });
 ```
 

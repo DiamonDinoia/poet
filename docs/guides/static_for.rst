@@ -9,8 +9,7 @@ Basic form
 .. code-block:: cpp
 
    poet::static_for<0, 4>([](auto I) {
-       constexpr int i = decltype(I)::value;
-       use(i);
+       use(I);
    });
 
 The callable may also be a template call operator:
@@ -43,7 +42,7 @@ when a large body benefits from smaller outlined blocks:
 .. code-block:: cpp
 
    poet::static_for<0, 64, 1, 8>([](auto I) {
-       heavy_work(decltype(I)::value);
+       heavy_work(I);
    });
 
 Use this only when profiling shows register-pressure or compile-time issues.
