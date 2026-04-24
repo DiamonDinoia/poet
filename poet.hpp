@@ -359,6 +359,34 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 
 // END_FILE: include/poet/core/macros.hpp
 /* End inline (angle): include/poet/core/macros.hpp */
+/* Begin inline (angle): include/poet/version.hpp */
+// BEGIN_FILE: include/poet/version.hpp
+
+/// \file version.hpp
+/// \brief POET version macros and constants.
+///
+/// Generated from version.hpp.in by cmake/GenerateVersion.cmake.
+/// Do not edit by hand; re-run CMake configure or the pre-commit hook.
+
+// NOLINTBEGIN(cppcoreguidelines-macro-usage,cppcoreguidelines-macro-to-enum,modernize-macro-to-enum)
+#define POET_VERSION_MAJOR 0
+#define POET_VERSION_MINOR 0
+#define POET_VERSION_PATCH 0
+#define POET_VERSION_STRING "0.0.0"
+#define POET_VERSION_FULL "0.0.0-dev.79"
+// NOLINTEND(cppcoreguidelines-macro-usage,cppcoreguidelines-macro-to-enum,modernize-macro-to-enum)
+
+namespace poet {
+
+inline constexpr int version_major = POET_VERSION_MAJOR;
+inline constexpr int version_minor = POET_VERSION_MINOR;
+inline constexpr int version_patch = POET_VERSION_PATCH;
+inline constexpr const char *version_string = POET_VERSION_STRING;
+inline constexpr const char *version_full = POET_VERSION_FULL;
+
+}// namespace poet
+// END_FILE: include/poet/version.hpp
+/* End inline (angle): include/poet/version.hpp */
 /* Begin inline (angle): include/poet/core/cpu_info.hpp */
 // BEGIN_FILE: include/poet/core/cpu_info.hpp
 
@@ -1024,8 +1052,8 @@ POET_CPP20_CONSTEVAL auto compute_strides(const std::array<std::size_t, N> &dims
 
 namespace poet {
 
-/// \brief Concise tuple syntax for `DispatchSet`.
-template<auto... Vs> struct T {};
+/// \brief Concise tuple syntax for `dispatch_set`.
+template<auto... Vs> struct tuple_ {};
 
 namespace detail {
 
@@ -1075,23 +1103,24 @@ namespace detail {
     };
 
     template<int Start, int... Is>
-    auto make_range_impl(std::integer_sequence<int, Is...>) -> std::integer_sequence<int, (Start + Is)...>;
+    auto inclusive_range_impl(std::integer_sequence<int, Is...>) -> std::integer_sequence<int, (Start + Is)...>;
 
 }// namespace detail
 
 /// \brief Inclusive integer sequence `[Start, End]`.
 template<int Start, int End>
-using make_range = decltype(detail::make_range_impl<Start>(std::make_integer_sequence<int, End - Start + 1>{}));
+using inclusive_range =
+  decltype(detail::inclusive_range_impl<Start>(std::make_integer_sequence<int, End - Start + 1>{}));
 
 /// \brief Runtime value paired with the compile-time candidates to probe.
-template<typename Seq> struct DispatchParam {
+template<typename Seq> struct dispatch_param {
     int runtime_val;
     using seq_type = Seq;
 };
 
 namespace detail {
     template<typename T> struct is_dispatch_param : std::false_type {};
-    template<typename Seq> struct is_dispatch_param<DispatchParam<Seq>> : std::true_type {};
+    template<typename Seq> struct is_dispatch_param<dispatch_param<Seq>> : std::true_type {};
 
     template<typename T> inline constexpr bool is_dispatch_param_v = is_dispatch_param<std::decay_t<T>>::value;
 
@@ -1542,27 +1571,27 @@ namespace detail {
 }// namespace detail
 
 /// \brief Exact set of allowed tuples for sparse dispatch.
-template<typename ValueType, typename... Tuples> struct DispatchSet {
+template<typename ValueType, typename... Tuples> struct dispatch_set {
     template<typename TupleHelper> struct convert_tuple;
 
-    template<auto... Vs> struct convert_tuple<T<Vs...>> {
+    template<auto... Vs> struct convert_tuple<tuple_<Vs...>> {
         using type = std::integer_sequence<ValueType, static_cast<ValueType>(Vs)...>;
     };
 
     using seq_type = std::tuple<typename convert_tuple<Tuples>::type...>;
     using first_t = std::tuple_element_t<0, seq_type>;
 
-    static_assert(sizeof...(Tuples) >= 1, "DispatchSet requires at least one allowed tuple");
+    static_assert(sizeof...(Tuples) >= 1, "dispatch_set requires at least one allowed tuple");
 
     static constexpr std::size_t tuple_arity = detail::sequence_size<first_t>::value;
 
     template<typename S> struct same_arity : std::bool_constant<detail::sequence_size<S>::value == tuple_arity> {};
 
     static_assert((same_arity<typename convert_tuple<Tuples>::type>::value && ...),
-      "All tuples in DispatchSet must have the same arity");
+      "All tuples in dispatch_set must have the same arity");
 
     static_assert(detail::unique_helper<typename convert_tuple<Tuples>::type...>::value,
-      "DispatchSet contains duplicate allowed tuples");
+      "dispatch_set contains duplicate allowed tuples");
 
     using runtime_array_t = std::array<ValueType, tuple_arity>;
 
@@ -1571,7 +1600,7 @@ template<typename ValueType, typename... Tuples> struct DispatchSet {
 
   public:
     template<typename... Args, typename = std::enable_if_t<sizeof...(Args) == tuple_arity>>
-    explicit DispatchSet(Args &&...args) : runtime_val{ static_cast<ValueType>(std::forward<Args>(args))... } {}
+    explicit dispatch_set(Args &&...args) : runtime_val{ static_cast<ValueType>(std::forward<Args>(args))... } {}
 
     template<std::size_t... Idx> [[nodiscard]] auto runtime_tuple_impl(std::index_sequence<Idx...> /*idxs*/) const {
         return std::make_tuple(runtime_val[Idx]...);
@@ -1581,9 +1610,9 @@ template<typename ValueType, typename... Tuples> struct DispatchSet {
 };
 
 struct throw_on_no_match_t {};
-inline constexpr throw_on_no_match_t throw_t{};
+inline constexpr throw_on_no_match_t throw_on_no_match{};
 
-/// \brief Thrown when a `throw_t` dispatch has no matching specialization.
+/// \brief Thrown when a `throw_on_no_match` dispatch has no matching specialization.
 struct no_match_error : std::runtime_error {
     using std::runtime_error::runtime_error;
 };
@@ -1720,7 +1749,7 @@ namespace detail {
 
 /// \brief Dispatches runtime integers to compile-time specializations.
 ///
-/// Accepts either leading `DispatchParam` arguments or a tuple of them. On miss,
+/// Accepts either leading `dispatch_param` arguments or a tuple of them. On miss,
 /// the non-throwing overload returns `void` or a default-constructed result.
 template<typename Functor,
   typename FirstParam,
@@ -1734,7 +1763,7 @@ auto dispatch(Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward)
       functor, std::forward<FirstParam>(first_param), std::forward<Rest>(rest)...);
 }
 
-/// \brief Tuple overload for `DispatchParam` dispatch.
+/// \brief Tuple overload for `dispatch_param` dispatch.
 template<typename Functor,
   typename ParamTuple,
   typename... Args,
@@ -1795,28 +1824,26 @@ namespace detail {
     }
 }// namespace detail
 
-/// \brief Dispatches using a `DispatchSet`.
+/// \brief Dispatches using a `dispatch_set`.
 template<typename Functor, typename... Tuples, typename... Args>
-auto dispatch(Functor &&functor, const DispatchSet<Tuples...> &dispatch_set, Args &&...args) -> decltype(auto) {
+auto dispatch(Functor &&functor, const dispatch_set<Tuples...> &set, Args &&...args) -> decltype(auto) {
     return detail::dispatch_tuples_impl<false>(std::forward<Functor>(functor),
-      typename DispatchSet<Tuples...>::seq_type{},
-      dispatch_set.runtime_tuple(),
+      typename dispatch_set<Tuples...>::seq_type{},
+      set.runtime_tuple(),
       std::forward<Args>(args)...);
 }
 
-/// \brief Throwing overload for `DispatchSet` dispatch.
+/// \brief Throwing overload for `dispatch_set` dispatch.
 template<typename Functor, typename... Tuples, typename... Args>
-auto dispatch(throw_on_no_match_t /*tag*/,
-  Functor &&functor,
-  const DispatchSet<Tuples...> &dispatch_set,
-  Args &&...args) -> decltype(auto) {
+auto dispatch(throw_on_no_match_t /*tag*/, Functor &&functor, const dispatch_set<Tuples...> &set, Args &&...args)
+  -> decltype(auto) {
     return detail::dispatch_tuples_impl<true>(std::forward<Functor>(functor),
-      typename DispatchSet<Tuples...>::seq_type{},
-      dispatch_set.runtime_tuple(),
+      typename dispatch_set<Tuples...>::seq_type{},
+      set.runtime_tuple(),
       std::forward<Args>(args)...);
 }
 
-/// \brief Throwing `DispatchParam` overload.
+/// \brief Throwing `dispatch_param` overload.
 template<typename Functor,
   typename FirstParam,
   typename... Rest,
@@ -1830,7 +1857,7 @@ auto dispatch(throw_on_no_match_t /*tag*/,
       functor, std::forward<FirstParam>(first_param), std::forward<Rest>(rest)...);
 }
 
-/// \brief Throwing tuple overload for `DispatchParam` dispatch.
+/// \brief Throwing tuple overload for `dispatch_param` dispatch.
 template<typename Functor,
   typename ParamTuple,
   typename... Args,
