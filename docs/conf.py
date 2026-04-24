@@ -32,7 +32,7 @@ exhale_args = {
     "listingExclude": [
         r".*::detail::.*",
         r".*\\bdetail\\b.*",
-        r".*DispatchSet::convert_tuple.*",
+        r".*dispatch_set::convert_tuple.*",
         r"^poet::dispatch$",
         r"^poet::dynamic_for$",
         r"^poet::static_for$",

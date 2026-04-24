@@ -11,9 +11,10 @@ POET is a header-only C++ library for three related jobs:
 
 - `static_for`: compile-time unrolled loops
 - `dynamic_for`: runtime loops emitted as compile-time unrolled blocks
-- `dispatch` / `DispatchSet`: runtime-to-compile-time specialization
+- `dispatch` / `dispatch_set`: runtime-to-compile-time specialization
 
-It also includes `cpu_info` helpers for ISA, vector-width, and cache-line queries.
+It also exposes CPU detection helpers (`poet::available_registers()`, `poet::cache_line()`)
+for ISA, vector-width, and cache-line queries.
 
 ## Why POET
 
@@ -95,38 +96,38 @@ struct Impl {
 int choice = 2;
 int y = poet::dispatch(
     Impl{},
-    poet::DispatchParam<poet::make_range<0, 4>>{choice},
+    poet::dispatch_param<poet::inclusive_range<0, 4>>{choice},
     10);
 ```
 
-You can also pass a tuple of `DispatchParam`s:
+You can also pass a tuple of `dispatch_param`s:
 
 ```cpp
 auto params = std::make_tuple(
-    poet::DispatchParam<poet::make_range<1, 4>>{rows},
-    poet::DispatchParam<poet::make_range<1, 4>>{cols});
+    poet::dispatch_param<poet::inclusive_range<1, 4>>{rows},
+    poet::dispatch_param<poet::inclusive_range<1, 4>>{cols});
 
 poet::dispatch(Kernel{}, params, data);
 ```
 
-For sparse allowed combinations, use `DispatchSet`:
+For sparse allowed combinations, use `dispatch_set`:
 
 ```cpp
-using Shapes = poet::DispatchSet<int, poet::T<2, 2>, poet::T<4, 4>, poet::T<2, 4>>;
+using Shapes = poet::dispatch_set<int, poet::tuple_<2, 2>, poet::tuple_<4, 4>, poet::tuple_<2, 4>>;
 poet::dispatch(MatMul{}, Shapes{rows, cols}, a, b, c);
 ```
 
-If a missing match is an error, use `poet::throw_t`:
+If a missing match is an error, use `poet::throw_on_no_match`:
 
 ```cpp
 auto value = poet::dispatch(
-    poet::throw_t,
+    poet::throw_on_no_match,
     Impl{},
-    poet::DispatchParam<poet::make_range<0, 4>>{choice},
+    poet::dispatch_param<poet::inclusive_range<0, 4>>{choice},
     10);
 ```
 
-### `cpu_info`
+### CPU detection
 
 ```cpp
 constexpr auto regs = poet::available_registers();

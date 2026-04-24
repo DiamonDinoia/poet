@@ -21,15 +21,15 @@ struct simple_kernel {
 volatile int runtime_noise = 1;
 
 // 1D ranges
-using range_1d_contig = poet::make_range<1, 8>;
+using range_1d_contig = poet::inclusive_range<1, 8>;
 using range_1d_noncontig = std::integer_sequence<int, 1, 10, 20, 30, 40, 50, 60, 70>;
 
 // 2D ranges
-using range_2d_contig = poet::make_range<1, 8>;
+using range_2d_contig = poet::inclusive_range<1, 8>;
 using range_2d_noncontig = std::integer_sequence<int, 1, 10, 20, 30, 40, 50, 60, 70>;
 
 // 5D ranges (4 options each = table size 4^5 = 1024)
-using range_5d_contig = poet::make_range<0, 3>;
+using range_5d_contig = poet::inclusive_range<0, 3>;
 using range_5d_noncontig = std::integer_sequence<int, 0, 10, 20, 30>;
 
 int next_noise() {
@@ -46,7 +46,7 @@ int main(int argc, char **argv) {
         for (auto _ : state) {
             auto v = 3 + (next_noise() & 3);
             benchmark::DoNotOptimize(v);
-            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, poet::DispatchParam<range_1d_contig>{ v }, 2));
+            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, poet::dispatch_param<range_1d_contig>{ v }, 2));
         }
     })->MinTime(0.1);
 
@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
         for (auto _ : state) {
             auto v = 100 + next_noise();
             benchmark::DoNotOptimize(v);
-            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, poet::DispatchParam<range_1d_contig>{ v }, 2));
+            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, poet::dispatch_param<range_1d_contig>{ v }, 2));
         }
     })->MinTime(0.1);
 
@@ -63,7 +63,7 @@ int main(int argc, char **argv) {
             constexpr std::array<int, 4> vals{ 1, 20, 50, 70 };
             auto v = vals[next_noise() & 3];
             benchmark::DoNotOptimize(v);
-            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, poet::DispatchParam<range_1d_noncontig>{ v }, 2));
+            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, poet::dispatch_param<range_1d_noncontig>{ v }, 2));
         }
     })->MinTime(0.1);
 
@@ -71,7 +71,7 @@ int main(int argc, char **argv) {
         for (auto _ : state) {
             auto v = 5 + next_noise();
             benchmark::DoNotOptimize(v);
-            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, poet::DispatchParam<range_1d_noncontig>{ v }, 2));
+            benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, poet::dispatch_param<range_1d_noncontig>{ v }, 2));
         }
     })->MinTime(0.1);
 
@@ -83,7 +83,7 @@ int main(int argc, char **argv) {
             benchmark::DoNotOptimize(w);
             benchmark::DoNotOptimize(h);
             auto params =
-              std::make_tuple(poet::DispatchParam<range_2d_contig>{ w }, poet::DispatchParam<range_2d_contig>{ h });
+              std::make_tuple(poet::dispatch_param<range_2d_contig>{ w }, poet::dispatch_param<range_2d_contig>{ h });
             benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, params, 2));
         }
     })->MinTime(0.1);
@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
             benchmark::DoNotOptimize(w);
             benchmark::DoNotOptimize(h);
             auto params =
-              std::make_tuple(poet::DispatchParam<range_2d_contig>{ w }, poet::DispatchParam<range_2d_contig>{ h });
+              std::make_tuple(poet::dispatch_param<range_2d_contig>{ w }, poet::dispatch_param<range_2d_contig>{ h });
             benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, params, 2));
         }
     })->MinTime(0.1);
@@ -108,7 +108,7 @@ int main(int argc, char **argv) {
             benchmark::DoNotOptimize(w);
             benchmark::DoNotOptimize(h);
             auto params = std::make_tuple(
-              poet::DispatchParam<range_2d_noncontig>{ w }, poet::DispatchParam<range_2d_noncontig>{ h });
+              poet::dispatch_param<range_2d_noncontig>{ w }, poet::dispatch_param<range_2d_noncontig>{ h });
             benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, params, 2));
         }
     })->MinTime(0.1);
@@ -120,7 +120,7 @@ int main(int argc, char **argv) {
             benchmark::DoNotOptimize(w);
             benchmark::DoNotOptimize(h);
             auto params = std::make_tuple(
-              poet::DispatchParam<range_2d_noncontig>{ w }, poet::DispatchParam<range_2d_noncontig>{ h });
+              poet::dispatch_param<range_2d_noncontig>{ w }, poet::dispatch_param<range_2d_noncontig>{ h });
             benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, params, 2));
         }
     })->MinTime(0.1);
@@ -129,11 +129,11 @@ int main(int argc, char **argv) {
     benchmark::RegisterBenchmark("Dispatch/5D_contiguous_hit", [](benchmark::State &state) {
         for (auto _ : state) {
             const int n = next_noise();
-            auto params = std::make_tuple(poet::DispatchParam<range_5d_contig>{ (n + 0) & 3 },
-              poet::DispatchParam<range_5d_contig>{ (n + 1) & 3 },
-              poet::DispatchParam<range_5d_contig>{ (n + 2) & 3 },
-              poet::DispatchParam<range_5d_contig>{ (n + 3) & 3 },
-              poet::DispatchParam<range_5d_contig>{ (n + 4) & 3 });
+            auto params = std::make_tuple(poet::dispatch_param<range_5d_contig>{ (n + 0) & 3 },
+              poet::dispatch_param<range_5d_contig>{ (n + 1) & 3 },
+              poet::dispatch_param<range_5d_contig>{ (n + 2) & 3 },
+              poet::dispatch_param<range_5d_contig>{ (n + 3) & 3 },
+              poet::dispatch_param<range_5d_contig>{ (n + 4) & 3 });
             benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, params, 3));
         }
     })->MinTime(0.1);
@@ -141,11 +141,11 @@ int main(int argc, char **argv) {
     benchmark::RegisterBenchmark("Dispatch/5D_contiguous_miss", [](benchmark::State &state) {
         for (auto _ : state) {
             const int n = next_noise();
-            auto params = std::make_tuple(poet::DispatchParam<range_5d_contig>{ 5 },
-              poet::DispatchParam<range_5d_contig>{ (n + 1) & 3 },
-              poet::DispatchParam<range_5d_contig>{ (n + 2) & 3 },
-              poet::DispatchParam<range_5d_contig>{ (n + 3) & 3 },
-              poet::DispatchParam<range_5d_contig>{ (n + 4) & 3 });
+            auto params = std::make_tuple(poet::dispatch_param<range_5d_contig>{ 5 },
+              poet::dispatch_param<range_5d_contig>{ (n + 1) & 3 },
+              poet::dispatch_param<range_5d_contig>{ (n + 2) & 3 },
+              poet::dispatch_param<range_5d_contig>{ (n + 3) & 3 },
+              poet::dispatch_param<range_5d_contig>{ (n + 4) & 3 });
             benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, params, 3));
         }
     })->MinTime(0.1);
@@ -154,11 +154,11 @@ int main(int argc, char **argv) {
         for (auto _ : state) {
             constexpr std::array<int, 4> vals{ 0, 10, 20, 30 };
             const int n = next_noise();
-            auto params = std::make_tuple(poet::DispatchParam<range_5d_noncontig>{ vals[(n + 0) & 3] },
-              poet::DispatchParam<range_5d_noncontig>{ vals[(n + 1) & 3] },
-              poet::DispatchParam<range_5d_noncontig>{ vals[(n + 2) & 3] },
-              poet::DispatchParam<range_5d_noncontig>{ vals[(n + 3) & 3] },
-              poet::DispatchParam<range_5d_noncontig>{ vals[(n + 4) & 3] });
+            auto params = std::make_tuple(poet::dispatch_param<range_5d_noncontig>{ vals[(n + 0) & 3] },
+              poet::dispatch_param<range_5d_noncontig>{ vals[(n + 1) & 3] },
+              poet::dispatch_param<range_5d_noncontig>{ vals[(n + 2) & 3] },
+              poet::dispatch_param<range_5d_noncontig>{ vals[(n + 3) & 3] },
+              poet::dispatch_param<range_5d_noncontig>{ vals[(n + 4) & 3] });
             benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, params, 3));
         }
     })->MinTime(0.1);
@@ -167,11 +167,11 @@ int main(int argc, char **argv) {
         for (auto _ : state) {
             constexpr std::array<int, 4> vals{ 0, 10, 20, 30 };
             const int n = next_noise();
-            auto params = std::make_tuple(poet::DispatchParam<range_5d_noncontig>{ 5 },
-              poet::DispatchParam<range_5d_noncontig>{ vals[(n + 1) & 3] },
-              poet::DispatchParam<range_5d_noncontig>{ vals[(n + 2) & 3] },
-              poet::DispatchParam<range_5d_noncontig>{ vals[(n + 3) & 3] },
-              poet::DispatchParam<range_5d_noncontig>{ vals[(n + 4) & 3] });
+            auto params = std::make_tuple(poet::dispatch_param<range_5d_noncontig>{ 5 },
+              poet::dispatch_param<range_5d_noncontig>{ vals[(n + 1) & 3] },
+              poet::dispatch_param<range_5d_noncontig>{ vals[(n + 2) & 3] },
+              poet::dispatch_param<range_5d_noncontig>{ vals[(n + 3) & 3] },
+              poet::dispatch_param<range_5d_noncontig>{ vals[(n + 4) & 3] });
             benchmark::DoNotOptimize(poet::dispatch(simple_kernel{}, params, 3));
         }
     })->MinTime(0.1);

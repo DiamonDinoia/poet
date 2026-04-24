@@ -47,7 +47,7 @@ TEST_CASE("poet umbrella header exposes static_for", "[poet][header]") {
 TEST_CASE("poet umbrella header exposes dispatch", "[poet][header]") {
     int computed = -1;
     auto params = std::make_tuple(
-      poet::DispatchParam<poet::make_range<1, 4>>{ 2 }, poet::DispatchParam<poet::make_range<1, 4>>{ 3 });
+      poet::dispatch_param<poet::inclusive_range<1, 4>>{ 2 }, poet::dispatch_param<poet::inclusive_range<1, 4>>{ 3 });
 
     poet::dispatch(dispatch_probe{ &computed }, params, 5);
 

@@ -8,8 +8,8 @@ Core primitives
 
 - ``static_for``: compile-time unrolled loops over integer ranges
 - ``dynamic_for``: runtime loops emitted as compile-time unrolled blocks
-- ``dispatch`` / ``DispatchSet``: runtime choice mapped to compile-time specializations
-- ``cpu_info``: ISA, vector-width, and cache-line helpers
+- ``dispatch`` / ``dispatch_set``: runtime choice mapped to compile-time specializations
+- CPU detection: ISA, vector-width, and cache-line helpers (``poet::available_registers()``, ``poet::cache_line()``)
 
 Quick start
 -----------
@@ -34,13 +34,13 @@ Minimal examples:
 
    auto y = poet::dispatch(
        Kernel{},
-       poet::DispatchParam<poet::make_range<0, 4>>{choice},
+       poet::dispatch_param<poet::inclusive_range<0, 4>>{choice},
        x);
 
 Notes
 -----
 
-- ``poet::make_range<Start, End>`` is inclusive on both ends.
+- ``poet::inclusive_range<Start, End>`` is inclusive on both ends.
 - ``dynamic_for`` is most useful with the lane-aware callback form for multi-accumulator work.
 - The C++20 ``make_dynamic_for`` adaptor is eager.
 

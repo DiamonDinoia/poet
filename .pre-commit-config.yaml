@@ -7,7 +7,7 @@ repos:
     hooks:
       - id: clang-format
         types_or: [c++, c]
-        exclude: '^(build.*|\.venv.*|docs/api/)'
+        exclude: '^(build.*|\.venv.*|docs/api/|include/poet/version\.hpp$)'
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -68,6 +68,15 @@ repos:
       - id: rst-inline-touching-normal
         files: '\.rst$'
       - id: text-unicode-replacement-char
+
+  - repo: local
+    hooks:
+      - id: update-poet-version
+        name: Regenerate include/poet/version.hpp
+        entry: cmake -DCHECK=ON -P cmake/GenerateVersion.cmake
+        language: system
+        always_run: true
+        pass_filenames: false
 
 ci:
   skip: []

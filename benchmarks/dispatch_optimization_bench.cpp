@@ -75,7 +75,7 @@ template<std::size_t N> std::array<double, N> make_coeffs(std::uint32_t salt) {
     return c;
 }
 
-using dispatch_range = poet::make_range<4, 32>;
+using dispatch_range = poet::inclusive_range<4, 32>;
 
 // ── Bench helper ────────────────────────────────────────────────────────────
 
@@ -166,7 +166,7 @@ template<int N> void bench_pair(std::uint32_t salt) {
         };
         static_assert(N >= 4 && N <= 32, "N out of label range");
         reg(names[N - 4], [coeffs, x] {
-            return poet::dispatch(HornerDispatch{ coeffs.data(), x }, poet::DispatchParam<dispatch_range>{ N });
+            return poet::dispatch(HornerDispatch{ coeffs.data(), x }, poet::dispatch_param<dispatch_range>{ N });
         });
     }
 }

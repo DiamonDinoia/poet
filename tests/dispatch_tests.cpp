@@ -18,19 +18,19 @@
 // ============================================================================
 
 namespace {
-using poet::DispatchParam;
-using poet::DispatchSet;
+using poet::dispatch_param;
+using poet::dispatch_set;
 using poet::dispatch;
-using poet::make_range;
-using poet::T;
-using poet::throw_t;
+using poet::inclusive_range;
+using poet::tuple_;
+using poet::throw_on_no_match;
 
-static_assert(std::is_same_v<make_range<0, 0>, std::integer_sequence<int, 0>>,
-  "make_range should include the end value");
-static_assert(std::is_same_v<make_range<2, 4>, std::integer_sequence<int, 2, 3, 4>>,
-  "make_range should produce inclusive ranges");
-static_assert(std::is_same_v<make_range<-2, 1>, std::integer_sequence<int, -2, -1, 0, 1>>,
-  "make_range should support negative bounds");
+static_assert(std::is_same_v<inclusive_range<0, 0>, std::integer_sequence<int, 0>>,
+  "inclusive_range should include the end value");
+static_assert(std::is_same_v<inclusive_range<2, 4>, std::integer_sequence<int, 2, 3, 4>>,
+  "inclusive_range should produce inclusive ranges");
+static_assert(std::is_same_v<inclusive_range<-2, 1>, std::integer_sequence<int, -2, -1, 0, 1>>,
+  "inclusive_range should support negative bounds");
 
 struct vector_dispatcher {
     std::vector<int> *values;
@@ -98,7 +98,7 @@ struct accumulating_dispatcher {
     template<int N> void operator()(int add) const { *total += N + add; }
 };
 
-// DispatchSet tuple functors
+// dispatch_set tuple functors
 struct tuple_sum {
     template<int X, int Y> int operator()(int base) const { return base + X + Y; }
 };
@@ -124,7 +124,8 @@ struct quad_sum {
 
 TEST_CASE("dispatch routes to the matching template instantiation", "[static_dispatch]") {
     std::vector<int> values;
-    auto params = std::make_tuple(DispatchParam<make_range<0, 3>>{ 2 }, DispatchParam<make_range<-2, 1>>{ -1 });
+    auto params =
+      std::make_tuple(dispatch_param<inclusive_range<0, 3>>{ 2 }, dispatch_param<inclusive_range<-2, 1>>{ -1 });
 
     dispatch(vector_dispatcher{ &values }, params, 5);
 
@@ -132,9 +133,9 @@ TEST_CASE("dispatch routes to the matching template instantiation", "[static_dis
 }
 
 TEST_CASE("dispatch forwards runtime arguments to the functor", "[static_dispatch]") {
-    auto params = std::make_tuple(DispatchParam<make_range<0, 5>>{ 5 },
-      DispatchParam<make_range<1, 3>>{ 2 },
-      DispatchParam<make_range<-1, 1>>{ 0 });
+    auto params = std::make_tuple(dispatch_param<inclusive_range<0, 5>>{ 5 },
+      dispatch_param<inclusive_range<1, 3>>{ 2 },
+      dispatch_param<inclusive_range<-1, 1>>{ 0 });
 
     const auto result = dispatch(sum_dispatcher{}, params, 10);
 
@@ -143,7 +144,7 @@ TEST_CASE("dispatch forwards runtime arguments to the functor", "[static_dispatc
 
 TEST_CASE("dispatch returns default values when no match exists", "[static_dispatch]") {
     bool invoked = false;
-    auto params = std::make_tuple(DispatchParam<make_range<0, 2>>{ 3 });
+    auto params = std::make_tuple(dispatch_param<inclusive_range<0, 2>>{ 3 });
 
     const auto result = dispatch(guard_dispatcher{ &invoked }, params, 8);
 
@@ -153,7 +154,7 @@ TEST_CASE("dispatch returns default values when no match exists", "[static_dispa
 
 TEST_CASE("dispatch handles single-element ranges", "[static_dispatch]") {
     bool invoked = false;
-    auto params = std::make_tuple(DispatchParam<make_range<5, 5>>{ 5 });
+    auto params = std::make_tuple(dispatch_param<inclusive_range<5, 5>>{ 5 });
 
     const auto result = dispatch(guard_dispatcher{ &invoked }, params, 10);
 
@@ -165,22 +166,24 @@ TEST_CASE("dispatch handles boundary values in ranges", "[static_dispatch]") {
     std::vector<int> values;
 
     SECTION("minimum boundary") {
-        auto params = std::make_tuple(DispatchParam<make_range<0, 3>>{ 0 }, DispatchParam<make_range<-2, 1>>{ -2 });
+        auto params =
+          std::make_tuple(dispatch_param<inclusive_range<0, 3>>{ 0 }, dispatch_param<inclusive_range<-2, 1>>{ -2 });
         dispatch(vector_dispatcher{ &values }, params, 5);
         REQUIRE(values == std::vector<int>{ 3 });
     }
 
     SECTION("maximum boundary") {
-        auto params = std::make_tuple(DispatchParam<make_range<0, 3>>{ 3 }, DispatchParam<make_range<-2, 1>>{ 1 });
+        auto params =
+          std::make_tuple(dispatch_param<inclusive_range<0, 3>>{ 3 }, dispatch_param<inclusive_range<-2, 1>>{ 1 });
         dispatch(vector_dispatcher{ &values }, params, 5);
         REQUIRE(values == std::vector<int>{ 36 });
     }
 }
 
 TEST_CASE("dispatch handles all negative ranges", "[static_dispatch]") {
-    auto params = std::make_tuple(DispatchParam<make_range<-5, -2>>{ -3 },
-      DispatchParam<make_range<-10, -8>>{ -9 },
-      DispatchParam<make_range<-1, 0>>{ 0 });
+    auto params = std::make_tuple(dispatch_param<inclusive_range<-5, -2>>{ -3 },
+      dispatch_param<inclusive_range<-10, -8>>{ -9 },
+      dispatch_param<inclusive_range<-1, 0>>{ 0 });
 
     const auto result = dispatch(sum_dispatcher{}, params, 100);
 
@@ -189,7 +192,8 @@ TEST_CASE("dispatch handles all negative ranges", "[static_dispatch]") {
 
 TEST_CASE("dispatch handles ranges crossing zero", "[static_dispatch]") {
     std::vector<int> values;
-    auto params = std::make_tuple(DispatchParam<make_range<-3, 3>>{ 0 }, DispatchParam<make_range<-1, 1>>{ 0 });
+    auto params =
+      std::make_tuple(dispatch_param<inclusive_range<-3, 3>>{ 0 }, dispatch_param<inclusive_range<-1, 1>>{ 0 });
 
     dispatch(vector_dispatcher{ &values }, params, 7);
 
@@ -198,7 +202,8 @@ TEST_CASE("dispatch handles ranges crossing zero", "[static_dispatch]") {
 
 TEST_CASE("dispatch handles void return type explicitly", "[static_dispatch]") {
     std::vector<int> values;
-    auto params = std::make_tuple(DispatchParam<make_range<1, 2>>{ 1 }, DispatchParam<make_range<3, 4>>{ 4 });
+    auto params =
+      std::make_tuple(dispatch_param<inclusive_range<1, 2>>{ 1 }, dispatch_param<inclusive_range<3, 4>>{ 4 });
 
     dispatch(vector_dispatcher{ &values }, params, 0);
 
@@ -208,7 +213,8 @@ TEST_CASE("dispatch handles void return type explicitly", "[static_dispatch]") {
 
 TEST_CASE("dispatch handles multiple out-of-range parameters", "[static_dispatch]") {
     std::vector<int> values;
-    auto params = std::make_tuple(DispatchParam<make_range<0, 2>>{ 10 }, DispatchParam<make_range<5, 7>>{ 15 });
+    auto params =
+      std::make_tuple(dispatch_param<inclusive_range<0, 2>>{ 10 }, dispatch_param<inclusive_range<5, 7>>{ 15 });
 
     dispatch(vector_dispatcher{ &values }, params, 8);
 
@@ -222,7 +228,7 @@ TEST_CASE("dispatch handles non-contiguous sequences", "[static_dispatch][non-co
 
     SECTION("matches first element") {
         auto params =
-          std::make_tuple(DispatchParam<NonContiguousSeq>{ 1 }, DispatchParam<std::integer_sequence<int, 2, 5>>{ 2 });
+          std::make_tuple(dispatch_param<NonContiguousSeq>{ 1 }, dispatch_param<std::integer_sequence<int, 2, 5>>{ 2 });
 
         dispatch(vector_dispatcher{ &values }, params, 10);
         REQUIRE(values == std::vector<int>{ 22 });
@@ -230,15 +236,15 @@ TEST_CASE("dispatch handles non-contiguous sequences", "[static_dispatch][non-co
 
     SECTION("matches middle element") {
         auto params =
-          std::make_tuple(DispatchParam<NonContiguousSeq>{ 7 }, DispatchParam<std::integer_sequence<int, 2, 5>>{ 5 });
+          std::make_tuple(dispatch_param<NonContiguousSeq>{ 7 }, dispatch_param<std::integer_sequence<int, 2, 5>>{ 5 });
 
         dispatch(vector_dispatcher{ &values }, params, 10);
         REQUIRE(values == std::vector<int>{ 85 });
     }
 
     SECTION("matches last element") {
-        auto params =
-          std::make_tuple(DispatchParam<NonContiguousSeq>{ 12 }, DispatchParam<std::integer_sequence<int, 2, 5>>{ 2 });
+        auto params = std::make_tuple(
+          dispatch_param<NonContiguousSeq>{ 12 }, dispatch_param<std::integer_sequence<int, 2, 5>>{ 2 });
 
         dispatch(vector_dispatcher{ &values }, params, 10);
         REQUIRE(values == std::vector<int>{ 132 });
@@ -246,7 +252,7 @@ TEST_CASE("dispatch handles non-contiguous sequences", "[static_dispatch][non-co
 
     SECTION("value between sequence elements fails") {
         bool invoked = false;
-        auto params = std::make_tuple(DispatchParam<NonContiguousSeq>{ 5 });
+        auto params = std::make_tuple(dispatch_param<NonContiguousSeq>{ 5 });
 
         const auto result = dispatch(guard_dispatcher{ &invoked }, params, 10);
         REQUIRE(result == 0);
@@ -258,7 +264,7 @@ TEST_CASE("dispatch handles mixed contiguous and non-contiguous sequences", "[st
     using NonContiguousSeq = std::integer_sequence<int, 0, 10, 20>;
 
     std::vector<int> values;
-    auto params = std::make_tuple(DispatchParam<NonContiguousSeq>{ 10 }, DispatchParam<make_range<1, 3>>{ 2 });
+    auto params = std::make_tuple(dispatch_param<NonContiguousSeq>{ 10 }, dispatch_param<inclusive_range<1, 3>>{ 2 });
 
     dispatch(vector_dispatcher{ &values }, params, 5);
     REQUIRE(values == std::vector<int>{ 107 });
@@ -267,7 +273,7 @@ TEST_CASE("dispatch handles mixed contiguous and non-contiguous sequences", "[st
 TEST_CASE("dispatch deterministic with duplicate sequence values", "[static_dispatch][duplicates]") {
     int out = 0;
     using DupSeq = std::integer_sequence<int, 5, 7, 5>;
-    auto params = std::make_tuple(DispatchParam<DupSeq>{ 5 });
+    auto params = std::make_tuple(dispatch_param<DupSeq>{ 5 });
 
     dispatch(duplicate_reporter{ &out }, params);
 
@@ -278,7 +284,7 @@ TEST_CASE("dispatch handles negative non-contiguous sequences", "[static_dispatc
     using NegativeSeq = std::integer_sequence<int, -10, -5, 0, 7>;
 
     bool invoked = false;
-    auto params = std::make_tuple(DispatchParam<NegativeSeq>{ -5 });
+    auto params = std::make_tuple(dispatch_param<NegativeSeq>{ -5 });
 
     const auto result = dispatch(guard_dispatcher{ &invoked }, params, 20);
     REQUIRE(result == 15);
@@ -286,33 +292,35 @@ TEST_CASE("dispatch handles negative non-contiguous sequences", "[static_dispatc
 }
 
 // ============================================================================
-// Variadic dispatch form (DispatchParam args directly, no std::make_tuple)
+// Variadic dispatch form (dispatch_param args directly, no std::make_tuple)
 // ============================================================================
 
 TEST_CASE("dispatch variadic form 1D", "[static_dispatch][variadic]") {
     bool invoked = false;
-    const auto result = dispatch(guard_dispatcher{ &invoked }, DispatchParam<make_range<0, 5>>{ 3 }, 10);
+    const auto result = dispatch(guard_dispatcher{ &invoked }, dispatch_param<inclusive_range<0, 5>>{ 3 }, 10);
     REQUIRE(result == 13);
     REQUIRE(invoked);
 }
 
 TEST_CASE("dispatch variadic form 2D", "[static_dispatch][variadic]") {
     std::vector<int> values;
-    dispatch(
-      vector_dispatcher{ &values }, DispatchParam<make_range<0, 3>>{ 2 }, DispatchParam<make_range<-2, 1>>{ -1 }, 5);
+    dispatch(vector_dispatcher{ &values },
+      dispatch_param<inclusive_range<0, 3>>{ 2 },
+      dispatch_param<inclusive_range<-2, 1>>{ -1 },
+      5);
     REQUIRE(values == std::vector<int>{ 24 });
 }
 
 TEST_CASE("dispatch variadic form no match", "[static_dispatch][variadic]") {
     bool invoked = false;
-    const auto result = dispatch(guard_dispatcher{ &invoked }, DispatchParam<make_range<0, 2>>{ 10 }, 5);
+    const auto result = dispatch(guard_dispatcher{ &invoked }, dispatch_param<inclusive_range<0, 2>>{ 10 }, 5);
     REQUIRE(result == 0);
     REQUIRE_FALSE(invoked);
 }
 
 TEST_CASE("dispatch variadic form with no extra args", "[static_dispatch][variadic]") {
     int out = 0;
-    dispatch(duplicate_reporter{ &out }, DispatchParam<make_range<3, 7>>{ 5 });
+    dispatch(duplicate_reporter{ &out }, dispatch_param<inclusive_range<3, 7>>{ 5 });
     REQUIRE(out == 5);
 }
 
@@ -324,7 +332,7 @@ TEST_CASE("dispatch sparse 1D iterates all values", "[static_dispatch][sparse]")
     using Sparse = std::integer_sequence<int, 1, 5, 10, 50>;
     for (int val : { 1, 5, 10, 50 }) {
         bool invoked = false;
-        const auto result = dispatch(guard_dispatcher{ &invoked }, DispatchParam<Sparse>{ val }, 0);
+        const auto result = dispatch(guard_dispatcher{ &invoked }, dispatch_param<Sparse>{ val }, 0);
         REQUIRE(result == val);
         REQUIRE(invoked);
     }
@@ -334,7 +342,7 @@ TEST_CASE("dispatch sparse 1D miss between values", "[static_dispatch][sparse]")
     using Sparse = std::integer_sequence<int, 1, 5, 10, 50>;
     for (int val : { 0, 2, 6, 11, 49, 51 }) {
         bool invoked = false;
-        const auto result = dispatch(guard_dispatcher{ &invoked }, DispatchParam<Sparse>{ val }, 0);
+        const auto result = dispatch(guard_dispatcher{ &invoked }, dispatch_param<Sparse>{ val }, 0);
         REQUIRE(result == 0);
         REQUIRE_FALSE(invoked);
     }
@@ -349,7 +357,7 @@ TEST_CASE("dispatch strided sparse 1D hits all values", "[static_dispatch][spars
     using StridedSeq = std::integer_sequence<int, 0, 10, 20>;
     for (int val : { 0, 10, 20 }) {
         bool invoked = false;
-        const auto result = dispatch(guard_dispatcher{ &invoked }, DispatchParam<StridedSeq>{ val }, 0);
+        const auto result = dispatch(guard_dispatcher{ &invoked }, dispatch_param<StridedSeq>{ val }, 0);
         REQUIRE(result == val);
         REQUIRE(invoked);
     }
@@ -360,19 +368,19 @@ TEST_CASE("dispatch strided sparse 1D miss cases", "[static_dispatch][sparse][st
     // negative diff (below first)
     {
         bool inv = false;
-        REQUIRE(dispatch(guard_dispatcher{ &inv }, DispatchParam<StridedSeq>{ -5 }, 0) == 0);
+        REQUIRE(dispatch(guard_dispatcher{ &inv }, dispatch_param<StridedSeq>{ -5 }, 0) == 0);
         REQUIRE_FALSE(inv);
     }
     // in range but not a multiple of stride
     {
         bool inv = false;
-        REQUIRE(dispatch(guard_dispatcher{ &inv }, DispatchParam<StridedSeq>{ 5 }, 0) == 0);
+        REQUIRE(dispatch(guard_dispatcher{ &inv }, dispatch_param<StridedSeq>{ 5 }, 0) == 0);
         REQUIRE_FALSE(inv);
     }
     // beyond last element (idx >= unique_count)
     {
         bool inv = false;
-        REQUIRE(dispatch(guard_dispatcher{ &inv }, DispatchParam<StridedSeq>{ 30 }, 0) == 0);
+        REQUIRE(dispatch(guard_dispatcher{ &inv }, dispatch_param<StridedSeq>{ 30 }, 0) == 0);
         REQUIRE_FALSE(inv);
     }
 }
@@ -386,7 +394,7 @@ TEST_CASE("dispatch non-strided sparse 1D hits all values", "[static_dispatch][s
     using UnequalSeq = std::integer_sequence<int, 1, 3, 7>;
     for (int val : { 1, 3, 7 }) {
         bool invoked = false;
-        const auto result = dispatch(guard_dispatcher{ &invoked }, DispatchParam<UnequalSeq>{ val }, 0);
+        const auto result = dispatch(guard_dispatcher{ &invoked }, dispatch_param<UnequalSeq>{ val }, 0);
         REQUIRE(result == val);
         REQUIRE(invoked);
     }
@@ -396,7 +404,7 @@ TEST_CASE("dispatch non-strided sparse 1D miss cases", "[static_dispatch][sparse
     using UnequalSeq = std::integer_sequence<int, 1, 3, 7>;
     for (int val : { 0, 2, 4, 5, 6, 8 }) {
         bool invoked = false;
-        const auto result = dispatch(guard_dispatcher{ &invoked }, DispatchParam<UnequalSeq>{ val }, 0);
+        const auto result = dispatch(guard_dispatcher{ &invoked }, dispatch_param<UnequalSeq>{ val }, 0);
         REQUIRE(result == 0);
         REQUIRE_FALSE(invoked);
     }
@@ -410,11 +418,11 @@ TEST_CASE("dispatch with stateful functor", "[static_dispatch][stateful]") {
     int total = 0;
     accumulating_dispatcher func{ &total };
 
-    auto p1 = std::make_tuple(DispatchParam<make_range<0, 5>>{ 2 });
+    auto p1 = std::make_tuple(dispatch_param<inclusive_range<0, 5>>{ 2 });
     dispatch(func, p1, 10);
     REQUIRE(total == 12);// 2 + 10
 
-    auto p2 = std::make_tuple(DispatchParam<make_range<0, 5>>{ 4 });
+    auto p2 = std::make_tuple(dispatch_param<inclusive_range<0, 5>>{ 4 });
     dispatch(func, p2, 100);
     REQUIRE(total == 116);// 12 + 4 + 100
 }
@@ -423,111 +431,113 @@ TEST_CASE("dispatch with stateful functor", "[static_dispatch][stateful]") {
 // Throw tests
 // ============================================================================
 
-TEST_CASE("dispatch throws when no match exists with throw_t (non-void)", "[static_dispatch][throw]") {
+TEST_CASE("dispatch throws when no match exists with throw_on_no_match (non-void)", "[static_dispatch][throw]") {
     bool invoked = false;
-    auto params = std::make_tuple(DispatchParam<make_range<0, 2>>{ 3 });
+    auto params = std::make_tuple(dispatch_param<inclusive_range<0, 2>>{ 3 });
 
-    REQUIRE_THROWS_AS(dispatch(poet::throw_t, guard_dispatcher{ &invoked }, params, 8), std::runtime_error);
+    REQUIRE_THROWS_AS(dispatch(poet::throw_on_no_match, guard_dispatcher{ &invoked }, params, 8), std::runtime_error);
 
     REQUIRE_FALSE(invoked);
 }
 
-TEST_CASE("dispatch throws when no match exists with throw_t (void)", "[static_dispatch][throw]") {
+TEST_CASE("dispatch throws when no match exists with throw_on_no_match (void)", "[static_dispatch][throw]") {
     std::vector<int> values;
-    auto params = std::make_tuple(DispatchParam<make_range<1, 2>>{ 3 }, DispatchParam<make_range<3, 4>>{ 4 });
+    auto params =
+      std::make_tuple(dispatch_param<inclusive_range<1, 2>>{ 3 }, dispatch_param<inclusive_range<3, 4>>{ 4 });
 
-    REQUIRE_THROWS_AS(dispatch(poet::throw_t, vector_dispatcher{ &values }, params, 0), std::runtime_error);
+    REQUIRE_THROWS_AS(dispatch(poet::throw_on_no_match, vector_dispatcher{ &values }, params, 0), std::runtime_error);
 
     REQUIRE(values.empty());
 }
 
-TEST_CASE("dispatch with throw_t succeeds on valid match", "[static_dispatch][throw]") {
+TEST_CASE("dispatch with throw_on_no_match succeeds on valid match", "[static_dispatch][throw]") {
     bool invoked = false;
-    auto params = std::make_tuple(DispatchParam<make_range<0, 5>>{ 3 });
+    auto params = std::make_tuple(dispatch_param<inclusive_range<0, 5>>{ 3 });
 
-    const auto result = dispatch(poet::throw_t, guard_dispatcher{ &invoked }, params, 100);
+    const auto result = dispatch(poet::throw_on_no_match, guard_dispatcher{ &invoked }, params, 100);
 
     REQUIRE(invoked);
     REQUIRE(result == 103);
 }
 
-TEST_CASE("dispatch with throw_t handles multiple parameters correctly", "[static_dispatch][throw]") {
-    auto params = std::make_tuple(DispatchParam<make_range<1, 3>>{ 2 },
-      DispatchParam<make_range<5, 7>>{ 6 },
-      DispatchParam<make_range<10, 12>>{ 11 });
+TEST_CASE("dispatch with throw_on_no_match handles multiple parameters correctly", "[static_dispatch][throw]") {
+    auto params = std::make_tuple(dispatch_param<inclusive_range<1, 3>>{ 2 },
+      dispatch_param<inclusive_range<5, 7>>{ 6 },
+      dispatch_param<inclusive_range<10, 12>>{ 11 });
 
-    const auto result = dispatch(poet::throw_t, sum_dispatcher{}, params, 100);
+    const auto result = dispatch(poet::throw_on_no_match, sum_dispatcher{}, params, 100);
     REQUIRE(result == 119);
 
-    auto bad_params1 = std::make_tuple(DispatchParam<make_range<1, 3>>{ 0 },
-      DispatchParam<make_range<5, 7>>{ 6 },
-      DispatchParam<make_range<10, 12>>{ 11 });
-    REQUIRE_THROWS_AS(dispatch(poet::throw_t, sum_dispatcher{}, bad_params1, 100), std::runtime_error);
+    auto bad_params1 = std::make_tuple(dispatch_param<inclusive_range<1, 3>>{ 0 },
+      dispatch_param<inclusive_range<5, 7>>{ 6 },
+      dispatch_param<inclusive_range<10, 12>>{ 11 });
+    REQUIRE_THROWS_AS(dispatch(poet::throw_on_no_match, sum_dispatcher{}, bad_params1, 100), std::runtime_error);
 }
 
-TEST_CASE("dispatch with throw_t handles boundary values", "[static_dispatch][throw]") {
+TEST_CASE("dispatch with throw_on_no_match handles boundary values", "[static_dispatch][throw]") {
     bool invoked = false;
-    auto params = std::make_tuple(DispatchParam<make_range<-10, -5>>{ -10 });
+    auto params = std::make_tuple(dispatch_param<inclusive_range<-10, -5>>{ -10 });
 
-    const auto result1 = dispatch(poet::throw_t, guard_dispatcher{ &invoked }, params, 50);
+    const auto result1 = dispatch(poet::throw_on_no_match, guard_dispatcher{ &invoked }, params, 50);
     REQUIRE(invoked);
     REQUIRE(result1 == 40);
 
     invoked = false;
-    auto params2 = std::make_tuple(DispatchParam<make_range<-10, -5>>{ -5 });
+    auto params2 = std::make_tuple(dispatch_param<inclusive_range<-10, -5>>{ -5 });
 
-    const auto result2 = dispatch(poet::throw_t, guard_dispatcher{ &invoked }, params2, 50);
+    const auto result2 = dispatch(poet::throw_on_no_match, guard_dispatcher{ &invoked }, params2, 50);
     REQUIRE(invoked);
     REQUIRE(result2 == 45);
 
-    auto params3 = std::make_tuple(DispatchParam<make_range<-10, -5>>{ -11 });
-    REQUIRE_THROWS_AS(dispatch(poet::throw_t, guard_dispatcher{ &invoked }, params3, 50), std::runtime_error);
+    auto params3 = std::make_tuple(dispatch_param<inclusive_range<-10, -5>>{ -11 });
+    REQUIRE_THROWS_AS(dispatch(poet::throw_on_no_match, guard_dispatcher{ &invoked }, params3, 50), std::runtime_error);
 
-    auto params4 = std::make_tuple(DispatchParam<make_range<-10, -5>>{ -4 });
-    REQUIRE_THROWS_AS(dispatch(poet::throw_t, guard_dispatcher{ &invoked }, params4, 50), std::runtime_error);
+    auto params4 = std::make_tuple(dispatch_param<inclusive_range<-10, -5>>{ -4 });
+    REQUIRE_THROWS_AS(dispatch(poet::throw_on_no_match, guard_dispatcher{ &invoked }, params4, 50), std::runtime_error);
 }
 
-TEST_CASE("dispatch with throw_t preserves return type deduction", "[static_dispatch][throw]") {
-    auto params = std::make_tuple(DispatchParam<make_range<1, 5>>{ 3 });
+TEST_CASE("dispatch with throw_on_no_match preserves return type deduction", "[static_dispatch][throw]") {
+    auto params = std::make_tuple(dispatch_param<inclusive_range<1, 5>>{ 3 });
 
-    const auto result = dispatch(poet::throw_t, return_type_dispatcher{}, params, 2.5);
+    const auto result = dispatch(poet::throw_on_no_match, return_type_dispatcher{}, params, 2.5);
 
     static_assert(std::is_same_v<decltype(result), const double>, "Return type should be double");
     REQUIRE(result == 7.5);
 }
 
-TEST_CASE("dispatch with throw_t variadic form", "[static_dispatch][throw][variadic]") {
+TEST_CASE("dispatch with throw_on_no_match variadic form", "[static_dispatch][throw][variadic]") {
     bool invoked = false;
 
     SECTION("throws on miss") {
         REQUIRE_THROWS_AS(
-          dispatch(poet::throw_t, guard_dispatcher{ &invoked }, DispatchParam<make_range<0, 2>>{ 10 }, 5),
+          dispatch(
+            poet::throw_on_no_match, guard_dispatcher{ &invoked }, dispatch_param<inclusive_range<0, 2>>{ 10 }, 5),
           std::runtime_error);
         REQUIRE_FALSE(invoked);
     }
 
     SECTION("succeeds on hit") {
-        const auto result =
-          dispatch(poet::throw_t, guard_dispatcher{ &invoked }, DispatchParam<make_range<0, 5>>{ 3 }, 10);
+        const auto result = dispatch(
+          poet::throw_on_no_match, guard_dispatcher{ &invoked }, dispatch_param<inclusive_range<0, 5>>{ 3 }, 10);
         REQUIRE(invoked);
         REQUIRE(result == 13);
     }
 }
 
-TEST_CASE("dispatch with throw_t tuple form", "[static_dispatch][throw][tuple]") {
-    auto params = std::make_tuple(DispatchParam<make_range<0, 3>>{ 2 });
+TEST_CASE("dispatch with throw_on_no_match tuple form", "[static_dispatch][throw][tuple]") {
+    auto params = std::make_tuple(dispatch_param<inclusive_range<0, 3>>{ 2 });
 
     SECTION("succeeds on hit") {
         bool invoked = false;
-        const auto result = dispatch(poet::throw_t, guard_dispatcher{ &invoked }, params, 10);
+        const auto result = dispatch(poet::throw_on_no_match, guard_dispatcher{ &invoked }, params, 10);
         REQUIRE(result == 12);
         REQUIRE(invoked);
     }
 
     SECTION("throws on miss") {
-        auto bad = std::make_tuple(DispatchParam<make_range<0, 3>>{ 10 });
+        auto bad = std::make_tuple(dispatch_param<inclusive_range<0, 3>>{ 10 });
         bool invoked = false;
-        REQUIRE_THROWS_AS(dispatch(poet::throw_t, guard_dispatcher{ &invoked }, bad, 5), std::runtime_error);
+        REQUIRE_THROWS_AS(dispatch(poet::throw_on_no_match, guard_dispatcher{ &invoked }, bad, 5), std::runtime_error);
         REQUIRE_FALSE(invoked);
     }
 }
@@ -537,7 +547,7 @@ TEST_CASE("dispatch with throw_t tuple form", "[static_dispatch][throw][tuple]")
 // ============================================================================
 
 TEST_CASE("dispatch preserves return value types correctly", "[static_dispatch]") {
-    auto params = std::make_tuple(DispatchParam<make_range<1, 5>>{ 3 });
+    auto params = std::make_tuple(dispatch_param<inclusive_range<1, 5>>{ 3 });
     const auto result = dispatch(return_type_dispatcher{}, params, 2.5);
 
     REQUIRE(result == 7.5);
@@ -545,20 +555,20 @@ TEST_CASE("dispatch preserves return value types correctly", "[static_dispatch]"
 }
 
 TEST_CASE("dispatch return type is double at runtime", "[static_dispatch][type]") {
-    auto params = std::make_tuple(DispatchParam<make_range<1, 5>>{ 3 });
+    auto params = std::make_tuple(dispatch_param<inclusive_range<1, 5>>{ 3 });
     auto result = dispatch(return_type_dispatcher{}, params, 2.5);
     REQUIRE(typeid(result) == typeid(double));
 }
 
 TEST_CASE("dispatch handles move-only return types", "[static_dispatch][move-only]") {
-    auto params = std::make_tuple(DispatchParam<make_range<0, 2>>{ 1 });
+    auto params = std::make_tuple(dispatch_param<inclusive_range<0, 2>>{ 1 });
     auto result = dispatch(mover{}, params, 10);
     REQUIRE(result);
     REQUIRE(*result == 11);
 }
 
 TEST_CASE("dispatch forwards move-only arguments", "[static_dispatch][forwarding]") {
-    auto params = std::make_tuple(DispatchParam<make_range<1, 1>>{ 1 });
+    auto params = std::make_tuple(dispatch_param<inclusive_range<1, 1>>{ 1 });
 
     std::unique_ptr<int> p = std::make_unique<int>(7);
     auto result = dispatch(receiver{}, params, std::move(p));
@@ -571,7 +581,7 @@ TEST_CASE("dispatch moderate table stress", "[static_dispatch][stress]") {
 
     int out = 0;
 
-    auto params = std::make_tuple(DispatchParam<A>{ 3 }, DispatchParam<B>{ 4 });
+    auto params = std::make_tuple(dispatch_param<A>{ 3 }, dispatch_param<B>{ 4 });
     dispatch(probe{ &out }, params, 100);
     REQUIRE(out == 107);
 }
@@ -580,7 +590,7 @@ TEST_CASE("dispatch handles contiguous descending sequence", "[static_dispatch][
     std::vector<int> values;
     using Desc = std::integer_sequence<int, 6, 5, 4, 3, 2, 1, 0>;
     for (int v : { 6, 5, 4, 3, 2, 1, 0 }) {
-        auto params = std::make_tuple(DispatchParam<Desc>{ v }, DispatchParam<make_range<0, 0>>{ 0 });
+        auto params = std::make_tuple(dispatch_param<Desc>{ v }, dispatch_param<inclusive_range<0, 0>>{ 0 });
         dispatch(vector_dispatcher{ &values }, params, 5);
     }
     REQUIRE(values == std::vector<int>{ 65, 55, 45, 35, 25, 15, 5 });
@@ -589,16 +599,16 @@ TEST_CASE("dispatch handles contiguous descending sequence", "[static_dispatch][
 TEST_CASE("dispatch 1D descending contiguous sequence (seq_lookup path)", "[static_dispatch][contiguous-descending]") {
     using Desc = std::integer_sequence<int, 5, 4, 3, 2, 1>;
     int total = 0;
-    for (int v : { 5, 4, 3, 2, 1 }) { dispatch(accumulating_dispatcher{ &total }, DispatchParam<Desc>{ v }, 0); }
+    for (int v : { 5, 4, 3, 2, 1 }) { dispatch(accumulating_dispatcher{ &total }, dispatch_param<Desc>{ v }, 0); }
     REQUIRE(total == 1 + 2 + 3 + 4 + 5);
 }
 
 TEST_CASE("dispatch 1D descending out-of-range returns default", "[static_dispatch][contiguous-descending]") {
     using Desc = std::integer_sequence<int, 5, 4, 3, 2, 1>;
     bool invoked = false;
-    dispatch(guard_dispatcher{ &invoked }, DispatchParam<Desc>{ 0 }, 0);
+    dispatch(guard_dispatcher{ &invoked }, dispatch_param<Desc>{ 0 }, 0);
     REQUIRE_FALSE(invoked);
-    dispatch(guard_dispatcher{ &invoked }, DispatchParam<Desc>{ 6 }, 0);
+    dispatch(guard_dispatcher{ &invoked }, dispatch_param<Desc>{ 6 }, 0);
     REQUIRE_FALSE(invoked);
 }
 
@@ -606,7 +616,7 @@ TEST_CASE("dispatch 2D both-descending contiguous sequences (fused path)", "[sta
     std::vector<int> values;
     using D1 = std::integer_sequence<int, 3, 2, 1>;
     using D2 = std::integer_sequence<int, 2, 1, 0>;
-    auto params = std::make_tuple(DispatchParam<D1>{ 2 }, DispatchParam<D2>{ 1 });
+    auto params = std::make_tuple(dispatch_param<D1>{ 2 }, dispatch_param<D2>{ 1 });
     dispatch(vector_dispatcher{ &values }, params, 0);
     // Width=2, Height=1, scale=0: 0 + 2*10 + 1 = 21
     REQUIRE(values == std::vector<int>{ 21 });
@@ -615,7 +625,7 @@ TEST_CASE("dispatch 2D both-descending contiguous sequences (fused path)", "[sta
 TEST_CASE("dispatch preserved non-throwing behavior with nothrow_on_no_match (non-void)",
   "[static_dispatch][nothrow]") {
     bool invoked = false;
-    auto params = std::make_tuple(DispatchParam<make_range<0, 2>>{ 3 });
+    auto params = std::make_tuple(dispatch_param<inclusive_range<0, 2>>{ 3 });
 
     const auto result = dispatch(guard_dispatcher{ &invoked }, params, 8);
 
@@ -625,7 +635,8 @@ TEST_CASE("dispatch preserved non-throwing behavior with nothrow_on_no_match (no
 
 TEST_CASE("dispatch preserved non-throwing behavior with nothrow_on_no_match (void)", "[static_dispatch][nothrow]") {
     std::vector<int> values;
-    auto params = std::make_tuple(DispatchParam<make_range<1, 2>>{ 3 }, DispatchParam<make_range<3, 4>>{ 4 });
+    auto params =
+      std::make_tuple(dispatch_param<inclusive_range<1, 2>>{ 3 }, dispatch_param<inclusive_range<3, 4>>{ 4 });
 
     REQUIRE_NOTHROW(dispatch(vector_dispatcher{ &values }, params, 0));
 
@@ -636,7 +647,7 @@ TEST_CASE("dispatch with single-value repeated sequence", "[static_dispatch][edg
     using RepeatedSeq = std::integer_sequence<int, 5, 5, 5, 5>;
     bool invoked = false;
 
-    auto params = std::make_tuple(DispatchParam<RepeatedSeq>{ 5 });
+    auto params = std::make_tuple(dispatch_param<RepeatedSeq>{ 5 });
     const auto result = dispatch(guard_dispatcher{ &invoked }, params, 10);
 
     REQUIRE(result == 15);
@@ -644,15 +655,17 @@ TEST_CASE("dispatch with single-value repeated sequence", "[static_dispatch][edg
 }
 
 TEST_CASE("dispatch with value-argument form (integral_constant parameters)", "[static_dispatch][value-args]") {
-    auto params = std::make_tuple(DispatchParam<make_range<0, 3>>{ 2 }, DispatchParam<make_range<0, 3>>{ 1 });
+    auto params =
+      std::make_tuple(dispatch_param<inclusive_range<0, 3>>{ 2 }, dispatch_param<inclusive_range<0, 3>>{ 1 });
     const auto result = dispatch(value_arg_functor{}, params, 5);
 
     REQUIRE(result == 26);
 }
 
 TEST_CASE("dispatch 3D (triple dispatch)", "[static_dispatch][3d]") {
-    auto params = std::make_tuple(
-      DispatchParam<make_range<0, 2>>{ 1 }, DispatchParam<make_range<0, 2>>{ 2 }, DispatchParam<make_range<0, 2>>{ 0 });
+    auto params = std::make_tuple(dispatch_param<inclusive_range<0, 2>>{ 1 },
+      dispatch_param<inclusive_range<0, 2>>{ 2 },
+      dispatch_param<inclusive_range<0, 2>>{ 0 });
 
     const auto result = dispatch(triple_dispatcher{}, params, 5);
     REQUIRE(result == 125);
@@ -660,7 +673,7 @@ TEST_CASE("dispatch 3D (triple dispatch)", "[static_dispatch][3d]") {
 
 TEST_CASE("dispatch exception safety", "[static_dispatch][exception]") {
     int count = 0;
-    auto params = std::make_tuple(DispatchParam<make_range<0, 5>>{ 3 });
+    auto params = std::make_tuple(dispatch_param<inclusive_range<0, 5>>{ 3 });
 
     try {
         dispatch(throwing_dispatcher{ &count }, params, 2);
@@ -672,14 +685,14 @@ TEST_CASE("dispatch with single-element non-contiguous sequence", "[static_dispa
     using SingleSeq = std::integer_sequence<int, 42>;
     bool invoked = false;
 
-    auto params = std::make_tuple(DispatchParam<SingleSeq>{ 42 });
+    auto params = std::make_tuple(dispatch_param<SingleSeq>{ 42 });
     const auto result = dispatch(guard_dispatcher{ &invoked }, params, 100);
 
     REQUIRE(result == 142);
     REQUIRE(invoked);
 
     invoked = false;
-    auto params2 = std::make_tuple(DispatchParam<SingleSeq>{ 41 });
+    auto params2 = std::make_tuple(dispatch_param<SingleSeq>{ 41 });
     const auto result2 = dispatch(guard_dispatcher{ &invoked }, params2, 100);
 
     REQUIRE(result2 == 0);
@@ -687,27 +700,27 @@ TEST_CASE("dispatch with single-element non-contiguous sequence", "[static_dispa
 }
 
 // ============================================================================
-// DispatchSet / tuple tests
+// dispatch_set / tuple tests
 // ============================================================================
 
-TEST_CASE("DispatchSet matches exact allowed tuples", "[static_dispatch][tuples]") {
-    using DS = DispatchSet<int, T<1, 2>, T<2, 4>>;
+TEST_CASE("dispatch_set matches exact allowed tuples", "[static_dispatch][tuples]") {
+    using DS = dispatch_set<int, tuple_<1, 2>, tuple_<2, 4>>;
     auto ds = DS(2, 4);
 
     const auto result = dispatch(tuple_sum{}, ds, 10);
     REQUIRE(result == 16);
 }
 
-TEST_CASE("DispatchSet returns default when no match", "[static_dispatch][tuples]") {
-    using DS = DispatchSet<int, T<1, 2>, T<2, 4>>;
+TEST_CASE("dispatch_set returns default when no match", "[static_dispatch][tuples]") {
+    using DS = dispatch_set<int, tuple_<1, 2>, tuple_<2, 4>>;
     auto ds = DS(3, 3);
 
     const auto result = dispatch(tuple_sum{}, ds, 5);
     REQUIRE(result == 0);
 }
 
-TEST_CASE("DispatchSet supports void return and side-effects", "[static_dispatch][tuples]") {
-    using DS = DispatchSet<int, T<0, 0>, T<5, 7>>;
+TEST_CASE("dispatch_set supports void return and side-effects", "[static_dispatch][tuples]") {
+    using DS = dispatch_set<int, tuple_<0, 0>, tuple_<5, 7>>;
     auto ds = DS(5, 7);
     int out = 0;
 
@@ -715,56 +728,56 @@ TEST_CASE("DispatchSet supports void return and side-effects", "[static_dispatch
     REQUIRE(out == 15);
 }
 
-TEST_CASE("DispatchSet throws when requested and no match", "[static_dispatch][tuples][throw]") {
-    using DS = DispatchSet<int, T<1, 1>>;
+TEST_CASE("dispatch_set throws when requested and no match", "[static_dispatch][tuples][throw]") {
+    using DS = dispatch_set<int, tuple_<1, 1>>;
     auto ds = DS(9, 9);
 
     // cppcheck-suppress unknownMacro
-    REQUIRE_THROWS_AS(dispatch(throw_t, tuple_sum{}, ds, 0), std::runtime_error);
+    REQUIRE_THROWS_AS(dispatch(throw_on_no_match, tuple_sum{}, ds, 0), std::runtime_error);
 }
 
-TEST_CASE("DispatchSet with throw_t succeeds on valid match", "[static_dispatch][tuples][throw]") {
-    using DS = DispatchSet<int, T<1, 2>, T<3, 4>, T<5, 6>>;
+TEST_CASE("dispatch_set with throw_on_no_match succeeds on valid match", "[static_dispatch][tuples][throw]") {
+    using DS = dispatch_set<int, tuple_<1, 2>, tuple_<3, 4>, tuple_<5, 6>>;
     auto ds = DS(3, 4);
 
-    const auto result = dispatch(throw_t, tuple_sum{}, ds, 10);
+    const auto result = dispatch(throw_on_no_match, tuple_sum{}, ds, 10);
     REQUIRE(result == 17);// 10 + 3 + 4
 }
 
-TEST_CASE("DispatchSet with throw_t handles multiple valid tuples", "[static_dispatch][tuples][throw]") {
-    using DS = DispatchSet<int, T<1, 2>, T<3, 4>, T<5, 6>>;
+TEST_CASE("dispatch_set with throw_on_no_match handles multiple valid tuples", "[static_dispatch][tuples][throw]") {
+    using DS = dispatch_set<int, tuple_<1, 2>, tuple_<3, 4>, tuple_<5, 6>>;
 
     auto ds1 = DS(1, 2);
-    REQUIRE(dispatch(throw_t, tuple_sum{}, ds1, 0) == 3);
+    REQUIRE(dispatch(throw_on_no_match, tuple_sum{}, ds1, 0) == 3);
 
     auto ds2 = DS(3, 4);
-    REQUIRE(dispatch(throw_t, tuple_sum{}, ds2, 0) == 7);
+    REQUIRE(dispatch(throw_on_no_match, tuple_sum{}, ds2, 0) == 7);
 
     auto ds3 = DS(5, 6);
-    REQUIRE(dispatch(throw_t, tuple_sum{}, ds3, 0) == 11);
+    REQUIRE(dispatch(throw_on_no_match, tuple_sum{}, ds3, 0) == 11);
 
     auto ds_invalid = DS(2, 3);
-    REQUIRE_THROWS_AS(dispatch(throw_t, tuple_sum{}, ds_invalid, 0), std::runtime_error);
+    REQUIRE_THROWS_AS(dispatch(throw_on_no_match, tuple_sum{}, ds_invalid, 0), std::runtime_error);
 }
 
-TEST_CASE("DispatchSet with throw_t handles void return type", "[static_dispatch][tuples][throw]") {
-    using DS = DispatchSet<int, T<1, 2>, T<3, 4>>;
+TEST_CASE("dispatch_set with throw_on_no_match handles void return type", "[static_dispatch][tuples][throw]") {
+    using DS = dispatch_set<int, tuple_<1, 2>, tuple_<3, 4>>;
 
     int result = 0;
     auto ds1 = DS(1, 2);
-    dispatch(throw_t, tuple_voider{ &result }, ds1, 100);
+    dispatch(throw_on_no_match, tuple_voider{ &result }, ds1, 100);
     REQUIRE(result == 103);// 100 + 1 + 2
 
     auto ds2 = DS(3, 4);
-    dispatch(throw_t, tuple_voider{ &result }, ds2, 50);
+    dispatch(throw_on_no_match, tuple_voider{ &result }, ds2, 50);
     REQUIRE(result == 57);// 50 + 3 + 4
 
     auto ds_invalid = DS(2, 3);
-    REQUIRE_THROWS_AS(dispatch(throw_t, tuple_voider{ &result }, ds_invalid, 100), std::runtime_error);
+    REQUIRE_THROWS_AS(dispatch(throw_on_no_match, tuple_voider{ &result }, ds_invalid, 100), std::runtime_error);
 }
 
-TEST_CASE("DispatchSet with 3-tuples", "[static_dispatch][tuples][arity-3]") {
-    using DS = DispatchSet<int, T<1, 2, 3>, T<4, 5, 6>, T<7, 8, 9>>;
+TEST_CASE("dispatch_set with 3-tuples", "[static_dispatch][tuples][arity-3]") {
+    using DS = dispatch_set<int, tuple_<1, 2, 3>, tuple_<4, 5, 6>, tuple_<7, 8, 9>>;
 
     auto ds1 = DS(1, 2, 3);
     REQUIRE(dispatch(::triple_sum{}, ds1, 10) == 16);
@@ -779,8 +792,8 @@ TEST_CASE("DispatchSet with 3-tuples", "[static_dispatch][tuples][arity-3]") {
     REQUIRE(dispatch(::triple_sum{}, ds_invalid, 10) == 0);
 }
 
-TEST_CASE("DispatchSet with 4-tuples", "[static_dispatch][tuples][arity-4]") {
-    using DS = DispatchSet<int, T<1, 2, 3, 4>, T<5, 6, 7, 8>>;
+TEST_CASE("dispatch_set with 4-tuples", "[static_dispatch][tuples][arity-4]") {
+    using DS = dispatch_set<int, tuple_<1, 2, 3, 4>, tuple_<5, 6, 7, 8>>;
 
     auto ds1 = DS(1, 2, 3, 4);
     REQUIRE(dispatch(::quad_sum{}, ds1, 100) == 110);
@@ -789,8 +802,8 @@ TEST_CASE("DispatchSet with 4-tuples", "[static_dispatch][tuples][arity-4]") {
     REQUIRE(dispatch(::quad_sum{}, ds2, 100) == 126);
 }
 
-TEST_CASE("DispatchSet with negative values", "[static_dispatch][tuples][negative]") {
-    using DS = DispatchSet<int, T<-1, -2>, T<-5, -10>, T<0, 0>>;
+TEST_CASE("dispatch_set with negative values", "[static_dispatch][tuples][negative]") {
+    using DS = dispatch_set<int, tuple_<-1, -2>, tuple_<-5, -10>, tuple_<0, 0>>;
 
     auto ds1 = DS(-1, -2);
     REQUIRE(dispatch(tuple_sum{}, ds1, 10) == 7);
@@ -802,8 +815,8 @@ TEST_CASE("DispatchSet with negative values", "[static_dispatch][tuples][negativ
     REQUIRE(dispatch(tuple_sum{}, ds3, 5) == 5);
 }
 
-TEST_CASE("DispatchSet with mixed positive and negative values", "[static_dispatch][tuples][mixed]") {
-    using DS = DispatchSet<int, T<-5, 10>, T<3, -7>, T<0, 0>>;
+TEST_CASE("dispatch_set with mixed positive and negative values", "[static_dispatch][tuples][mixed]") {
+    using DS = dispatch_set<int, tuple_<-5, 10>, tuple_<3, -7>, tuple_<0, 0>>;
 
     auto ds1 = DS(-5, 10);
     REQUIRE(dispatch(tuple_sum{}, ds1, 100) == 105);
@@ -815,8 +828,8 @@ TEST_CASE("DispatchSet with mixed positive and negative values", "[static_dispat
     REQUIRE(dispatch(tuple_sum{}, ds3, 10) == 10);
 }
 
-TEST_CASE("DispatchSet with single allowed tuple", "[static_dispatch][tuples][single]") {
-    using DS = DispatchSet<int, T<42, 84>>;
+TEST_CASE("dispatch_set with single allowed tuple", "[static_dispatch][tuples][single]") {
+    using DS = dispatch_set<int, tuple_<42, 84>>;
 
     auto ds_valid = DS(42, 84);
     REQUIRE(dispatch(tuple_sum{}, ds_valid, 100) == 226);
@@ -825,14 +838,14 @@ TEST_CASE("DispatchSet with single allowed tuple", "[static_dispatch][tuples][si
     REQUIRE(dispatch(tuple_sum{}, ds_invalid, 100) == 0);
 }
 
-TEST_CASE("DispatchSet with 3-tuples and throw_t", "[static_dispatch][tuples][arity-3][throw]") {
-    using DS = DispatchSet<int, T<1, 2, 3>, T<4, 5, 6>>;
+TEST_CASE("dispatch_set with 3-tuples and throw_on_no_match", "[static_dispatch][tuples][arity-3][throw]") {
+    using DS = dispatch_set<int, tuple_<1, 2, 3>, tuple_<4, 5, 6>>;
 
     auto ds_valid = DS(1, 2, 3);
-    REQUIRE(dispatch(throw_t, ::triple_sum{}, ds_valid, 10) == 16);
+    REQUIRE(dispatch(throw_on_no_match, ::triple_sum{}, ds_valid, 10) == 16);
 
     auto ds_invalid = DS(1, 2, 4);
-    REQUIRE_THROWS_AS(dispatch(throw_t, ::triple_sum{}, ds_invalid, 10), std::runtime_error);
+    REQUIRE_THROWS_AS(dispatch(throw_on_no_match, ::triple_sum{}, ds_invalid, 10), std::runtime_error);
 }
 
 TEST_CASE("dispatch_tuples_impl matches correct tuple", "[static_dispatch][tuples][internal]") {
@@ -862,11 +875,11 @@ TEST_CASE("dispatch_tuples_impl throws on no match with ThrowOnNoMatch", "[stati
 TEST_CASE("dispatch fills array using runtime index (lambda)", "[static_dispatch][array]") {
     constexpr int N = 8;
     int arr[N] = {};
-    using Seq = make_range<0, N - 1>;
+    using Seq = inclusive_range<0, N - 1>;
 
     for (int i = 0; i < N; ++i) {
         auto setter = [&arr](auto I) { arr[I] = I; };
-        auto params = std::make_tuple(DispatchParam<Seq>{ i });
+        auto params = std::make_tuple(dispatch_param<Seq>{ i });
         dispatch(setter, params);
     }
 
@@ -877,7 +890,7 @@ TEST_CASE("dispatch sets selected random indexes only", "[static_dispatch][array
     constexpr int N = 16;
     constexpr int M = 5;
     int arr[N] = {};
-    using Seq = make_range<0, N - 1>;
+    using Seq = inclusive_range<0, N - 1>;
 
     std::mt19937 rng(12345);
     std::uniform_int_distribution<int> dist(0, N - 1);
@@ -886,7 +899,7 @@ TEST_CASE("dispatch sets selected random indexes only", "[static_dispatch][array
 
     for (int idx : picks) {
         auto setter = [&arr](auto I) { arr[I] = I; };
-        auto params = std::make_tuple(DispatchParam<Seq>{ idx });
+        auto params = std::make_tuple(dispatch_param<Seq>{ idx });
         dispatch(setter, params);
     }
 
@@ -907,7 +920,7 @@ TEST_CASE("dispatch loop over non-contiguous sequence", "[static_dispatch][array
 
     for (int idx : indices) {
         auto setter = [&arr](auto I) { arr[I] = I; };
-        auto params = std::make_tuple(DispatchParam<Seq>{ idx });
+        auto params = std::make_tuple(dispatch_param<Seq>{ idx });
         dispatch(setter, params);
     }
 
@@ -928,7 +941,7 @@ TEST_CASE("dispatch non-contiguous subset set", "[static_dispatch][array][non-co
 
     for (int idx : set_indices) {
         auto setter = [&arr](auto I) { arr[I] = I; };
-        auto params = std::make_tuple(DispatchParam<Seq>{ idx });
+        auto params = std::make_tuple(dispatch_param<Seq>{ idx });
         dispatch(setter, params);
     }
 
@@ -949,8 +962,8 @@ TEST_CASE("dispatch 2D sets selected random indexes only (lambda ND)", "[static_
     constexpr int N2 = 4;
     constexpr int M = 5;
     std::array<std::array<int, N2>, N1> arr{};
-    using Seq1 = make_range<0, N1 - 1>;
-    using Seq2 = make_range<0, N2 - 1>;
+    using Seq1 = inclusive_range<0, N1 - 1>;
+    using Seq2 = inclusive_range<0, N2 - 1>;
 
     std::mt19937 rng(12345);
     std::uniform_int_distribution<int> dist1(0, N1 - 1);
@@ -964,7 +977,7 @@ TEST_CASE("dispatch 2D sets selected random indexes only (lambda ND)", "[static_
         auto setter = [&arr](auto I, auto J) {
             arr[static_cast<std::size_t>(I)][static_cast<std::size_t>(J)] = I * 100 + J;
         };
-        auto params = std::make_tuple(DispatchParam<Seq1>{ x }, DispatchParam<Seq2>{ y });
+        auto params = std::make_tuple(dispatch_param<Seq1>{ x }, dispatch_param<Seq2>{ y });
         dispatch(setter, params);
     }
 
@@ -996,7 +1009,7 @@ TEST_CASE("dispatch loop over non-contiguous sequences (lambda ND)", "[static_di
             auto setter = [&arr](auto I, auto J) {
                 arr[static_cast<std::size_t>(I)][static_cast<std::size_t>(J)] = I * 10 + J;
             };
-            auto params = std::make_tuple(DispatchParam<Seq1>{ a }, DispatchParam<Seq2>{ b });
+            auto params = std::make_tuple(dispatch_param<Seq1>{ a }, dispatch_param<Seq2>{ b });
             dispatch(setter, params);
         }
     }
@@ -1025,7 +1038,7 @@ TEST_CASE("dispatch non-contiguous subset set (lambda ND)", "[static_dispatch][a
     for (const auto &p : set_pairs) {
         auto setter = [&arr](
                         auto I, auto J) { arr[static_cast<std::size_t>(I)][static_cast<std::size_t>(J)] = I * 10 + J; };
-        auto params = std::make_tuple(DispatchParam<Seq1>{ p.first }, DispatchParam<Seq2>{ p.second });
+        auto params = std::make_tuple(dispatch_param<Seq1>{ p.first }, dispatch_param<Seq2>{ p.second });
         dispatch(setter, params);
     }
 
@@ -1045,13 +1058,13 @@ TEST_CASE("dispatch non-contiguous subset set (lambda ND)", "[static_dispatch][a
 // ============================================================================
 
 TEST_CASE("dispatch ND lambda returns std::vector", "[static_dispatch][return][nd][vector]") {
-    using Seq1 = make_range<0, 2>;
-    using Seq2 = make_range<0, 2>;
+    using Seq1 = inclusive_range<0, 2>;
+    using Seq2 = inclusive_range<0, 2>;
 
     for (int i = 0; i <= 2; ++i) {
         for (int j = 0; j <= 2; ++j) {
             auto setter = [](auto I, auto J) -> std::vector<int> { return std::vector<int>{ I, J }; };
-            auto params = std::make_tuple(DispatchParam<Seq1>{ i }, DispatchParam<Seq2>{ j });
+            auto params = std::make_tuple(dispatch_param<Seq1>{ i }, dispatch_param<Seq2>{ j });
             auto vec = dispatch(setter, params);
             REQUIRE(vec == std::vector<int>{ i, j });
         }
@@ -1064,8 +1077,8 @@ TEST_CASE("dispatch ND lambda sets separate arrays and returns std::vector",
     constexpr int N2 = 4;
     std::array<std::array<int, N2>, N1> arrI{};
     std::array<std::array<int, N2>, N1> arrJ{};
-    using Seq1 = make_range<0, N1 - 1>;
-    using Seq2 = make_range<0, N2 - 1>;
+    using Seq1 = inclusive_range<0, N1 - 1>;
+    using Seq2 = inclusive_range<0, N2 - 1>;
 
     std::vector<std::pair<int, int>> picks = { { 1, 2 }, { 3, 0 } };
     std::unordered_set<int> pick_set;
@@ -1077,7 +1090,7 @@ TEST_CASE("dispatch ND lambda sets separate arrays and returns std::vector",
             arrJ[static_cast<std::size_t>(I)][static_cast<std::size_t>(J)] = J;
             return std::vector<int>{ I, J };
         };
-        auto params = std::make_tuple(DispatchParam<Seq1>{ p.first }, DispatchParam<Seq2>{ p.second });
+        auto params = std::make_tuple(dispatch_param<Seq1>{ p.first }, dispatch_param<Seq2>{ p.second });
         auto vec = dispatch(setter, params);
         REQUIRE(vec == std::vector<int>{ p.first, p.second });
     }
@@ -1098,8 +1111,8 @@ TEST_CASE("dispatch ND lambda sets separate arrays and returns std::vector",
 
 TEST_CASE("dispatch ND lambda returns NonTrivial (non-trivially copyable)",
   "[static_dispatch][return][nd][nontrivial]") {
-    using Seq1 = make_range<0, 2>;
-    using Seq2 = make_range<0, 2>;
+    using Seq1 = inclusive_range<0, 2>;
+    using Seq2 = inclusive_range<0, 2>;
 
     struct NonTrivial {
         std::vector<int> v;
@@ -1112,7 +1125,7 @@ TEST_CASE("dispatch ND lambda returns NonTrivial (non-trivially copyable)",
     for (int i = 0; i <= 2; ++i) {
         for (int j = 0; j <= 2; ++j) {
             auto setter = [](auto I, auto J) -> NonTrivial { return NonTrivial(I, J); };
-            auto params = std::make_tuple(DispatchParam<Seq1>{ i }, DispatchParam<Seq2>{ j });
+            auto params = std::make_tuple(dispatch_param<Seq1>{ i }, dispatch_param<Seq2>{ j });
             auto nt = dispatch(setter, params);
             REQUIRE(nt == NonTrivial(i, j));
         }
@@ -1120,15 +1133,15 @@ TEST_CASE("dispatch ND lambda returns NonTrivial (non-trivially copyable)",
 }
 
 TEST_CASE("dispatch ND lambda returns move-only unique_ptr<vector>", "[static_dispatch][return][nd][move-only]") {
-    using Seq1 = make_range<0, 2>;
-    using Seq2 = make_range<0, 2>;
+    using Seq1 = inclusive_range<0, 2>;
+    using Seq2 = inclusive_range<0, 2>;
 
     for (int i = 0; i <= 2; ++i) {
         for (int j = 0; j <= 2; ++j) {
             auto setter = [](auto I, auto J) -> std::unique_ptr<std::vector<int>> {
                 return std::make_unique<std::vector<int>>(std::initializer_list<int>{ I, J });
             };
-            auto params = std::make_tuple(DispatchParam<Seq1>{ i }, DispatchParam<Seq2>{ j });
+            auto params = std::make_tuple(dispatch_param<Seq1>{ i }, dispatch_param<Seq2>{ j });
             auto p = dispatch(setter, params);
             REQUIRE(*p == std::vector<int>{ i, j });
         }
@@ -1136,8 +1149,8 @@ TEST_CASE("dispatch ND lambda returns move-only unique_ptr<vector>", "[static_di
 }
 
 TEST_CASE("dispatch ND lambda returns pointer (lvalue)", "[static_dispatch][return][nd][ptr]") {
-    using Seq1 = make_range<0, 2>;
-    using Seq2 = make_range<0, 2>;
+    using Seq1 = inclusive_range<0, 2>;
+    using Seq2 = inclusive_range<0, 2>;
 
     constexpr int N1 = 3;
     constexpr int N2 = 3;
@@ -1151,7 +1164,7 @@ TEST_CASE("dispatch ND lambda returns pointer (lvalue)", "[static_dispatch][retu
             auto setter = [&arr](auto I, auto J) -> int * {
                 return &arr[static_cast<std::size_t>(I)][static_cast<std::size_t>(J)];
             };
-            auto params = std::make_tuple(DispatchParam<Seq1>{ i }, DispatchParam<Seq2>{ j });
+            auto params = std::make_tuple(dispatch_param<Seq1>{ i }, dispatch_param<Seq2>{ j });
             int *p = dispatch(setter, params);
             *p = i * 100 + j;
             REQUIRE(arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] == i * 100 + j);

@@ -134,7 +134,7 @@ struct dispatch_kernel {
     template<int V> int operator()(int scale) const { return dispatch_work(V, scale); }
 };
 
-using dispatch_range = poet::make_range<1, 8>;
+using dispatch_range = poet::inclusive_range<1, 8>;
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Section 2: Vectorization Probe
@@ -310,7 +310,7 @@ int main(int argc, char **argv) {
                 auto v = 1 + (next_noise() & 7);
                 benchmark::DoNotOptimize(v);
                 benchmark::DoNotOptimize(
-                  poet::dispatch(dispatch_kernel{}, poet::DispatchParam<dispatch_range>{ v }, 2));
+                  poet::dispatch(dispatch_kernel{}, poet::dispatch_param<dispatch_range>{ v }, 2));
             }
         })->MinTime(0.1);
     }

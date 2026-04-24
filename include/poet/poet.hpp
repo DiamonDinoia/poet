@@ -7,6 +7,7 @@
 // Include order matters: macros.hpp must come first and undef_macros.hpp last.
 // NOLINTBEGIN(llvm-include-order)
 #include <poet/core/macros.hpp>
+#include <poet/version.hpp>
 #include <poet/core/cpu_info.hpp>
 #include <poet/core/dynamic_for.hpp>
 #include <poet/core/dispatch.hpp>
