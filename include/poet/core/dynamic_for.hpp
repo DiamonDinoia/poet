@@ -43,6 +43,8 @@ namespace detail {
         func(index);
     }
 
+    // Emits `Count` calls as a single expanded pack; the comma-fold carries `index` forward
+    // so each lane sees a distinct compile-time `Lane` and the running runtime `index`.
     template<typename FormTag, typename Callable, typename T, std::size_t... Lanes>
     POET_FORCEINLINE constexpr void
       emit_carried(Callable &callable, T index, T stride, std::index_sequence<Lanes...> /*seq*/) {
@@ -69,18 +71,26 @@ namespace detail {
         if constexpr (Count > 0) { emit_carried_ct<Step, FormTag>(callable, base, std::make_index_sequence<Count>{}); }
     }
 
+    // Handles a leftover count in [0, N) by emitting at most log2(N) fixed-size unrolled
+    // blocks — picks the largest power of two <= N/2, optionally emits it, then recurses on
+    // the remainder. Each level has a compile-time `half`, so codegen stays fully unrolled.
     template<std::size_t N, typename FormTag, typename Callable, typename T>
     POET_FORCEINLINE void tail_binary(std::size_t count, Callable &callable, T index, T stride) {
         if constexpr (N <= 1) {
         } else {
+            // Largest power of two strictly less than N — the block size we might emit here.
             constexpr std::size_t half = []() constexpr -> std::size_t {
                 std::size_t pow2 = 1;
                 while (pow2 * 2 < N) { pow2 *= 2; }
                 return pow2;
             }();
+            // If this level fires, it consumes exactly `half` iterations; otherwise all
+            // `count` pass through to the smaller level.
             const std::size_t rem = (count >= half) ? (count - half) : count;
             tail_binary<half, FormTag>(rem, callable, index, stride);
             if (count >= half) {
+                // Smaller blocks run first over the low indices; this block picks up at
+                // `index + rem*stride` so iteration order is preserved.
                 emit_block<FormTag, Callable, T, half>(
                   FormTag{}, callable, static_cast<T>(index + (static_cast<T>(rem) * stride)), stride);
             }
@@ -117,6 +127,9 @@ namespace detail {
 
     POET_PUSH_OPTIMIZE
 
+    // Handles signed and unsigned-wrapped-negative strides uniformly. For unsigned T, a
+    // "negative" stride arrives as a large positive value (> half_max); we detect and flip
+    // it so both directions share the same (dist + |stride| - 1) / |stride| ceiling formula.
     template<typename T>
     POET_FORCEINLINE constexpr auto calculate_iteration_count_complex(T begin, T end, T stride) -> std::size_t {
         constexpr bool is_unsigned = !std::is_signed_v<T>;
@@ -124,11 +137,13 @@ namespace detail {
         const bool is_wrapped_negative = is_unsigned && (stride > half_max);
 
         if (POET_UNLIKELY(stride < 0 || is_wrapped_negative)) {
+            // Descending: empty unless begin > end.
             if (POET_UNLIKELY(begin <= end)) { return 0; }
             T abs_stride;
             if constexpr (std::is_signed_v<T>) {
                 abs_stride = static_cast<T>(-stride);
             } else {
+                // Unsigned two's-complement negation recovers the original magnitude.
                 abs_stride = static_cast<T>(0) - stride;
             }
             auto dist = static_cast<std::size_t>(begin - end);
@@ -140,6 +155,7 @@ namespace detail {
 
         auto dist = static_cast<std::size_t>(end - begin);
         auto ustride = static_cast<std::size_t>(stride);
+        // Classic `x & (x-1) == 0` power-of-two test; replaces the divide with a shift.
         const bool is_power_of_2 = (ustride & (ustride - 1)) == 0;
 
         if (POET_LIKELY(is_power_of_2)) {

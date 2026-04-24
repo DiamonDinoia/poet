@@ -40,6 +40,7 @@ namespace detail {
           impl(std::index_sequence<Idx...> /*idx_seq*/, const RuntimeTuple &runtime_tuple, F &&func, Args &&...args)
             -> result_holder<ResultType> {
             result_holder<ResultType> res;
+            // Short-circuiting AND fold: all runtime slots must equal their compile-time counterparts.
             if (((std::get<Idx>(runtime_tuple) == V) && ...)) {
                 if constexpr (std::is_void_v<ResultType>) {
                     std::forward<F>(func).template operator()<V...>(std::forward<Args>(args)...);
@@ -138,6 +139,8 @@ namespace detail {
             std::array<std::size_t, value_count> sorted_indices{};
         };
 
+        // Insertion sort that carries original positions alongside keys, so the dispatch table
+        // preserves user-declared slot order while lookups can use ordered search (binary/strided).
         static constexpr sorted_data_t sorted_data = []() constexpr -> sorted_data_t {
             sorted_data_t out{};
             out.sorted_keys = std::array<int, value_count>{ Values... };
@@ -146,6 +149,8 @@ namespace detail {
                 const int current_key = out.sorted_keys[i];
                 const std::size_t current_index = out.sorted_indices[i];
                 std::size_t insert_pos = i;
+                // Shift larger keys (and their original-position tags) right in lockstep
+                // until we find the slot where `current_key` belongs.
                 while (insert_pos > 0 && out.sorted_keys[insert_pos - 1] > current_key) {
                     out.sorted_keys[insert_pos] = out.sorted_keys[insert_pos - 1];
                     out.sorted_indices[insert_pos] = out.sorted_indices[insert_pos - 1];
@@ -206,6 +211,8 @@ namespace detail {
         static constexpr bool ascending = (first == std::min({ Values... }));
 
         static POET_FORCEINLINE auto find(int value) -> std::size_t {
+            // Unsigned subtraction folds "below first" into "far above len", so a single
+            // `idx < len` check handles both underflow and overflow with no extra branch.
             std::size_t idx = 0;
             if constexpr (ascending) {
                 idx = static_cast<std::size_t>(static_cast<unsigned int>(value) - static_cast<unsigned int>(first));
@@ -217,6 +224,8 @@ namespace detail {
         }
     };
 
+    // Non-contiguous sequences: detect a uniform positive stride at compile time and
+    // specialise `find` to a div/mod (strided) instead of a binary search (truly sparse).
     template<int... Values> struct seq_lookup<std::integer_sequence<int, Values...>, false> {
         using sparse_data = sparse_index<std::integer_sequence<int, Values...>>;
 
@@ -224,9 +233,11 @@ namespace detail {
             if constexpr (sparse_data::unique_count < 2) {
                 return false;
             } else {
+                // Reject non-positive strides up front so `find` can use unsigned math.
                 constexpr int stride0 = sparse_data::keys[1] - sparse_data::keys[0];
                 if constexpr (stride0 <= 0) { return false; }
                 // cppcheck-suppress syntaxError
+                // All adjacent gaps must match `stride0`, otherwise fall back to binary search.
                 for (std::size_t i = 2; i < sparse_data::unique_count; ++i) {
                     if (sparse_data::keys[i] - sparse_data::keys[i - 1] != stride0) { return false; }
                 }
@@ -239,11 +250,14 @@ namespace detail {
                 static constexpr int first = sparse_data::keys[0];
                 static constexpr int stride = sparse_data::keys[1] - sparse_data::keys[0];
                 const int diff = value - first;
+                // Miss when below range or not aligned to the stride grid.
                 if (diff < 0 || diff % stride != 0) { return dispatch_npos; }
                 const auto idx = static_cast<std::size_t>(diff / stride);
+                // Remap sorted position back to the user's declared slot.
                 if (POET_LIKELY(idx < sparse_data::unique_count)) { return sparse_data::indices[idx]; }
                 return dispatch_npos;
             } else {
+                // Sorted keys → binary search; `indices` undoes the sort to the original slot.
                 const auto pos = std::lower_bound(sparse_data::keys.begin(), sparse_data::keys.end(), value);
                 if (pos != sparse_data::keys.end() && *pos == value) {
                     return sparse_data::indices[static_cast<std::size_t>(pos - sparse_data::keys.begin())];
@@ -306,6 +320,8 @@ namespace detail {
             contiguous_offset<typename std::tuple_element_t<Idx, P>::seq_type>(std::get<Idx>(params).runtime_val)...
         };
 
+        // Bitwise-OR fold (not logical) so each bound check is evaluated branch-free;
+        // the aggregate OOB flag is consumed once at the bottom.
         const std::size_t oob = (static_cast<std::size_t>(
                                    mapped[Idx] >= sequence_size<typename std::tuple_element_t<Idx, P>::seq_type>::value)
                                  | ...);
@@ -357,6 +373,9 @@ namespace detail {
         return extract_sequences_impl<TupleType>(std::make_index_sequence<std::tuple_size_v<TupleType>>{});
     }
 
+    // Computes the functor's return type by probing both calling conventions the dispatcher
+    // supports: `func(integral_constant<int, V>{}, args...)` (value form) and
+    // `func.template operator()<V>(args...)` (template form). Value form is preferred when viable.
     template<typename Functor, typename... Seq> struct dispatch_result_helper {
         // First preference: value-argument form (passes std::integral_constant values as parameters).
         template<typename... Args>
@@ -394,6 +413,9 @@ namespace detail {
     template<typename T>
     inline constexpr bool is_stateless_v = std::is_empty_v<T> && std::is_default_constructible_v<T>;
 
+    // Picks the calling convention for each forwarded arg through the function-pointer table.
+    // Small trivially-copyable rvalue/const-lvalue args are passed by value (cheaper than
+    // synthesising a reference); everything else keeps its original reference category.
     template<typename T> struct arg_pass {
         using raw = std::remove_reference_t<T>;
         using raw_unqual = std::remove_cv_t<raw>;
@@ -422,6 +444,9 @@ namespace detail {
     struct table_builder<Functor, arg_pack<Args...>, R, Values...> {
         static constexpr int first_value = sequence_first<std::integer_sequence<int, Values...>>::value;
 
+        // Each entry is a plain function pointer. Stateless functors are default-constructed
+        // inside the thunk (no closure needed); stateful functors take the functor by ref so
+        // the signature stays identical across all entries in the array.
         template<int V> static POET_CPP20_CONSTEVAL auto make_entry() {
             if constexpr (is_stateless_v<Functor>) {
                 return +[](pass_t<Args &&>... args) -> R {
@@ -471,9 +496,12 @@ namespace detail {
             static constexpr int value = values[I];
         };
 
+        // Decode a flat table index back to its per-dimension coordinate via row-major strides.
         template<std::size_t FlatIdx, std::size_t DimIdx>
         static constexpr std::size_t dim_index_v = FlatIdx / strides_[DimIdx] % dims_[DimIdx];
 
+        // For a given flat index, materialises the tuple of per-dim values as an array and
+        // exposes each as `integral_constant<int, V>` via `ic<N>` — that's what the functor sees.
         template<std::size_t FlatIdx, std::size_t... SeqIdx> struct value_extractor {
             static constexpr std::array<int, sizeof...(SeqIdx)> values = {
                 get_sequence_value<dim_index_v<FlatIdx, SeqIdx>,
@@ -684,19 +712,29 @@ namespace detail {
       All &&...all) -> decltype(auto) {
 
         constexpr std::size_t num_params = sizeof...(ParamIdx);
+        // Reference-tuple view of the entire pack so we can index it twice without copies.
         auto all_refs = std::forward_as_tuple(std::forward<All>(all)...);
 
+        // Leading `num_params` entries are the dispatch_params → copy into a value tuple
+        // (they're small structs holding a runtime int).
         auto params = std::make_tuple(std::get<ParamIdx>(all_refs)...);
 
+        // Remaining entries are forwarded with their original value categories preserved
+        // via `std::move(all_refs)` (the references inside are unaffected).
         return dispatch_impl<ThrowOnNoMatch>(functor,
           params,
           std::get<num_params + ArgIdx>(
             std::move(all_refs))...);// NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
     }
 
+    // Splits the variadic pack into [leading dispatch_params | trailing regular args] by
+    // counting dispatch_param types until the first non-dispatch_param — everything after is
+    // forwarded as plain args into the chosen specialisation.
     template<bool ThrowOnNoMatch, typename Functor, typename FirstParam, typename... Rest>
     POET_FORCEINLINE auto dispatch_variadic_impl(Functor &functor, FirstParam &&first_param, Rest &&...rest)
       -> decltype(auto) {
+        // `first_param` is known to be a dispatch_param (enable_if on the public overload);
+        // count contiguous dispatch_params in the rest, the remainder is the regular arg pack.
         constexpr std::size_t num_params = 1 + leading_param_count<Rest...>::value;
         constexpr std::size_t num_args = sizeof...(Rest) + 1 - num_params;
 
