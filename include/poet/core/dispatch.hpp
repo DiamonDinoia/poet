@@ -654,9 +654,6 @@ namespace detail {
 
     template<bool ThrowOnNoMatch, typename R, typename Functor, typename ParamTuple, typename... Args>
     POET_FORCEINLINE auto dispatch_nd(Functor &functor, ParamTuple const &params, Args &&...args) -> R {
-        constexpr auto dimensions = dimensions_of<ParamTuple>();
-        constexpr std::size_t table_size = compute_total_size(dimensions);
-
         const std::size_t flat_idx = extract_flat_index(params);
         if (POET_LIKELY(flat_idx != dispatch_npos)) {
             using sequences_t = decltype(extract_sequences<ParamTuple>());
