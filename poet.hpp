@@ -188,58 +188,7 @@ inline unsigned int poet_count_trailing_zeros(unsigned int value) noexcept {
 }
 
 #else
-
-// Fallback: DeBruijn sequence lookup
-namespace detail {
-constexpr unsigned char debruijn_ctz_table[32] = { 0,
-    1,
-    28,
-    2,
-    29,
-    14,
-    24,
-    3,
-    30,
-    22,
-    20,
-    15,
-    25,
-    17,
-    4,
-    8,
-    31,
-    27,
-    13,
-    23,
-    21,
-    19,
-    16,
-    7,
-    26,
-    12,
-    18,
-    6,
-    11,
-    5,
-    10,
-    9 };
-}
-
-inline constexpr unsigned int poet_count_trailing_zeros(unsigned int value) noexcept {
-    return detail::debruijn_ctz_table[((value & -value) * 0x077CB531U) >> 27];
-}
-
-inline constexpr unsigned int poet_count_trailing_zeros(unsigned long value) noexcept {
-    return poet_count_trailing_zeros(static_cast<unsigned int>(value));
-}
-
-inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value) noexcept {
-    const auto lower = static_cast<unsigned int>(value);
-    if (lower != 0) { return poet_count_trailing_zeros(lower); }
-    const auto upper = static_cast<unsigned int>(value >> 32);
-    return 32 + poet_count_trailing_zeros(upper);
-}
-
+#error "poet_count_trailing_zeros: no implementation for this compiler (need C++20 <bit>, GCC/Clang builtins, or MSVC)"
 #endif
 #endif// POET_COUNT_TRAILING_ZEROS_DEFINED
 
@@ -264,87 +213,6 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 #define POET_HOT_LOOP __forceinline
 #else
 #define POET_HOT_LOOP inline
-#endif
-
-// ============================================================================
-// POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE
-// ============================================================================
-/// GCC register-allocator tuning for hot paths. Wrap performance-critical
-/// function groups in POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE pairs.
-///
-/// At -O3 (POET_HIGH_OPTIMIZATION=1) on GCC, enables IRA pressure flags
-/// (-fira-hoist-pressure, -fno-ira-share-spill-slots, -frename-registers)
-/// that improve register allocation in unrolled and isolated blocks.
-/// Without -O3, promotes the section to -O3.
-/// On MSVC, enables aggressive optimization (/Ogt).
-/// On Clang and others: no-op (Clang cannot enable optimizations via pragma).
-///
-/// Opt-out via -DPOET_DISABLE_PUSH_OPTIMIZE to preserve custom flags.
-#ifndef POET_DISABLE_PUSH_OPTIMIZE
-#if defined(__GNUC__) && !defined(__clang__)
-#if POET_HIGH_OPTIMIZATION
-// At -O3: Apply IRA pressure tuning + semantic-interposition removal for hot paths.
-// -fno-semantic-interposition: allow inlining/IPO across function boundaries
-//   (GCC default assumes exported symbols may be LD_PRELOAD-interposed, which
-//    blocks optimizations even within the same TU; safe for header-only POET).
-// -fvect-cost-model=cheap: allow vectorization even when GCC's cost model is
-//   uncertain (helps SLP-vectorize independent accumulator chains in static_for).
-//
-// Vector width: prefer the widest SIMD width enabled at compile time.
-//   GCC 13/14 sometimes drop to 128-bit even with AVX2; -mprefer-vector-width
-//   ensures hot paths use the full register width. On AArch64 SVE, -msve-vector-bits
-//   locks the VL so the compiler can unroll without predication overhead.
-//   Uses #pragma GCC target (not optimize) since these are machine flags.
-//   Scoped to push/pop, so it does not affect user code outside POET internals.
-//   On SSE-only x86 and NEON (fixed 128-bit): no target pragma needed.
-
-// -- Internal: optimization flags common to all GCC hot paths
-#define POET_PUSH_OPTIMIZE_BASE_                                                                              \
-    _Pragma("GCC push_options") _Pragma("GCC optimize(\"-fira-hoist-pressure\")")                             \
-      _Pragma("GCC optimize(\"-fno-ira-share-spill-slots\")") _Pragma("GCC optimize(\"-frename-registers\")") \
-        _Pragma("GCC optimize(\"-fno-semantic-interposition\")") _Pragma("GCC optimize(\"-fvect-cost-model=cheap\")")
-
-// -- Internal: target pragma for widest available vector width
-#if defined(__AVX512F__)
-#define POET_PUSH_VECTOR_WIDTH_ _Pragma("GCC target(\"prefer-vector-width=512\")")
-#elif defined(__AVX2__) || defined(__AVX__)
-#define POET_PUSH_VECTOR_WIDTH_ _Pragma("GCC target(\"prefer-vector-width=256\")")
-#elif defined(__ARM_FEATURE_SVE_BITS) && __ARM_FEATURE_SVE_BITS > 0
-// SVE with known VL (e.g. -msve-vector-bits=256): lock it for the hot path.
-#define POET_PUSH_SVE_BITS_STR_(x) #x
-#define POET_PUSH_SVE_BITS_VAL_(x) POET_PUSH_SVE_BITS_STR_(x)
-#define POET_PUSH_VECTOR_WIDTH_ \
-    _Pragma("GCC target(\"sve-vector-bits=" POET_PUSH_SVE_BITS_VAL_(__ARM_FEATURE_SVE_BITS) "\")")
-#else
-#define POET_PUSH_VECTOR_WIDTH_
-#endif
-
-#define POET_PUSH_OPTIMIZE POET_PUSH_OPTIMIZE_BASE_ POET_PUSH_VECTOR_WIDTH_
-#define POET_POP_OPTIMIZE _Pragma("GCC pop_options")
-#else
-// Without -O3: Enable -O3 for this section
-#define POET_PUSH_OPTIMIZE _Pragma("GCC push_options") _Pragma("GCC optimize(\"-O3\")")
-#define POET_POP_OPTIMIZE _Pragma("GCC pop_options")
-#endif
-#elif defined(_MSC_VER)
-// In Debug builds, /RTC1 (runtime checks) is incompatible with /O2.
-// Only enable optimization pragma in non-debug MSVC builds.
-#ifndef _DEBUG
-#define POET_PUSH_OPTIMIZE __pragma(optimize("gt", on))
-#define POET_POP_OPTIMIZE __pragma(optimize("", on))
-#else
-#define POET_PUSH_OPTIMIZE
-#define POET_POP_OPTIMIZE
-#endif
-#else
-// Clang and others: no-op (Clang can only disable opts, not enable)
-#define POET_PUSH_OPTIMIZE
-#define POET_POP_OPTIMIZE
-#endif
-#else
-// User opted out: no-op to preserve their custom flags
-#define POET_PUSH_OPTIMIZE
-#define POET_POP_OPTIMIZE
 #endif
 
 // ============================================================================
@@ -373,7 +241,7 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 #define POET_VERSION_MINOR 0
 #define POET_VERSION_PATCH 0
 #define POET_VERSION_STRING "0.0.0"
-#define POET_VERSION_FULL "0.0.0-dev.80"
+#define POET_VERSION_FULL "0.0.0-dev.81"
 // NOLINTEND(cppcoreguidelines-macro-usage,cppcoreguidelines-macro-to-enum,modernize-macro-to-enum)
 
 namespace poet {
@@ -758,8 +626,6 @@ namespace detail {
         tail_binary_ct<N, Step, FormTag>(count, callable, index);
     }
 
-    POET_PUSH_OPTIMIZE
-
     // Handles signed and unsigned-wrapped-negative strides uniformly. For unsigned T, a
     // "negative" stride arrives as a large positive value (> half_max); we detect and flip
     // it so both directions share the same (dist + |stride| - 1) / |stride| ceiling formula.
@@ -784,14 +650,16 @@ namespace detail {
             return (dist + ustride - 1) / ustride;
         }
 
-        if (POET_UNLIKELY(begin >= end)) { return 0; }
+        if (begin >= end) { return 0; }
 
         auto dist = static_cast<std::size_t>(end - begin);
         auto ustride = static_cast<std::size_t>(stride);
         // Classic `x & (x-1) == 0` power-of-two test; replaces the divide with a shift.
+        // Worth ~18x cycles on znver4 (`tzcntq+shrxq` ≈ 1c block-RT vs `divq` ≈ 18c) —
+        // see /tmp/poet-asm/SUMMARY.md (T5) for the simdref+llvm-mca cross-check.
         const bool is_power_of_2 = (ustride & (ustride - 1)) == 0;
 
-        if (POET_LIKELY(is_power_of_2)) {
+        if (is_power_of_2) {
             const unsigned int shift = poet_count_trailing_zeros(ustride);
             return (dist + ustride - 1) >> shift;
         }
@@ -879,8 +747,6 @@ namespace detail {
             if (remaining > 0) { tail_binary_ct_noinline<Unroll, Step, FormTag>(remaining, callable, index); }
         }
     }
-
-    POET_POP_OPTIMIZE
 
 }// namespace detail
 
@@ -1269,7 +1135,7 @@ namespace detail {
             } else {
                 idx = static_cast<std::size_t>(static_cast<unsigned int>(first) - static_cast<unsigned int>(value));
             }
-            if (POET_LIKELY(idx < len)) { return idx; }
+            if (idx < len) { return idx; }
             return dispatch_npos;
         }
     };
@@ -1304,7 +1170,7 @@ namespace detail {
                 if (diff < 0 || diff % stride != 0) { return dispatch_npos; }
                 const auto idx = static_cast<std::size_t>(diff / stride);
                 // Remap sorted position back to the user's declared slot.
-                if (POET_LIKELY(idx < sparse_data::unique_count)) { return sparse_data::indices[idx]; }
+                if (idx < sparse_data::unique_count) { return sparse_data::indices[idx]; }
                 return dispatch_npos;
             } else {
                 // Sorted keys → binary search; `indices` undoes the sort to the original slot.
@@ -1378,7 +1244,7 @@ namespace detail {
 
         const std::size_t flat = ((mapped[Idx] * strides[Idx]) + ...);
 
-        return POET_LIKELY(oob == 0) ? flat : dispatch_npos;
+        return (oob == 0) ? flat : dispatch_npos;
     }
 
     template<typename ParamTuple> POET_FORCEINLINE auto extract_flat_index(const ParamTuple &params) -> std::size_t {
@@ -1663,8 +1529,6 @@ struct no_match_error : std::runtime_error {
 
 namespace detail {
 
-    POET_PUSH_OPTIMIZE
-
     template<typename R, typename EntryFn, typename FunctorFwd, typename... Args>
     POET_FORCEINLINE auto invoke_table_entry(FunctorFwd &functor, EntryFn entry, Args &&...args) -> R {
         using FT = std::decay_t<FunctorFwd>;
@@ -1692,7 +1556,7 @@ namespace detail {
         const int runtime_val = std::get<0>(params).runtime_val;
         const std::size_t idx = seq_lookup<Seq>::find(runtime_val);
 
-        if (POET_LIKELY(idx != dispatch_npos)) {
+        if (idx != dispatch_npos) {
             using FunctorT = std::decay_t<Functor>;
             static constexpr auto table = make_dispatch_table<FunctorT, arg_pack<Args...>, R>(Seq{});
             return invoke_table_entry<R>(functor, table[idx], std::forward<Args>(args)...);
@@ -1711,8 +1575,6 @@ namespace detail {
 
         const std::size_t flat_idx = extract_flat_index(params);
         if (POET_LIKELY(flat_idx != dispatch_npos)) {
-            POET_ASSUME(flat_idx < table_size);
-
             using sequences_t = decltype(extract_sequences<ParamTuple>());
             static constexpr sequences_t sequences{};
 
@@ -1739,8 +1601,6 @@ namespace detail {
             return dispatch_nd<ThrowOnNoMatch, result_type>(functor, params, std::forward<Args>(args)...);
         }
     }
-
-    POET_POP_OPTIMIZE
 
 }// namespace detail
 
@@ -1973,8 +1833,6 @@ POET_FORCEINLINE constexpr auto run_block(Func &func, std::index_sequence<Is...>
     (func(std::integral_constant<std::ptrdiff_t, Base + (Step * static_cast<std::ptrdiff_t>(Is))>{}), ...);
 }
 
-POET_PUSH_OPTIMIZE
-
 template<typename Func, std::ptrdiff_t Begin, std::ptrdiff_t Step, std::size_t StartIndex, std::size_t... Is>
 POET_NOINLINE_FLATTEN constexpr auto run_block_iso(Func &func, std::index_sequence<Is...> /*seq*/) -> void {
     constexpr std::ptrdiff_t Base = Begin + (Step * static_cast<std::ptrdiff_t>(StartIndex));
@@ -1990,8 +1848,6 @@ template<typename Func, std::ptrdiff_t Begin, std::ptrdiff_t Step, std::size_t B
 POET_FORCEINLINE constexpr auto emit_blocks_iso(Func &func, std::index_sequence<Is...> /*seq*/) -> void {
     (run_block_iso<Func, Begin, Step, Is * BlockSize>(func, std::make_index_sequence<BlockSize>{}), ...);
 }
-
-POET_POP_OPTIMIZE
 
 template<typename Functor> struct template_invoker {
     Functor &functor;
@@ -2116,7 +1972,6 @@ template<std::ptrdiff_t End, typename Func> POET_FORCEINLINE constexpr void stat
 /// - POET_HOT_LOOP: Hot path optimization with aggressive inlining
 /// - POET_LIKELY / POET_UNLIKELY: Branch prediction hints
 /// - POET_ASSUME: Compiler assumption hint
-/// - POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE: GCC register-allocator tuning
 /// - POET_CPP20_CONSTEVAL: Feature detection
 /// - poet_count_trailing_zeros: (function, not macro — unaffected)
 ///
@@ -2201,33 +2056,6 @@ template<std::ptrdiff_t End, typename Func> POET_FORCEINLINE constexpr void stat
 // ============================================================================
 #ifdef POET_HOT_LOOP
 #undef POET_HOT_LOOP
-#endif
-
-// ============================================================================
-// Undefine POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE
-// ============================================================================
-#ifdef POET_PUSH_OPTIMIZE
-#undef POET_PUSH_OPTIMIZE
-#endif
-
-#ifdef POET_POP_OPTIMIZE
-#undef POET_POP_OPTIMIZE
-#endif
-
-#ifdef POET_PUSH_OPTIMIZE_BASE_
-#undef POET_PUSH_OPTIMIZE_BASE_
-#endif
-
-#ifdef POET_PUSH_VECTOR_WIDTH_
-#undef POET_PUSH_VECTOR_WIDTH_
-#endif
-
-#ifdef POET_PUSH_SVE_BITS_STR_
-#undef POET_PUSH_SVE_BITS_STR_
-#endif
-
-#ifdef POET_PUSH_SVE_BITS_VAL_
-#undef POET_PUSH_SVE_BITS_VAL_
 #endif
 
 // ============================================================================
