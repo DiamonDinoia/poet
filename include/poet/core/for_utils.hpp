@@ -31,8 +31,6 @@ POET_FORCEINLINE constexpr auto run_block(Func &func, std::index_sequence<Is...>
     (func(std::integral_constant<std::ptrdiff_t, Base + (Step * static_cast<std::ptrdiff_t>(Is))>{}), ...);
 }
 
-POET_PUSH_OPTIMIZE
-
 template<typename Func, std::ptrdiff_t Begin, std::ptrdiff_t Step, std::size_t StartIndex, std::size_t... Is>
 POET_NOINLINE_FLATTEN constexpr auto run_block_iso(Func &func, std::index_sequence<Is...> /*seq*/) -> void {
     constexpr std::ptrdiff_t Base = Begin + (Step * static_cast<std::ptrdiff_t>(StartIndex));
@@ -48,8 +46,6 @@ template<typename Func, std::ptrdiff_t Begin, std::ptrdiff_t Step, std::size_t B
 POET_FORCEINLINE constexpr auto emit_blocks_iso(Func &func, std::index_sequence<Is...> /*seq*/) -> void {
     (run_block_iso<Func, Begin, Step, Is * BlockSize>(func, std::make_index_sequence<BlockSize>{}), ...);
 }
-
-POET_POP_OPTIMIZE
 
 template<typename Functor> struct template_invoker {
     Functor &functor;

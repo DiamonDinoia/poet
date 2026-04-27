@@ -219,7 +219,7 @@ namespace detail {
             } else {
                 idx = static_cast<std::size_t>(static_cast<unsigned int>(first) - static_cast<unsigned int>(value));
             }
-            if (POET_LIKELY(idx < len)) { return idx; }
+            if (idx < len) { return idx; }
             return dispatch_npos;
         }
     };
@@ -254,7 +254,7 @@ namespace detail {
                 if (diff < 0 || diff % stride != 0) { return dispatch_npos; }
                 const auto idx = static_cast<std::size_t>(diff / stride);
                 // Remap sorted position back to the user's declared slot.
-                if (POET_LIKELY(idx < sparse_data::unique_count)) { return sparse_data::indices[idx]; }
+                if (idx < sparse_data::unique_count) { return sparse_data::indices[idx]; }
                 return dispatch_npos;
             } else {
                 // Sorted keys → binary search; `indices` undoes the sort to the original slot.
@@ -328,7 +328,7 @@ namespace detail {
 
         const std::size_t flat = ((mapped[Idx] * strides[Idx]) + ...);
 
-        return POET_LIKELY(oob == 0) ? flat : dispatch_npos;
+        return (oob == 0) ? flat : dispatch_npos;
     }
 
     template<typename ParamTuple> POET_FORCEINLINE auto extract_flat_index(const ParamTuple &params) -> std::size_t {
@@ -613,8 +613,6 @@ struct no_match_error : std::runtime_error {
 
 namespace detail {
 
-    POET_PUSH_OPTIMIZE
-
     template<typename R, typename EntryFn, typename FunctorFwd, typename... Args>
     POET_FORCEINLINE auto invoke_table_entry(FunctorFwd &functor, EntryFn entry, Args &&...args) -> R {
         using FT = std::decay_t<FunctorFwd>;
@@ -642,7 +640,7 @@ namespace detail {
         const int runtime_val = std::get<0>(params).runtime_val;
         const std::size_t idx = seq_lookup<Seq>::find(runtime_val);
 
-        if (POET_LIKELY(idx != dispatch_npos)) {
+        if (idx != dispatch_npos) {
             using FunctorT = std::decay_t<Functor>;
             static constexpr auto table = make_dispatch_table<FunctorT, arg_pack<Args...>, R>(Seq{});
             return invoke_table_entry<R>(functor, table[idx], std::forward<Args>(args)...);
@@ -661,8 +659,6 @@ namespace detail {
 
         const std::size_t flat_idx = extract_flat_index(params);
         if (POET_LIKELY(flat_idx != dispatch_npos)) {
-            POET_ASSUME(flat_idx < table_size);
-
             using sequences_t = decltype(extract_sequences<ParamTuple>());
             static constexpr sequences_t sequences{};
 
@@ -689,8 +685,6 @@ namespace detail {
             return dispatch_nd<ThrowOnNoMatch, result_type>(functor, params, std::forward<Args>(args)...);
         }
     }
-
-    POET_POP_OPTIMIZE
 
 }// namespace detail
 

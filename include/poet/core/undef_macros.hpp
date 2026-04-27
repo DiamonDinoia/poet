@@ -19,7 +19,6 @@
 /// - POET_HOT_LOOP: Hot path optimization with aggressive inlining
 /// - POET_LIKELY / POET_UNLIKELY: Branch prediction hints
 /// - POET_ASSUME: Compiler assumption hint
-/// - POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE: GCC register-allocator tuning
 /// - POET_CPP20_CONSTEVAL: Feature detection
 /// - poet_count_trailing_zeros: (function, not macro — unaffected)
 ///
@@ -104,33 +103,6 @@
 // ============================================================================
 #ifdef POET_HOT_LOOP
 #undef POET_HOT_LOOP
-#endif
-
-// ============================================================================
-// Undefine POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE
-// ============================================================================
-#ifdef POET_PUSH_OPTIMIZE
-#undef POET_PUSH_OPTIMIZE
-#endif
-
-#ifdef POET_POP_OPTIMIZE
-#undef POET_POP_OPTIMIZE
-#endif
-
-#ifdef POET_PUSH_OPTIMIZE_BASE_
-#undef POET_PUSH_OPTIMIZE_BASE_
-#endif
-
-#ifdef POET_PUSH_VECTOR_WIDTH_
-#undef POET_PUSH_VECTOR_WIDTH_
-#endif
-
-#ifdef POET_PUSH_SVE_BITS_STR_
-#undef POET_PUSH_SVE_BITS_STR_
-#endif
-
-#ifdef POET_PUSH_SVE_BITS_VAL_
-#undef POET_PUSH_SVE_BITS_VAL_
 #endif
 
 // ============================================================================

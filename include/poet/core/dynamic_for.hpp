@@ -125,8 +125,6 @@ namespace detail {
         tail_binary_ct<N, Step, FormTag>(count, callable, index);
     }
 
-    POET_PUSH_OPTIMIZE
-
     // Handles signed and unsigned-wrapped-negative strides uniformly. For unsigned T, a
     // "negative" stride arrives as a large positive value (> half_max); we detect and flip
     // it so both directions share the same (dist + |stride| - 1) / |stride| ceiling formula.
@@ -151,14 +149,16 @@ namespace detail {
             return (dist + ustride - 1) / ustride;
         }
 
-        if (POET_UNLIKELY(begin >= end)) { return 0; }
+        if (begin >= end) { return 0; }
 
         auto dist = static_cast<std::size_t>(end - begin);
         auto ustride = static_cast<std::size_t>(stride);
         // Classic `x & (x-1) == 0` power-of-two test; replaces the divide with a shift.
+        // Worth ~18x cycles on znver4 (`tzcntq+shrxq` ≈ 1c block-RT vs `divq` ≈ 18c) —
+        // see /tmp/poet-asm/SUMMARY.md (T5) for the simdref+llvm-mca cross-check.
         const bool is_power_of_2 = (ustride & (ustride - 1)) == 0;
 
-        if (POET_LIKELY(is_power_of_2)) {
+        if (is_power_of_2) {
             const unsigned int shift = poet_count_trailing_zeros(ustride);
             return (dist + ustride - 1) >> shift;
         }
@@ -246,8 +246,6 @@ namespace detail {
             if (remaining > 0) { tail_binary_ct_noinline<Unroll, Step, FormTag>(remaining, callable, index); }
         }
     }
-
-    POET_POP_OPTIMIZE
 
 }// namespace detail
 

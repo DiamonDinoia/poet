@@ -175,58 +175,7 @@ inline unsigned int poet_count_trailing_zeros(unsigned int value) noexcept {
 }
 
 #else
-
-// Fallback: DeBruijn sequence lookup
-namespace detail {
-constexpr unsigned char debruijn_ctz_table[32] = { 0,
-    1,
-    28,
-    2,
-    29,
-    14,
-    24,
-    3,
-    30,
-    22,
-    20,
-    15,
-    25,
-    17,
-    4,
-    8,
-    31,
-    27,
-    13,
-    23,
-    21,
-    19,
-    16,
-    7,
-    26,
-    12,
-    18,
-    6,
-    11,
-    5,
-    10,
-    9 };
-}
-
-inline constexpr unsigned int poet_count_trailing_zeros(unsigned int value) noexcept {
-    return detail::debruijn_ctz_table[((value & -value) * 0x077CB531U) >> 27];
-}
-
-inline constexpr unsigned int poet_count_trailing_zeros(unsigned long value) noexcept {
-    return poet_count_trailing_zeros(static_cast<unsigned int>(value));
-}
-
-inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value) noexcept {
-    const auto lower = static_cast<unsigned int>(value);
-    if (lower != 0) { return poet_count_trailing_zeros(lower); }
-    const auto upper = static_cast<unsigned int>(value >> 32);
-    return 32 + poet_count_trailing_zeros(upper);
-}
-
+#error "poet_count_trailing_zeros: no implementation for this compiler (need C++20 <bit>, GCC/Clang builtins, or MSVC)"
 #endif
 #endif// POET_COUNT_TRAILING_ZEROS_DEFINED
 
@@ -251,87 +200,6 @@ inline constexpr unsigned int poet_count_trailing_zeros(unsigned long long value
 #define POET_HOT_LOOP __forceinline
 #else
 #define POET_HOT_LOOP inline
-#endif
-
-// ============================================================================
-// POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE
-// ============================================================================
-/// GCC register-allocator tuning for hot paths. Wrap performance-critical
-/// function groups in POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE pairs.
-///
-/// At -O3 (POET_HIGH_OPTIMIZATION=1) on GCC, enables IRA pressure flags
-/// (-fira-hoist-pressure, -fno-ira-share-spill-slots, -frename-registers)
-/// that improve register allocation in unrolled and isolated blocks.
-/// Without -O3, promotes the section to -O3.
-/// On MSVC, enables aggressive optimization (/Ogt).
-/// On Clang and others: no-op (Clang cannot enable optimizations via pragma).
-///
-/// Opt-out via -DPOET_DISABLE_PUSH_OPTIMIZE to preserve custom flags.
-#ifndef POET_DISABLE_PUSH_OPTIMIZE
-#if defined(__GNUC__) && !defined(__clang__)
-#if POET_HIGH_OPTIMIZATION
-// At -O3: Apply IRA pressure tuning + semantic-interposition removal for hot paths.
-// -fno-semantic-interposition: allow inlining/IPO across function boundaries
-//   (GCC default assumes exported symbols may be LD_PRELOAD-interposed, which
-//    blocks optimizations even within the same TU; safe for header-only POET).
-// -fvect-cost-model=cheap: allow vectorization even when GCC's cost model is
-//   uncertain (helps SLP-vectorize independent accumulator chains in static_for).
-//
-// Vector width: prefer the widest SIMD width enabled at compile time.
-//   GCC 13/14 sometimes drop to 128-bit even with AVX2; -mprefer-vector-width
-//   ensures hot paths use the full register width. On AArch64 SVE, -msve-vector-bits
-//   locks the VL so the compiler can unroll without predication overhead.
-//   Uses #pragma GCC target (not optimize) since these are machine flags.
-//   Scoped to push/pop, so it does not affect user code outside POET internals.
-//   On SSE-only x86 and NEON (fixed 128-bit): no target pragma needed.
-
-// -- Internal: optimization flags common to all GCC hot paths
-#define POET_PUSH_OPTIMIZE_BASE_                                                                              \
-    _Pragma("GCC push_options") _Pragma("GCC optimize(\"-fira-hoist-pressure\")")                             \
-      _Pragma("GCC optimize(\"-fno-ira-share-spill-slots\")") _Pragma("GCC optimize(\"-frename-registers\")") \
-        _Pragma("GCC optimize(\"-fno-semantic-interposition\")") _Pragma("GCC optimize(\"-fvect-cost-model=cheap\")")
-
-// -- Internal: target pragma for widest available vector width
-#if defined(__AVX512F__)
-#define POET_PUSH_VECTOR_WIDTH_ _Pragma("GCC target(\"prefer-vector-width=512\")")
-#elif defined(__AVX2__) || defined(__AVX__)
-#define POET_PUSH_VECTOR_WIDTH_ _Pragma("GCC target(\"prefer-vector-width=256\")")
-#elif defined(__ARM_FEATURE_SVE_BITS) && __ARM_FEATURE_SVE_BITS > 0
-// SVE with known VL (e.g. -msve-vector-bits=256): lock it for the hot path.
-#define POET_PUSH_SVE_BITS_STR_(x) #x
-#define POET_PUSH_SVE_BITS_VAL_(x) POET_PUSH_SVE_BITS_STR_(x)
-#define POET_PUSH_VECTOR_WIDTH_ \
-    _Pragma("GCC target(\"sve-vector-bits=" POET_PUSH_SVE_BITS_VAL_(__ARM_FEATURE_SVE_BITS) "\")")
-#else
-#define POET_PUSH_VECTOR_WIDTH_
-#endif
-
-#define POET_PUSH_OPTIMIZE POET_PUSH_OPTIMIZE_BASE_ POET_PUSH_VECTOR_WIDTH_
-#define POET_POP_OPTIMIZE _Pragma("GCC pop_options")
-#else
-// Without -O3: Enable -O3 for this section
-#define POET_PUSH_OPTIMIZE _Pragma("GCC push_options") _Pragma("GCC optimize(\"-O3\")")
-#define POET_POP_OPTIMIZE _Pragma("GCC pop_options")
-#endif
-#elif defined(_MSC_VER)
-// In Debug builds, /RTC1 (runtime checks) is incompatible with /O2.
-// Only enable optimization pragma in non-debug MSVC builds.
-#ifndef _DEBUG
-#define POET_PUSH_OPTIMIZE __pragma(optimize("gt", on))
-#define POET_POP_OPTIMIZE __pragma(optimize("", on))
-#else
-#define POET_PUSH_OPTIMIZE
-#define POET_POP_OPTIMIZE
-#endif
-#else
-// Clang and others: no-op (Clang can only disable opts, not enable)
-#define POET_PUSH_OPTIMIZE
-#define POET_POP_OPTIMIZE
-#endif
-#else
-// User opted out: no-op to preserve their custom flags
-#define POET_PUSH_OPTIMIZE
-#define POET_POP_OPTIMIZE
 #endif
 
 // ============================================================================
