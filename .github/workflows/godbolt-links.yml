@@ -1,0 +1,86 @@
+name: Godbolt Links
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'examples/*.cpp'
+      - 'tools/make_godbolt_links.py'
+      - '.github/workflows/godbolt-links.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-22.04
+    env:
+      LINKS_BRANCH: godbolt-links
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Wait for the single-header build to settle
+        # The amalgamated header lives on the `single-header` branch and is
+        # rebuilt by .github/workflows/goldbot.yml. Wait briefly so any push
+        # to main that ALSO updates the header is reflected before we shorten.
+        run: sleep 60
+
+      - name: Fetch existing godbolt_links.json from links branch (idempotency)
+        # Reuse stable shortlinks when the underlying clientstate hasn't
+        # changed. If the branch doesn't exist yet, the script just runs
+        # without seed data.
+        run: |
+          mkdir -p _links_cache
+          if curl -fsSL -o _links_cache/godbolt_links.json \
+              "https://raw.githubusercontent.com/${{ github.repository }}/${LINKS_BRANCH}/godbolt_links.json"; then
+            echo "Seeded existing JSON from ${LINKS_BRANCH} branch."
+          else
+            echo "No existing godbolt_links.json on ${LINKS_BRANCH}; will create from scratch."
+            rm -f _links_cache/godbolt_links.json
+          fi
+
+      - name: Regenerate shortlinks + emit redirect pages
+        run: |
+          python3 tools/make_godbolt_links.py \
+            --shorten \
+            --existing-json _links_cache/godbolt_links.json \
+            --emit-redirects _site \
+            --out _links_cache/godbolt_links.json
+
+      - name: Publish to godbolt-links branch (orphan, force-pushed)
+        # main is never touched. The branch holds:
+        #   - godbolt_links.json (single source of truth for shortlinks)
+        #   - <example>.html      (meta-refresh redirect to the current shortlink)
+        #   - index.html          (human-browsable index)
+        # Plus a CNAME-friendly `.nojekyll` so GitHub Pages serves files as-is.
+        # README/docs on main link to https://<owner>.github.io/<repo>/<example>.html
+        # which is stable; the redirect target rotates here.
+        run: |
+          set -euo pipefail
+          STAGE=$(mktemp -d)
+          cp _links_cache/godbolt_links.json "$STAGE/"
+          cp -r _site/* "$STAGE/"
+          touch "$STAGE/.nojekyll"
+
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+          # Build an orphan branch in a fresh worktree.
+          WORK=$(mktemp -d)
+          git worktree add --orphan -B "$LINKS_BRANCH" "$WORK"
+          # Wipe any leftover content (orphan can inherit working tree state).
+          find "$WORK" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          cp -r "$STAGE/." "$WORK/"
+
+          cd "$WORK"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to publish."
+            exit 0
+          fi
+          git commit -m 'chore: refresh Compiler Explorer shortlinks'
+          git push --force origin "$LINKS_BRANCH"

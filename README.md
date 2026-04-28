@@ -6,6 +6,7 @@
 [![Coverage](https://codecov.io/gh/DiamonDinoia/poet/branch/main/graph/badge.svg)](https://codecov.io/gh/DiamonDinoia/poet)
 [![Docs Status](https://readthedocs.org/projects/poet/badge/?version=latest)](https://poet.readthedocs.io/en/latest/)
 [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json&repository=DiamonDinoia/poet)](https://codspeed.io/DiamonDinoia/poet)
+[![Try on Compiler Explorer](https://img.shields.io/badge/Compiler%20Explorer-try%20it-67c52a?logo=compilerexplorer&logoColor=white)](https://diamondinoia.github.io/poet/static_for.html)
 
 POET is a header-only C++ library for three related jobs:
 
@@ -33,21 +34,24 @@ for ISA, vector-width, and cache-line queries.
 
 ## Examples
 
+Each snippet below has a runnable counterpart under [`examples/`](examples/).
+Build with `-DPOET_BUILD_EXAMPLES=ON` and `ctest -R '^example_'` to run them.
+
 ### `static_for`
 
 ```cpp
-poet::static_for<0, 4>([](auto I) {
-    use_compile_time_index(I);
+poet::static_for<0, 4>([&](auto I) {
+    a[I] = I * I;          // I is std::integral_constant; converts implicitly
+});
+
+// Optional block size: break a large loop into smaller isolated blocks.
+poet::static_for<0, 64, 1, 8>([&](auto I) {
+    total += I;
 });
 ```
 
-Use the optional fourth template parameter to break a large loop into smaller isolated blocks:
-
-```cpp
-poet::static_for<0, 64, 1, 8>([](auto I) {
-    work(I);
-});
-```
+> Full source: [`examples/static_for.cpp`](examples/static_for.cpp) ·
+> [![Try on Compiler Explorer][ce-badge]][ce-static-for]
 
 ### `dynamic_for`
 
@@ -55,26 +59,20 @@ poet::static_for<0, 64, 1, 8>([](auto I) {
 poet::dynamic_for<4>(0u, n, [](std::size_t i) {
     out[i] = f(i);
 });
-```
 
-For multi-accumulator kernels, use the lane-aware form:
-
-```cpp
+// Lane-aware form for multi-accumulator kernels.
 std::array<double, 4> acc{};
 poet::dynamic_for<4>(0u, n, [&](auto lane, std::size_t i) {
     acc[lane] += work(i);
 });
-```
 
-If the step is known at compile time, prefer the template overload:
-
-```cpp
+// Compile-time step.
 poet::dynamic_for<4, 2>(0, 16, [](int i) {
     use(i); // 0, 2, 4, ..., 14
 });
 ```
 
-The C++20 adaptor is eager and treats a range as a consecutive `[start, start + count)` sequence:
+C++20 adaptor (eager; treats a range as `[start, start + count)`):
 
 ```cpp
 auto r = std::views::iota(0) | std::views::take(10);
@@ -83,26 +81,23 @@ r | poet::make_dynamic_for<4>([](int i) { use(i); });
 std::tuple{0, 24, 2} | poet::make_dynamic_for<4>([](int i) { use(i); });
 ```
 
+> Full source: [`examples/dynamic_for.cpp`](examples/dynamic_for.cpp) ·
+> [![Try on Compiler Explorer][ce-badge]][ce-dynamic-for]
+
 ### `dispatch`
 
 ```cpp
 struct Impl {
     template<int N>
-    int operator()(int x) const {
-        return N + x;
-    }
+    int operator()(int x) const { return N + x; }
 };
 
-int choice = 2;
 int y = poet::dispatch(
     Impl{},
     poet::dispatch_param<poet::inclusive_range<0, 4>>{choice},
     10);
-```
 
-You can also pass a tuple of `dispatch_param`s:
-
-```cpp
+// Tuple form for cartesian products of multiple dispatch_params.
 auto params = std::make_tuple(
     poet::dispatch_param<poet::inclusive_range<1, 4>>{rows},
     poet::dispatch_param<poet::inclusive_range<1, 4>>{cols});
@@ -110,22 +105,24 @@ auto params = std::make_tuple(
 poet::dispatch(Kernel{}, params, data);
 ```
 
-For sparse allowed combinations, use `dispatch_set`:
+> Full source: [`examples/dispatch.cpp`](examples/dispatch.cpp) ·
+> [![Try on Compiler Explorer][ce-badge]][ce-dispatch]
+
+For sparse allowed combinations, use `dispatch_set`. Pair with
+`poet::throw_on_no_match` when a miss should fail:
 
 ```cpp
-using Shapes = poet::dispatch_set<int, poet::tuple_<2, 2>, poet::tuple_<4, 4>, poet::tuple_<2, 4>>;
+using Shapes = poet::dispatch_set<int,
+    poet::tuple_<2, 2>, poet::tuple_<4, 4>, poet::tuple_<2, 4>>;
 poet::dispatch(MatMul{}, Shapes{rows, cols}, a, b, c);
-```
 
-If a missing match is an error, use `poet::throw_on_no_match`:
-
-```cpp
-auto value = poet::dispatch(
+poet::dispatch(
     poet::throw_on_no_match,
-    Impl{},
-    poet::dispatch_param<poet::inclusive_range<0, 4>>{choice},
-    10);
+    MatMul{}, Shapes{rows, cols}, a, b, c);
 ```
+
+> Full source: [`examples/dispatch_set.cpp`](examples/dispatch_set.cpp) ·
+> [![Try on Compiler Explorer][ce-badge]][ce-dispatch-set]
 
 ### CPU detection
 
@@ -133,6 +130,59 @@ auto value = poet::dispatch(
 constexpr auto regs = poet::available_registers();
 constexpr auto line = poet::cache_line();
 ```
+
+> Full source: [`examples/cpu_info.cpp`](examples/cpu_info.cpp) ·
+> [![Try on Compiler Explorer][ce-badge]][ce-cpu-info]
+
+### Worked examples
+
+- **Polynomial evaluation** ([`examples/polynomial.cpp`](examples/polynomial.cpp))
+  picks a compile-time degree N ∈ [1, 8] from a runtime integer with
+  `dispatch`, then unrolls Horner's recurrence with `static_for` so every
+  coefficient lookup becomes a constant offset.
+  [![Try on Compiler Explorer][ce-badge]][ce-polynomial]
+- **Lane-aware dot product** ([`examples/dot_product.cpp`](examples/dot_product.cpp))
+  uses `dynamic_for<L>` with a lane-aware lambda to break the serial FMA
+  dependency chain into L independent accumulators — throughput goes from
+  FMA-latency-bound to FMA-throughput-bound on Zen3+/SKX/Ice Lake.
+  [![Try on Compiler Explorer][ce-badge]][ce-dot-product]
+
+### Microbench (runs on Compiler Explorer)
+
+A Google Benchmark microbench ([`examples/benchmark.cpp`](examples/benchmark.cpp))
+runs the scalar dot product against `dynamic_for<4>` and `dynamic_for<8>` in
+CE's *Execute* mode — the output pane shows actual ns/op timings.
+[![Run benchmark on Compiler Explorer][ce-run-badge]][ce-benchmark]
+
+```bash
+cmake -S . -B build -DPOET_BUILD_EXAMPLES=ON -DPOET_BUILD_EXAMPLE_BENCHMARK=ON
+cmake --build build --target example_benchmark
+./build/examples/example_benchmark
+```
+
+### Try on Compiler Explorer
+
+| Example | Link |
+| --- | --- |
+| `static_for` | [![Try on Compiler Explorer][ce-badge]][ce-static-for] |
+| `dynamic_for` | [![Try on Compiler Explorer][ce-badge]][ce-dynamic-for] |
+| `dispatch` | [![Try on Compiler Explorer][ce-badge]][ce-dispatch] |
+| `dispatch_set` | [![Try on Compiler Explorer][ce-badge]][ce-dispatch-set] |
+| `cpu_info` | [![Try on Compiler Explorer][ce-badge]][ce-cpu-info] |
+| `polynomial` | [![Try on Compiler Explorer][ce-badge]][ce-polynomial] |
+| `dot_product` | [![Try on Compiler Explorer][ce-badge]][ce-dot-product] |
+| `benchmark` (executes) | [![Run benchmark on Compiler Explorer][ce-run-badge]][ce-benchmark] |
+
+[ce-badge]: https://img.shields.io/badge/Compiler%20Explorer-open-67c52a?logo=compilerexplorer&logoColor=white
+[ce-run-badge]: https://img.shields.io/badge/Compiler%20Explorer-run%20benchmark-d9534f?logo=compilerexplorer&logoColor=white
+[ce-static-for]: https://diamondinoia.github.io/poet/static_for.html
+[ce-dynamic-for]: https://diamondinoia.github.io/poet/dynamic_for.html
+[ce-dispatch]: https://diamondinoia.github.io/poet/dispatch.html
+[ce-dispatch-set]: https://diamondinoia.github.io/poet/dispatch_set.html
+[ce-cpu-info]: https://diamondinoia.github.io/poet/cpu_info.html
+[ce-polynomial]: https://diamondinoia.github.io/poet/polynomial.html
+[ce-dot-product]: https://diamondinoia.github.io/poet/dot_product.html
+[ce-benchmark]: https://diamondinoia.github.io/poet/benchmark.html
 
 ## Install
 
