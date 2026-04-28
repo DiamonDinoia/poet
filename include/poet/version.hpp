@@ -11,7 +11,7 @@
 #define POET_VERSION_MINOR 0
 #define POET_VERSION_PATCH 0
 #define POET_VERSION_STRING "0.0.0"
-#define POET_VERSION_FULL "0.0.0-dev.87"
+#define POET_VERSION_FULL "0.0.0-dev.88"
 // NOLINTEND(cppcoreguidelines-macro-usage,cppcoreguidelines-macro-to-enum,modernize-macro-to-enum)
 
 namespace poet {

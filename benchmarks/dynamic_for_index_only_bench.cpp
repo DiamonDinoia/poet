@@ -12,6 +12,9 @@
 #include <benchmark/benchmark.h>
 
 #include <poet/poet.hpp>
+// Re-include after the umbrella's undef_macros.hpp so this TU can use the
+// POET_FORCEINLINE / POET_UNLIKELY / POET_ALWAYS_INLINE_LAMBDA macros below.
+#include <poet/core/macros.hpp>
 
 namespace {
 
@@ -69,7 +72,7 @@ template<typename Fn> void reg(const char *name, std::uint64_t batch, Fn &&fn) {
 }
 
 template<std::size_t Unroll, typename T, typename Callable>
-POET_FORCEINLINE void blocked_for(T begin, T end, Callable &func) {
+POET_FORCEINLINE void blocked_for(T begin, T end, Callable &&func) {
     if (begin >= end) { return; }
 
     T i = begin;
