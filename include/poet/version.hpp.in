@@ -1,0 +1,25 @@
+#pragma once
+
+/// \file version.hpp
+/// \brief POET version macros and constants.
+///
+/// Generated from version.hpp.in by cmake/GenerateVersion.cmake.
+/// Do not edit by hand; re-run CMake configure or the pre-commit hook.
+
+// NOLINTBEGIN(cppcoreguidelines-macro-usage,cppcoreguidelines-macro-to-enum,modernize-macro-to-enum)
+#define POET_VERSION_MAJOR @POET_VERSION_MAJOR@
+#define POET_VERSION_MINOR @POET_VERSION_MINOR@
+#define POET_VERSION_PATCH @POET_VERSION_PATCH@
+#define POET_VERSION_STRING "@POET_VERSION_STRING@"
+#define POET_VERSION_FULL "@POET_VERSION_FULL@"
+// NOLINTEND(cppcoreguidelines-macro-usage,cppcoreguidelines-macro-to-enum,modernize-macro-to-enum)
+
+namespace poet {
+
+inline constexpr int version_major = POET_VERSION_MAJOR;
+inline constexpr int version_minor = POET_VERSION_MINOR;
+inline constexpr int version_patch = POET_VERSION_PATCH;
+inline constexpr const char *version_string = POET_VERSION_STRING;
+inline constexpr const char *version_full = POET_VERSION_FULL;
+
+}// namespace poet

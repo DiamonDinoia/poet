@@ -1,0 +1,30 @@
+name: Build Single Header
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - run: sudo apt-get install python3
+      - name: Generate single header to temp file
+        run: python3 tools/amalgamate.py --root . --input include/poet/poet.hpp --output /tmp/poet.hpp
+      - name: Checkout single-header branch
+        uses: actions/checkout@v6
+        with:
+          ref: single-header
+          fetch-depth: 0
+
+      - name: Place generated header
+        run: |
+          mv /tmp/poet.hpp poet.hpp
+          git add poet.hpp || true
+      - name: Commit and push changes
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          branch: single-header
+          commit_message: Update single-header build.
