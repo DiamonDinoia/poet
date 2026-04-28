@@ -65,6 +65,8 @@ jobs:
           cp _links_cache/godbolt_links.json "$STAGE/"
           cp -r _site/* "$STAGE/"
           touch "$STAGE/.nojekyll"
+          # Preserve Pages custom-domain binding across orphan force-pushes.
+          echo 'diamondinoia.com' > "$STAGE/CNAME"
 
           git config user.name  'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
