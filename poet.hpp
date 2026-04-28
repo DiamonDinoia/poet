@@ -241,7 +241,7 @@ inline unsigned int poet_count_trailing_zeros(unsigned int value) noexcept {
 #define POET_VERSION_MINOR 0
 #define POET_VERSION_PATCH 0
 #define POET_VERSION_STRING "0.0.0"
-#define POET_VERSION_FULL "0.0.0-dev.86"
+#define POET_VERSION_FULL "0.0.0-dev.87"
 // NOLINTEND(cppcoreguidelines-macro-usage,cppcoreguidelines-macro-to-enum,modernize-macro-to-enum)
 
 namespace poet {
