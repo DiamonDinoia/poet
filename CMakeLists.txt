@@ -18,6 +18,7 @@ if(POET_ENABLE_COVERAGE)
 endif()
 
 option(POET_BUILD_BENCHMARKS "Build POET benchmark executables" OFF)
+option(POET_BUILD_EXAMPLES "Build POET examples" OFF)
 option(POET_STRICT_WARNINGS "Enable the project's default warning profile" ON)
 option(POET_BUILD_DEVEL "Build POET development utilities" OFF)
 
@@ -26,7 +27,7 @@ if(NOT DEFINED POET_BUILD_TESTS)
 endif()
 option(POET_BUILD_TESTS "Build POET test suite" ${POET_BUILD_TESTS})
 
-if(POET_BUILD_DEVEL OR POET_BUILD_TESTS OR POET_BUILD_BENCHMARKS)
+if(POET_BUILD_DEVEL OR POET_BUILD_TESTS OR POET_BUILD_BENCHMARKS OR POET_BUILD_EXAMPLES)
   include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/dev_helpers.cmake")
 endif()
 
@@ -56,6 +57,11 @@ endif()
 if(POET_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)
+endif()
+
+if(POET_BUILD_EXAMPLES)
+  enable_testing()
+  add_subdirectory(examples)
 endif()
 
 include(GNUInstallDirs)
