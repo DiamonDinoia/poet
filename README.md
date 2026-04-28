@@ -50,8 +50,7 @@ poet::static_for<0, 64, 1, 8>([&](auto I) {
 });
 ```
 
-> Full source: [`examples/static_for.cpp`](examples/static_for.cpp) ·
-> [![Try on Compiler Explorer][ce-badge]][ce-static-for]
+> <sub>Full source: [`examples/static_for.cpp`](examples/static_for.cpp)</sub> &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-static-for]
 
 ### `dynamic_for`
 
@@ -81,8 +80,7 @@ r | poet::make_dynamic_for<4>([](int i) { use(i); });
 std::tuple{0, 24, 2} | poet::make_dynamic_for<4>([](int i) { use(i); });
 ```
 
-> Full source: [`examples/dynamic_for.cpp`](examples/dynamic_for.cpp) ·
-> [![Try on Compiler Explorer][ce-badge]][ce-dynamic-for]
+> <sub>Full source: [`examples/dynamic_for.cpp`](examples/dynamic_for.cpp)</sub> &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-dynamic-for]
 
 ### `dispatch`
 
@@ -105,8 +103,7 @@ auto params = std::make_tuple(
 poet::dispatch(Kernel{}, params, data);
 ```
 
-> Full source: [`examples/dispatch.cpp`](examples/dispatch.cpp) ·
-> [![Try on Compiler Explorer][ce-badge]][ce-dispatch]
+> <sub>Full source: [`examples/dispatch.cpp`](examples/dispatch.cpp)</sub> &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-dispatch]
 
 For sparse allowed combinations, use `dispatch_set`. Pair with
 `poet::throw_on_no_match` when a miss should fail:
@@ -121,8 +118,7 @@ poet::dispatch(
     MatMul{}, Shapes{rows, cols}, a, b, c);
 ```
 
-> Full source: [`examples/dispatch_set.cpp`](examples/dispatch_set.cpp) ·
-> [![Try on Compiler Explorer][ce-badge]][ce-dispatch-set]
+> <sub>Full source: [`examples/dispatch_set.cpp`](examples/dispatch_set.cpp)</sub> &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-dispatch-set]
 
 ### CPU detection
 
@@ -131,8 +127,7 @@ constexpr auto regs = poet::available_registers();
 constexpr auto line = poet::cache_line();
 ```
 
-> Full source: [`examples/cpu_info.cpp`](examples/cpu_info.cpp) ·
-> [![Try on Compiler Explorer][ce-badge]][ce-cpu-info]
+> <sub>Full source: [`examples/cpu_info.cpp`](examples/cpu_info.cpp)</sub> &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-cpu-info]
 
 ### Worked examples
 
