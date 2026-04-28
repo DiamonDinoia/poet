@@ -1,0 +1,10 @@
+{
+  "benchmark": "https://godbolt.org/z/E86E4dxfT",
+  "cpu_info": "https://godbolt.org/z/5664q4ajc",
+  "dispatch": "https://godbolt.org/z/jKrxj4MxT",
+  "dispatch_set": "https://godbolt.org/z/KnaPrfWG6",
+  "dot_product": "https://godbolt.org/z/6bfP7KsfT",
+  "dynamic_for": "https://godbolt.org/z/jsM7vo9rf",
+  "polynomial": "https://godbolt.org/z/6cqrG5Yvv",
+  "static_for": "https://godbolt.org/z/fh4zTvo8h"
+}
