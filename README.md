@@ -50,7 +50,7 @@ poet::static_for<0, 64, 1, 8>([&](auto I) {
 });
 ```
 
-> <sub>Full source: [`examples/static_for.cpp`](examples/static_for.cpp)</sub> &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-static-for]
+> Full source: [`examples/static_for.cpp`](examples/static_for.cpp) &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-static-for]
 
 ### `dynamic_for`
 
@@ -80,7 +80,7 @@ r | poet::make_dynamic_for<4>([](int i) { use(i); });
 std::tuple{0, 24, 2} | poet::make_dynamic_for<4>([](int i) { use(i); });
 ```
 
-> <sub>Full source: [`examples/dynamic_for.cpp`](examples/dynamic_for.cpp)</sub> &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-dynamic-for]
+> Full source: [`examples/dynamic_for.cpp`](examples/dynamic_for.cpp) &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-dynamic-for]
 
 ### `dispatch`
 
@@ -103,7 +103,7 @@ auto params = std::make_tuple(
 poet::dispatch(Kernel{}, params, data);
 ```
 
-> <sub>Full source: [`examples/dispatch.cpp`](examples/dispatch.cpp)</sub> &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-dispatch]
+> Full source: [`examples/dispatch.cpp`](examples/dispatch.cpp) &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-dispatch]
 
 For sparse allowed combinations, use `dispatch_set`. Pair with
 `poet::throw_on_no_match` when a miss should fail:
@@ -118,7 +118,7 @@ poet::dispatch(
     MatMul{}, Shapes{rows, cols}, a, b, c);
 ```
 
-> <sub>Full source: [`examples/dispatch_set.cpp`](examples/dispatch_set.cpp)</sub> &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-dispatch-set]
+> Full source: [`examples/dispatch_set.cpp`](examples/dispatch_set.cpp) &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-dispatch-set]
 
 ### CPU detection
 
@@ -127,7 +127,7 @@ constexpr auto regs = poet::available_registers();
 constexpr auto line = poet::cache_line();
 ```
 
-> <sub>Full source: [`examples/cpu_info.cpp`](examples/cpu_info.cpp)</sub> &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-cpu-info]
+> Full source: [`examples/cpu_info.cpp`](examples/cpu_info.cpp) &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-cpu-info]
 
 ### Worked examples
 
