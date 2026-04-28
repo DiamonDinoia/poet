@@ -54,6 +54,16 @@ html_theme_options = {
     "navigation_depth": 4,
     "collapse_navigation": False,
     "sticky_navigation": True,
+    "display_version": True,
+}
+
+# RTD theme reads these to render the "Edit on GitHub" link on every page.
+html_context = {
+    "display_github": True,
+    "github_user": "DiamonDinoia",
+    "github_repo": "poet",
+    "github_version": "main",
+    "conf_py_path": "/docs/",
 }
 
 # Breathe/Exhale emit false-positive warnings for heavily-overloaded templated
