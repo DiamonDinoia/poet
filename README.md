@@ -50,7 +50,7 @@ poet::static_for<0, 64, 1, 8>([&](auto I) {
 });
 ```
 
-Full source: [`examples/static_for.cpp`](examples/static_for.cpp) &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-static-for]
+[![Source: static_for.cpp][src-badge-static-for]](examples/static_for.cpp) [![Try on Compiler Explorer][ce-badge]][ce-static-for]
 
 ### `dynamic_for`
 
@@ -80,7 +80,7 @@ r | poet::make_dynamic_for<4>([](int i) { use(i); });
 std::tuple{0, 24, 2} | poet::make_dynamic_for<4>([](int i) { use(i); });
 ```
 
-Full source: [`examples/dynamic_for.cpp`](examples/dynamic_for.cpp) &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-dynamic-for]
+[![Source: dynamic_for.cpp][src-badge-dynamic-for]](examples/dynamic_for.cpp) [![Try on Compiler Explorer][ce-badge]][ce-dynamic-for]
 
 ### `dispatch`
 
@@ -103,7 +103,7 @@ auto params = std::make_tuple(
 poet::dispatch(Kernel{}, params, data);
 ```
 
-Full source: [`examples/dispatch.cpp`](examples/dispatch.cpp) &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-dispatch]
+[![Source: dispatch.cpp][src-badge-dispatch]](examples/dispatch.cpp) [![Try on Compiler Explorer][ce-badge]][ce-dispatch]
 
 For sparse allowed combinations, use `dispatch_set`. Pair with
 `poet::throw_on_no_match` when a miss should fail:
@@ -118,7 +118,7 @@ poet::dispatch(
     MatMul{}, Shapes{rows, cols}, a, b, c);
 ```
 
-Full source: [`examples/dispatch_set.cpp`](examples/dispatch_set.cpp) &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-dispatch-set]
+[![Source: dispatch_set.cpp][src-badge-dispatch-set]](examples/dispatch_set.cpp) [![Try on Compiler Explorer][ce-badge]][ce-dispatch-set]
 
 ### CPU detection
 
@@ -127,7 +127,7 @@ constexpr auto regs = poet::available_registers();
 constexpr auto line = poet::cache_line();
 ```
 
-Full source: [`examples/cpu_info.cpp`](examples/cpu_info.cpp) &nbsp; [![Try on Compiler Explorer][ce-badge]][ce-cpu-info]
+[![Source: cpu_info.cpp][src-badge-cpu-info]](examples/cpu_info.cpp) [![Try on Compiler Explorer][ce-badge]][ce-cpu-info]
 
 ### Worked examples
 
@@ -178,6 +178,11 @@ cmake --build build --target example_benchmark
 [ce-polynomial]: https://diamondinoia.github.io/poet/polynomial.html
 [ce-dot-product]: https://diamondinoia.github.io/poet/dot_product.html
 [ce-benchmark]: https://diamondinoia.github.io/poet/benchmark.html
+[src-badge-static-for]: https://img.shields.io/badge/source-static__for.cpp-1f6feb?logo=cplusplus&logoColor=white
+[src-badge-dynamic-for]: https://img.shields.io/badge/source-dynamic__for.cpp-1f6feb?logo=cplusplus&logoColor=white
+[src-badge-dispatch]: https://img.shields.io/badge/source-dispatch.cpp-1f6feb?logo=cplusplus&logoColor=white
+[src-badge-dispatch-set]: https://img.shields.io/badge/source-dispatch__set.cpp-1f6feb?logo=cplusplus&logoColor=white
+[src-badge-cpu-info]: https://img.shields.io/badge/source-cpu__info.cpp-1f6feb?logo=cplusplus&logoColor=white
 
 ## Install
 
