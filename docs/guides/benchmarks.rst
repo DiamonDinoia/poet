@@ -21,25 +21,20 @@ For the multi-compiler sweep:
 Key takeaways
 -------------
 
-- ``dynamic_for`` helps most when lane-aware callbacks create independent accumulator chains.
+- ``dynamic_for`` breaks dependency chains through lane-aware callbacks.
 - ``static_for`` benefits from tuned block sizes on heavier loop bodies.
-- ``dispatch`` helps when a runtime choice unlocks compile-time specialization.
+- ``dispatch`` turns a runtime choice into compile-time specialization.
 
 See the repository README for current charts.
-
-The multi-compiler sweep driver lives at `scripts/bench_all.sh
-<https://github.com/flatironinstitute/poet/blob/main/scripts/bench_all.sh>`_.
 
 Run a microbench on Compiler Explorer
 -------------------------------------
 
-A small Google Benchmark microbench lives in
-`examples/benchmark.cpp
-<https://github.com/flatironinstitute/poet/blob/main/examples/benchmark.cpp>`_;
-it compares scalar dot product against ``dynamic_for<4>`` and
-``dynamic_for<8>``. The Compiler Explorer link below compiles, links
-Google Benchmark, and runs in *Execute* mode, so the timings appear in
-the output pane:
+The microbench in `examples/benchmark.cpp
+<https://github.com/flatironinstitute/poet/blob/main/examples/benchmark.cpp>`_
+compares scalar dot product against ``dynamic_for<4>`` and ``dynamic_for<8>``.
+The link below runs it on Compiler Explorer in *Execute* mode and shows
+timings in the output pane:
 
 |ce-run-badge| `Run benchmark on Compiler Explorer <https://flatironinstitute.github.io/poet/benchmark.html>`_
 

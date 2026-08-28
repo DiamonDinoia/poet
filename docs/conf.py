@@ -66,8 +66,7 @@ html_context = {
     "conf_py_path": "/docs/",
 }
 
-# Breathe/Exhale emit false-positive warnings for heavily-overloaded templated
-# APIs (notably dispatch/static_for) due to parser limitations.
+# Breathe/Exhale misparse the heavily-overloaded templates (dispatch, static_for); warnings are noise.
 suppress_warnings = [
     "docutils",
     "cpp.duplicate_declaration",

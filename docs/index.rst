@@ -25,8 +25,7 @@ Quick start
 
 .. note::
 
-   **Try it online.** Each example has a one-click Compiler Explorer link
-   that pulls the
+   Each example runs online on Compiler Explorer. The link pulls the
    `single-header build <https://github.com/flatironinstitute/poet/tree/single-header>`_
    from GitHub at compile time via Compiler Explorer's URL-include feature.
 
@@ -35,14 +34,12 @@ Quick start
    - |ce-badge| `dispatch <https://flatironinstitute.github.io/poet/dispatch.html>`_
    - |ce-badge| `dispatch_set <https://flatironinstitute.github.io/poet/dispatch_set.html>`_
    - |ce-badge| `cpu_info <https://flatironinstitute.github.io/poet/cpu_info.html>`_
-   - |ce-badge| `polynomial — Horner via dispatch + static_for <https://flatironinstitute.github.io/poet/polynomial.html>`_
-   - |ce-badge| `dot_product — lane-aware ILP <https://flatironinstitute.github.io/poet/dot_product.html>`_
-   - |ce-run-badge| `benchmark — Google Benchmark microbench, runs on CE <https://flatironinstitute.github.io/poet/benchmark.html>`_
+   - |ce-badge| `polynomial: Horner via dispatch + static_for <https://flatironinstitute.github.io/poet/polynomial.html>`_
+   - |ce-badge| `dot_product: lane-aware ILP <https://flatironinstitute.github.io/poet/dot_product.html>`_
+   - |ce-run-badge| `benchmark: Google Benchmark microbench, runs on CE <https://flatironinstitute.github.io/poet/benchmark.html>`_
 
    Source for each example lives in
-   `examples/ <https://github.com/flatironinstitute/poet/tree/main/examples>`_;
-   regenerate the links with
-   `tools/make_godbolt_links.py <https://github.com/flatironinstitute/poet/blob/main/tools/make_godbolt_links.py>`_.
+   `examples/ <https://github.com/flatironinstitute/poet/tree/main/examples>`_.
 
 .. |ce-badge| image:: https://img.shields.io/badge/Compiler%20Explorer-open-67c52a?logo=compilerexplorer&logoColor=white
    :alt: Try on Compiler Explorer
@@ -75,18 +72,8 @@ Minimal examples:
 Notes
 -----
 
-- ``poet::inclusive_range<Start, End>`` is inclusive on both ends.
-- ``dynamic_for`` is most useful with the lane-aware callback form for multi-accumulator work.
+- ``dynamic_for`` helps with the lane-aware callback form for multi-accumulator work.
 - The C++20 ``make_dynamic_for`` adaptor is eager and needs a random-access range.
-
-Next reads
-----------
-
-- :doc:`install`
-- :doc:`guides/static_for`
-- :doc:`guides/dynamic_for`
-- :doc:`guides/dispatch`
-- :doc:`guides/benchmarks`
 
 .. toctree::
    :maxdepth: 2

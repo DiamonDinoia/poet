@@ -1,7 +1,7 @@
 Installation
 ============
 
-POET is header-only. You can consume it directly from source or as an installed CMake package.
+POET is header-only, consumable directly from source or as an installed CMake package.
 
 Local CMake project
 -------------------
@@ -47,4 +47,11 @@ FetchContent
 Non-CMake builds
 ----------------
 
-Add ``include/`` to your compiler include path and include ``<poet/poet.hpp>``.
+Generate the version header once (``include/poet/version.hpp`` is not tracked in
+git), then add ``include/`` to the compiler include path:
+
+.. code-block:: bash
+
+   cmake -P cmake/GenerateVersion.cmake
+
+Include ``<poet/poet.hpp>``.
