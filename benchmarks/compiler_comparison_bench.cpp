@@ -2,10 +2,10 @@
 /// \brief Cross-compiler performance comparison benchmark.
 ///
 /// Four sections designed to expose compiler quality differences:
-///   1. Dispatch baselines — raw if-else / switch / fn-ptr vs POET dispatch
-///   2. Vectorization probe — float saxpy + reduce with alignment hints
-///   3. N sweep for dynamic_for — cache boundary & scaling behavior
-///   4. Template inlining depth — static_for at small N vs plain loop
+///   1. Dispatch baselines: raw if-else / switch / fn-ptr vs POET dispatch
+///   2. Vectorization probe: float saxpy + reduce with alignment hints
+///   3. N sweep for dynamic_for: cache boundary & scaling behavior
+///   4. Template inlining depth: static_for at small N vs plain loop
 
 #include <array>
 #include <cstddef>
@@ -20,7 +20,7 @@
 
 namespace {
 
-// ── Shared utilities ─────────────────────────────────────────────────────────
+// -- Shared utilities ---------------------------------------------------------
 
 static inline std::uint32_t xorshift32(std::uint32_t x) noexcept {
     x ^= x << 13;
@@ -68,9 +68,9 @@ template<std::size_t N> double reduce(const std::array<double, N> &a) {
     return t;
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 // Section 1: Dispatch Baselines
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 
 inline int dispatch_work(int val, int scale) noexcept { return val * val + scale; }
 
@@ -136,9 +136,9 @@ struct dispatch_kernel {
 
 using dispatch_range = poet::inclusive_range<1, 8>;
 
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 // Section 2: Vectorization Probe
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 
 constexpr std::size_t kSaxpyN = 4096;
 
@@ -196,9 +196,9 @@ float saxpy_restrict(float a, float b) noexcept {
     return sum;
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 // Section 3: N Sweep for dynamic_for
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 
 constexpr auto cc_regs = poet::available_registers();
 constexpr std::size_t tuned_accs = cc_regs.lanes_64bit * 2;
@@ -236,9 +236,9 @@ template<std::size_t N> void run_sweep(std::uint32_t salt) {
     });
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 // Section 4: Template Inlining Depth
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 
 template<std::size_t N> struct InlineAccFunctor {
     std::uint64_t &acc;
@@ -279,7 +279,7 @@ int main(int argc, char **argv) {
         std::cerr << "Tuned accums:     " << tuned_accs << "  (lanes_64 * 2)\n\n";
     }
 
-    // ── Section 1: Dispatch Baselines ────────────────────────────────────────
+    // -- Section 1: Dispatch Baselines ----------------------------------------
     {
         benchmark::RegisterBenchmark("DispatchBaselines/if_else", [](benchmark::State &state) {
             for (auto _ : state) {
@@ -315,7 +315,7 @@ int main(int argc, char **argv) {
         })->MinTime(0.1);
     }
 
-    // ── Section 2: Vectorization Probe ───────────────────────────────────────
+    // -- Section 2: Vectorization Probe ---------------------------------------
     {
         saxpy_init();
         const float a = 2.5f;
@@ -337,7 +337,7 @@ int main(int argc, char **argv) {
         })->MinTime(0.1);
     }
 
-    // ── Section 3: N Sweep for dynamic_for ───────────────────────────────────
+    // -- Section 3: N Sweep for dynamic_for -----------------------------------
     {
         const auto salt = next_salt();
         run_sweep<64>(salt);
@@ -346,7 +346,7 @@ int main(int argc, char **argv) {
         run_sweep<32768>(salt);
     }
 
-    // ── Section 4: Template Inlining Depth ───────────────────────────────────
+    // -- Section 4: Template Inlining Depth -----------------------------------
     {
         run_inline_test<4>();
         run_inline_test<8>();

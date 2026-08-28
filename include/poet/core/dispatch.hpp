@@ -41,7 +41,7 @@ namespace detail {
           impl(std::index_sequence<Idx...> /*idx_seq*/, const RuntimeTuple &runtime_tuple, F &&func, Args &&...args)
             -> result_holder<ResultType> {
             result_holder<ResultType> res;
-            // Short-circuiting AND fold: all runtime slots must equal their compile-time counterparts.
+            // Every runtime slot must equal its compile-time candidate.
             if (((std::get<Idx>(runtime_tuple) == V) && ...)) {
                 if constexpr (std::is_void_v<ResultType>) {
                     std::forward<F>(func).template operator()<V...>(std::forward<Args>(args)...);
@@ -84,8 +84,8 @@ using inclusive_range = decltype(detail::inclusive_range_impl<decltype(Start), S
 /// \brief Runtime value paired with the compile-time candidates to probe.
 template<typename Seq> struct dispatch_param {
     using seq_type = Seq;
-    /// The sequence's own value type: brace-init then rejects a narrowing runtime
-    /// value instead of silently truncating it.
+    /// The sequence's own value type, so brace-init rejects a narrowing runtime
+    /// value instead of silently truncating.
     using value_type = typename Seq::value_type;
     value_type runtime_val;
 };
@@ -126,9 +126,9 @@ namespace detail {
 
     /// True when the values form a unit-stride run, ascending or descending.
     ///
-    /// Monotonicity is required, not merely a span equal to the value count:
-    /// `seq_lookup` resolves these by `position == distance from First`, which a
-    /// permutation such as `{2, 0, 1}` satisfies in span but not in position.
+    /// A span equal to the value count is not enough: `seq_lookup` resolves
+    /// these by `position == distance from First`, and a permutation such as
+    /// `{2, 0, 1}` matches the span but not the positions.
     template<typename V, V... Values> POET_CPP20_CONSTEVAL auto is_unit_stride() noexcept -> bool {
         constexpr std::size_t count = sizeof...(Values);
         if constexpr (count < 2) {
@@ -177,8 +177,9 @@ namespace detail {
                 const V current_key = out.sorted_keys[i];
                 const std::size_t current_index = out.sorted_indices[i];
                 std::size_t insert_pos = i;
-                // Shift larger keys (and their original-position tags) right in lockstep
-                // until we find the slot where `current_key` belongs.
+                // Shift larger keys and their original-position tags right in
+                // lockstep until the position of the first key not greater
+                // than `current_key`.
                 while (insert_pos > 0 && out.sorted_keys[insert_pos - 1] > current_key) {
                     out.sorted_keys[insert_pos] = out.sorted_keys[insert_pos - 1];
                     out.sorted_indices[insert_pos] = out.sorted_indices[insert_pos - 1];
@@ -233,12 +234,11 @@ namespace detail {
 
     /// Maps a runtime value to its slot in `Seq`.
     ///
-    /// `find` returns a slot in `[0, count)` on a hit and *some* value `>= count`
-    /// on a miss — deliberately not a fixed sentinel. The contiguous case can
-    /// then return its raw unsigned difference, whose natural underflow already
-    /// lands out of range, so a hit costs one subtraction and no select at all.
-    /// Callers test `idx < count`, which is the same single compare a sentinel
-    /// would need.
+    /// `find` returns a slot in `[0, count)` on a hit and some value `>= count`
+    /// on a miss, by contract rather than by a fixed sentinel. The contiguous
+    /// case returns its raw unsigned difference, whose natural underflow already
+    /// lands out of range. A hit therefore costs one subtraction and no select.
+    /// Callers test `idx < count`, the same single compare a sentinel needs.
     template<typename Seq, bool IsContiguous = is_contiguous_sequence<Seq>::value> struct seq_lookup;
 
     template<typename V, V... Values> struct seq_lookup<std::integer_sequence<V, Values...>, true> {
@@ -273,7 +273,7 @@ namespace detail {
                 // Keys are sorted and unique, so the gap is positive in any value type.
                 constexpr V stride0 = static_cast<V>(sparse_data::keys[1] - sparse_data::keys[0]);
                 if constexpr (stride0 == 0) { return false; }
-                // All adjacent gaps must match `stride0`, otherwise fall back to binary search.
+                // When any later gap differs from `stride0`, `find` uses binary search.
                 // cppcheck-suppress syntaxError ; cppcheck cannot parse a loop inside if constexpr
                 for (std::size_t i = 2; i < sparse_data::unique_count; ++i) {
                     if (static_cast<V>(sparse_data::keys[i] - sparse_data::keys[i - 1]) != stride0) { return false; }
@@ -284,9 +284,10 @@ namespace detail {
 
         static constexpr std::size_t count = sparse_data::value_count;
 
-        /// `indices` is a permutation of `[0, count)`, but neither compiler can
-        /// see that through the table load, so it re-checks the bound the caller
-        /// already applies. Stating the invariant drops the duplicate compare.
+        /// `indices` is a permutation of `[0, count)`. GCC and Clang cannot see
+        /// that through the table load, so the compiler re-checks the bound the
+        /// caller already applies. Stating the invariant drops the duplicate
+        /// compare.
         static POET_FORCEINLINE auto bounded(std::size_t slot) -> std::size_t {
             if (slot >= count) { POET_UNREACHABLE(); }
             return slot;
@@ -297,17 +298,19 @@ namespace detail {
                 using U = std::make_unsigned_t<V>;
                 static constexpr V first = sparse_data::keys[0];
                 static constexpr V stride = static_cast<V>(sparse_data::keys[1] - sparse_data::keys[0]);
-                // Unsigned, so "below first" wraps past the upper bound and the
-                // two range ends collapse into the single `slot >=` test below.
-                // Keys are sorted, so `stride` is positive and the division is a shift.
+                // Unsigned arithmetic: "below first" wraps past the upper bound,
+                // so the two range ends collapse into the single `slot >=` test
+                // below. Keys are sorted, so `stride` is positive and the
+                // division is a shift.
                 const auto diff = static_cast<U>(static_cast<U>(value) - static_cast<U>(first));
                 if (diff % static_cast<U>(stride) != 0) { return count; }
                 const auto slot = static_cast<std::size_t>(diff / static_cast<U>(stride));
                 if (slot >= sparse_data::unique_count) { return count; }
-                // Remap sorted position back to the user's declared slot.
+                // Map the sorted position back to the slot the user declared.
                 return bounded(sparse_data::indices[slot]);
             } else {
-                // Sorted keys → binary search; `indices` undoes the sort to the original slot.
+                // Keys are sorted, so a binary search finds `value`; `indices`
+                // maps the found position back to the declared slot.
                 const auto pos = std::lower_bound(sparse_data::keys.begin(), sparse_data::keys.end(), value);
                 if (pos == sparse_data::keys.end() || *pos != value) { return count; }
                 return bounded(sparse_data::indices[static_cast<std::size_t>(pos - sparse_data::keys.begin())]);
@@ -333,7 +336,7 @@ namespace detail {
     ///
     /// Per-dimension lookup is `seq_lookup::find`, which already specialises to
     /// index arithmetic, a div/mod, or a binary search depending on the sequence
-    /// shape — so there is one flattening path regardless of that shape.
+    /// shape. One flattening path serves every shape.
     template<typename ParamTuple, std::size_t... Idx>
     POET_FORCEINLINE auto flat_index(const ParamTuple &params, std::index_sequence<Idx...> /*idxs*/) -> std::size_t {
         using P = std::decay_t<ParamTuple>;
@@ -344,9 +347,9 @@ namespace detail {
         const std::array<std::size_t, sizeof...(Idx)> found = { std::tuple_element_t<Idx, lookup>::find(
           std::get<Idx>(params).runtime_val)... };
 
-        // Bitwise-AND fold (not logical) so no dimension's range test is
-        // short-circuited into a branch; the offset is summed unconditionally
-        // alongside it, since a miss discards it anyway.
+        // Bitwise-AND fold, not logical: no dimension's range test becomes a
+        // branch, and the offset is summed unconditionally alongside the test
+        // because a miss discards the sum anyway.
         const unsigned hit = ((static_cast<unsigned>(found[Idx] < std::tuple_element_t<Idx, lookup>::count)) & ...);
         const std::size_t flat = ((found[Idx] * strides[Idx]) + ...);
 
@@ -389,22 +392,20 @@ namespace detail {
         return extract_sequences_impl<TupleType>(std::make_index_sequence<std::tuple_size_v<TupleType>>{});
     }
 
-    // Computes the functor's return type by probing both calling conventions the dispatcher
-    // supports: `func(integral_constant<int, V>{}, args...)` (value form) and
-    // `func.template operator()<V>(args...)` (template form). Value form is preferred when viable.
+    // Computes the functor's return type by probing the two calling conventions:
+    // `func(integral_constant<int, V>{}, args...)` (value form) and
+    // `func.template operator()<V>(args...)` (template form). The value form is
+    // preferred when viable.
     template<typename Functor, typename... Seq> struct dispatch_result_helper {
-        // First preference: value-argument form (passes std::integral_constant values as parameters).
         template<typename... Args>
         static auto compute_impl(std::true_type /*use_value_args*/)
           -> decltype(std::declval<Functor &>()(sequence_first<Seq>{}..., std::declval<Args>()...));
 
-        // Fallback: template-parameter form.
         template<typename... Args>
         static auto compute_impl(std::false_type /*use_value_args*/)
           -> decltype(std::declval<Functor &>().template operator()<sequence_first<Seq>::value...>(
             std::declval<Args>()...));
 
-        // Detection of value-argument viability using std::is_invocable
         template<typename... Args>
         static auto compute() -> decltype(compute_impl<Args...>(
           std::integral_constant<bool, std::is_invocable_v<Functor &, sequence_first<Seq>..., Args...>>{}));
@@ -425,9 +426,10 @@ namespace detail {
     template<typename T>
     inline constexpr bool is_stateless_v = std::is_empty_v<T> && std::is_default_constructible_v<T>;
 
-    // Picks the calling convention for each forwarded arg through the function-pointer table.
-    // Small trivially-copyable rvalue/const-lvalue args are passed by value (cheaper than
-    // synthesising a reference); everything else keeps its original reference category.
+    // Picks the per-arg calling convention in the function-pointer table. A
+    // small trivially-copyable rvalue or const-lvalue goes by value, which is
+    // cheaper than synthesising a reference. Any other arg keeps its original
+    // reference category.
     template<typename T> struct arg_pass {
         using raw = std::remove_reference_t<T>;
         using raw_unqual = std::remove_cv_t<raw>;
@@ -466,10 +468,10 @@ namespace detail {
             }
         }
 
-        // Each entry is a plain function pointer. Stateless functors are default-constructed
-        // inside the thunk (no closure needed); stateful functors take the functor by ref so
-        // the signature stays identical across all entries in the array. Two overloads rather
-        // than one `if constexpr` with two returns: nvcc reports the latter as a missing return.
+        // Stateless functors are default-constructed inside the thunk; stateful
+        // functors arrive by reference, so every table entry has one signature.
+        // Two overloads, not one `if constexpr` with two returns: nvcc reports
+        // the `if constexpr` form as a missing return.
         template<V Value> static POET_CPP20_CONSTEVAL auto make_entry(std::true_type /*stateless*/) {
             return +[](pass_t<Args &&>... args) -> R {
                 Functor func{};
@@ -514,13 +516,13 @@ namespace detail {
             static constexpr V value = values[I];
         };
 
-        // Decode a flat table index back to its per-dimension coordinate via row-major strides.
+        // Decodes a flat table index to its per-dimension coordinate via row-major strides.
         template<std::size_t FlatIdx, std::size_t DimIdx>
         static constexpr std::size_t dim_index_v = FlatIdx / strides_[DimIdx] % dims_[DimIdx];
 
-        // For a given flat index, exposes each dimension's value as `ic<N>` — that is
-        // what the functor sees. Each dimension keeps its OWN value type, so this
-        // cannot go through one shared array.
+        // Exposes each dimension of a flat index as `ic<N>`, which is what the
+        // functor receives. Each dimension has its own value type, so one shared
+        // array cannot hold them.
         template<std::size_t FlatIdx, std::size_t... SeqIdx> struct value_extractor {
             template<std::size_t N> using seq_at = std::tuple_element_t<N, std::tuple<Seqs...>>;
 
@@ -558,8 +560,8 @@ namespace detail {
             }
         };
 
-        // Two overloads rather than one `if constexpr` with two returns: nvcc
-        // reports the latter as a missing return statement.
+        // Two overloads, not one `if constexpr` with two returns: nvcc reports
+        // the `if constexpr` form as a missing return statement.
         template<typename R> static constexpr auto make_table(std::true_type /*stateless*/) {
             using fn_type = decltype(&nd_index_caller<0>::template call_stateless<R>);
             return std::array<fn_type, sizeof...(FlatIndices)>{
@@ -743,29 +745,32 @@ namespace detail {
       All &&...all) -> decltype(auto) {
 
         constexpr std::size_t num_params = sizeof...(ParamIdx);
-        // Reference-tuple view of the entire pack so we can index it twice without copies.
+        // A reference-tuple view over the whole pack permits two indexing passes
+        // without copies.
         auto all_refs = std::forward_as_tuple(std::forward<All>(all)...);
 
-        // Leading `num_params` entries are the dispatch_params → copy into a value tuple
-        // (they're small structs holding a runtime int).
+        // The leading `num_params` entries are the dispatch_params. Copy them
+        // into a value tuple; each is a small struct holding one runtime int.
         auto params = std::make_tuple(std::get<ParamIdx>(all_refs)...);
 
-        // Remaining entries are forwarded with their original value categories preserved
-        // via `std::move(all_refs)` (the references inside are unaffected).
+        // The remaining entries keep their original value categories.
+        // `std::move(all_refs)` moves only the tuple; the references inside are
+        // unaffected.
         return dispatch_impl<ThrowOnNoMatch>(functor,
           params,
           std::get<num_params + ArgIdx>(
             std::move(all_refs))...);// NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
     }
 
-    // Splits the variadic pack into [leading dispatch_params | trailing regular args] by
-    // counting dispatch_param types until the first non-dispatch_param — everything after is
-    // forwarded as plain args into the chosen specialisation.
+    // Splits the variadic pack into [leading dispatch_params | trailing regular
+    // args]: count dispatch_param types until the first non-dispatch_param.
+    // Everything after goes to the chosen specialisation as plain args.
     template<bool ThrowOnNoMatch, typename Functor, typename FirstParam, typename... Rest>
     POET_FORCEINLINE auto dispatch_variadic_impl(Functor &functor, FirstParam &&first_param, Rest &&...rest)
       -> decltype(auto) {
-        // `first_param` is known to be a dispatch_param (enable_if on the public overload);
-        // count contiguous dispatch_params in the rest, the remainder is the regular arg pack.
+        // `first_param` is known to be a dispatch_param (enable_if on the public
+        // overload). Count contiguous dispatch_params in `rest`; the remainder
+        // is the regular arg pack.
         constexpr std::size_t num_params = 1 + leading_param_count<Rest...>::value;
         constexpr std::size_t num_args = sizeof...(Rest) + 1 - num_params;
 
@@ -788,8 +793,8 @@ namespace detail {
 /// followed by any remaining arguments, which are forwarded to `functor`
 /// untouched. `functor` is invoked in whichever form it provides:
 ///
-/// - `functor(std::integral_constant<V, Value>{}..., args...)` — values
-/// - `functor.template operator()<Value...>(args...)` — template parameters
+/// - `functor(std::integral_constant<V, Value>{}..., args...)`: values
+/// - `functor.template operator()<Value...>(args...)`: template parameters
 ///
 /// The value form is preferred when both are viable, which is what makes a
 /// generic lambda (`[](auto N, auto... args){}`) work.
@@ -808,8 +813,8 @@ template<typename Functor,
   typename FirstParam,
   typename... Rest,
   std::enable_if_t<detail::is_dispatch_param_v<FirstParam>, int> = 0>
-auto dispatch(Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward) — accepted as universal ref to avoid
-                                // copy; internally always used by lvalue ref
+auto dispatch(Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward). Universal ref avoids a copy.
+                                // The impl binds the functor as an lvalue ref, so std::forward has nothing to do.
   FirstParam &&first_param,
   Rest &&...rest) -> decltype(auto) {
     return detail::dispatch_variadic_impl<false>(
@@ -821,8 +826,8 @@ template<typename Functor,
   typename ParamTuple,
   typename... Args,
   std::enable_if_t<detail::is_dispatch_param_tuple_v<ParamTuple>, int> = 0>
-auto dispatch(Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward) — accepted as universal ref to avoid
-                                // copy; internally always used by lvalue ref
+auto dispatch(Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward). Universal ref avoids a copy.
+                                // The impl binds the functor as an lvalue ref, so std::forward has nothing to do.
   ParamTuple const &params,
   Args &&...args) -> decltype(auto) {
     return detail::dispatch_impl<false>(functor, params, std::forward<Args>(args)...);
@@ -881,8 +886,8 @@ namespace detail {
 
 /// \brief Dispatches using a `dispatch_set`.
 template<typename Functor, typename ValueType, typename... Tuples, typename... Args>
-auto dispatch(Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward) — accepted as universal ref to avoid
-                                // copy; internally always used by lvalue ref
+auto dispatch(Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward). Universal ref avoids a copy.
+                                // The impl binds the functor as an lvalue ref, so std::forward has nothing to do.
   const dispatch_set<ValueType, Tuples...> &set,
   Args &&...args) -> decltype(auto) {
     return detail::dispatch_tuples_impl<false>(functor,
@@ -894,8 +899,8 @@ auto dispatch(Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward)
 /// \brief Throwing overload for `dispatch_set` dispatch.
 template<typename Functor, typename ValueType, typename... Tuples, typename... Args>
 auto dispatch(throw_on_no_match_t /*tag*/,
-  Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward) — accepted as universal ref to avoid copy;
-                    // internally always used by lvalue ref
+  Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward). Universal ref avoids a copy.
+                    // The impl binds the functor as an lvalue ref, so std::forward has nothing to do.
   const dispatch_set<ValueType, Tuples...> &set,
   Args &&...args) -> decltype(auto) {
     return detail::dispatch_tuples_impl<true>(functor,
@@ -910,8 +915,8 @@ template<typename Functor,
   typename... Rest,
   std::enable_if_t<detail::is_dispatch_param_v<FirstParam>, int> = 0>
 auto dispatch(throw_on_no_match_t /*tag*/,
-  Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward) — accepted as universal ref to avoid copy;
-                    // internally always used by lvalue ref
+  Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward). Universal ref avoids a copy.
+                    // The impl binds the functor as an lvalue ref, so std::forward has nothing to do.
   FirstParam &&first_param,
   Rest &&...rest) -> decltype(auto) {
     return detail::dispatch_variadic_impl<true>(
@@ -924,8 +929,8 @@ template<typename Functor,
   typename... Args,
   std::enable_if_t<detail::is_dispatch_param_tuple_v<ParamTuple>, int> = 0>
 auto dispatch(throw_on_no_match_t /*tag*/,
-  Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward) — accepted as universal ref to avoid copy;
-                    // internally always used by lvalue ref
+  Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward). Universal ref avoids a copy.
+                    // The impl binds the functor as an lvalue ref, so std::forward has nothing to do.
   ParamTuple const &params,
   Args &&...args) -> decltype(auto) {
     return detail::dispatch_impl<true>(functor, params, std::forward<Args>(args)...);

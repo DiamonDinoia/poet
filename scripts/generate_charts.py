@@ -25,7 +25,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-# ── Styling ──────────────────────────────────────────────────────────────────
+# -- Styling ------------------------------------------------------------------
 
 COMPILER_ORDER = [
     "gcc-12",
@@ -66,7 +66,7 @@ def style_chart(ax: plt.Axes, title: str):
     ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%.1f"))
 
 
-# ── Data loading ─────────────────────────────────────────────────────────────
+# -- Data loading -------------------------------------------------------------
 
 
 def load_results(results_root: Path) -> dict[str, dict[str, list[dict]]]:
@@ -122,7 +122,7 @@ def entry_nsop(entry: dict | None) -> float | None:
     return None
 
 
-# ── Chart generators ─────────────────────────────────────────────────────────
+# -- Chart generators ---------------------------------------------------------
 
 
 def generate_dynamic_for_chart(data: dict[str, dict], output: Path):
@@ -558,7 +558,7 @@ def generate_average_improvement_chart(data: dict[str, dict], output: Path):
     print(f"  Wrote {output}")
 
 
-# ── Main ─────────────────────────────────────────────────────────────────────
+# -- Main ---------------------------------------------------------------------
 
 
 def main():

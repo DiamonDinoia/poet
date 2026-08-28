@@ -48,7 +48,7 @@ def parse_bench_file(text: str) -> dict:
             result["metadata"][m.group(1).strip()] = m.group(2).strip()
             i += 1
             continue
-        # Once we hit a table header or separator, stop metadata parsing
+        # A table header or separator ends the metadata block.
         break
 
     # Parse tables

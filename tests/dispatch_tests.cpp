@@ -356,11 +356,11 @@ TEST_CASE("dispatch sparse 1D miss between values", "[static_dispatch][sparse]")
 }
 
 // ============================================================================
-// Sparse 1D dispatch — strided (equal-gap) path
+// Sparse 1D dispatch: strided (equal-gap) path
 // ============================================================================
 
 TEST_CASE("dispatch strided sparse 1D hits all values", "[static_dispatch][sparse][strided]") {
-    // {0, 10, 20}: stride=10 → is_strided=true → O(1) lookup
+    // {0, 10, 20}: uniform stride 10, so the lookup takes the O(1) strided path.
     using StridedSeq = std::integer_sequence<int, 0, 10, 20>;
     for (int val : { 0, 10, 20 }) {
         bool invoked = false;
@@ -393,11 +393,11 @@ TEST_CASE("dispatch strided sparse 1D miss cases", "[static_dispatch][sparse][st
 }
 
 // ============================================================================
-// Sparse 1D dispatch — non-strided (unequal-gap) path
+// Sparse 1D dispatch: non-strided (unequal-gap) path
 // ============================================================================
 
 TEST_CASE("dispatch non-strided sparse 1D hits all values", "[static_dispatch][sparse][non-strided]") {
-    // {1, 3, 7}: stride0=2 but 7-3=4 ≠ 2 → is_strided=false → binary search
+    // {1, 3, 7}: first gap 2 but 7-3=4, so the lookup falls back to binary search.
     using UnequalSeq = std::integer_sequence<int, 1, 3, 7>;
     for (int val : { 1, 3, 7 }) {
         bool invoked = false;
@@ -1190,9 +1190,9 @@ TEST_CASE("dispatch ND lambda returns pointer (lvalue)", "[static_dispatch][retu
 }
 
 TEST_CASE("dispatch permuted sequence resolves to the declared slot", "[static_dispatch][permutation]") {
-    // A permutation such as {2, 0, 1} spans max-min+1 == 3 over 3 values, so a
+    // A permutation such as {2, 0, 1} spans max-min+1 == 3 over 3 values. A
     // span-only contiguity test would classify it as unit-stride and resolve it
-    // by index arithmetic — silently dispatching to the wrong slot.
+    // by index arithmetic, silently dispatching to the wrong slot.
     using Permuted = std::integer_sequence<int, 2, 0, 1>;
 
     auto identity = [](auto V) { return static_cast<int>(V); };
@@ -1200,7 +1200,7 @@ TEST_CASE("dispatch permuted sequence resolves to the declared slot", "[static_d
         REQUIRE(dispatch(identity, std::make_tuple(dispatch_param<Permuted>{ value })) == value);
     }
 
-    // Descending runs must still take the fast path and stay correct.
+    // Descending runs take the same fast path and stay correct.
     using Descending = std::integer_sequence<int, 4, 3, 2>;
     for (int value : { 4, 3, 2 }) {
         REQUIRE(dispatch(identity, std::make_tuple(dispatch_param<Descending>{ value })) == value);
@@ -1208,9 +1208,9 @@ TEST_CASE("dispatch permuted sequence resolves to the declared slot", "[static_d
 }
 
 TEST_CASE("dispatch carries the sequence's own value type", "[static_dispatch][value_type]") {
-    // The table machinery used to be specialised on integer_sequence<int, ...>, so
-    // any other value type died on an incomplete-type avalanche rather than a
-    // diagnosable error. The value type must survive all the way to the functor.
+    // The value type must survive from the sequence all the way to the
+    // functor. A hard-coded int anywhere in the table machinery fails to
+    // compile for a non-int sequence.
     using Sizes = std::integer_sequence<std::size_t, 2, 3, 4>;
 
     auto type_of = [](auto V) { return std::is_same_v<typename decltype(V)::value_type, std::size_t>; };
@@ -1231,7 +1231,7 @@ TEST_CASE("dispatch carries the sequence's own value type", "[static_dispatch][v
     for (std::size_t value : { std::size_t{ 4 }, std::size_t{ 3 }, std::size_t{ 2 } }) {
         REQUIRE(dispatch(identity, std::make_tuple(dispatch_param<Down>{ value })) == value);
     }
-    // Below `first` on an unsigned type: the wrap must land past `count`, not at slot 0.
+    // Below `first` on an unsigned type, the wrap must land past `count`, not at slot 0.
     REQUIRE(dispatch(identity, std::make_tuple(dispatch_param<Down>{ std::size_t{ 1 } })) == 0);
 
     // Mixed value types across dimensions of one ND dispatch.

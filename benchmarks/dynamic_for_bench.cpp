@@ -9,15 +9,12 @@
 ///    dependency bottlenecks.
 ///
 /// 2. **Unroll comparison**: plain for (1-acc) vs dynamic_for<optimal> vs
-///    dynamic_for<spill>.  Contrasts the empirically validated sweet spot
-///    against a value confirmed to be in spill territory by assembly inspection.
+///    dynamic_for<spill>.  Contrasts the optimal accumulator count against one
+///    in register-spill territory.
 ///
-/// Tuning constants (AVX2, validated by unroll sweep + objdump analysis):
-///   optimal_accs = lanes_64 * 2 = 8   — peak throughput at 2 SIMD regs of
-///                                        accumulators; hot loop still reloads
-///                                        one acc from the stack but OOO hides it
-///   spill_accs   = optimal_accs * 4   — 2667 rsp refs in hot loop (vs 62 for
-///                                        optimal); deep spill territory
+/// Tuning constants:
+///   optimal_accs = lanes_64 * 2 (2 SIMD registers of accumulators)
+///   spill_accs   = optimal_accs * 4 (register spill territory)
 
 #include <array>
 #include <cstddef>
@@ -30,7 +27,7 @@
 
 namespace {
 
-// ── Register-aware tuning ────────────────────────────────────────────────────
+// -- Register-aware tuning ----------------------------------------------------
 
 constexpr auto regs = poet::available_registers();
 constexpr std::size_t vec_regs = regs.vector_registers;
@@ -39,7 +36,7 @@ constexpr std::size_t lanes_64 = regs.lanes_64bit;
 constexpr std::size_t optimal_accs = lanes_64 * 2;
 constexpr std::size_t spill_accs = optimal_accs * 4;
 
-// ── Workload ─────────────────────────────────────────────────────────────────
+// -- Workload -----------------------------------------------------------------
 
 static inline std::uint32_t xorshift32(std::uint32_t x) noexcept {
     x ^= x << 13;
@@ -58,7 +55,7 @@ static inline double heavy_work(std::size_t i, std::uint32_t salt) noexcept {
     return x;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// -- Helpers ------------------------------------------------------------------
 
 volatile std::uint32_t g_salt = 1;
 
@@ -81,7 +78,7 @@ template<std::size_t N> double reduce(const std::array<double, N> &a) {
     return t;
 }
 
-// ── Hand-unrolled multi-acc for loop ─────────────────────────────────────────
+// -- Hand-unrolled multi-acc for loop -----------------------------------------
 
 template<std::size_t NumAccs> double hand_unrolled_multi_acc(std::size_t count, std::uint32_t salt) {
     std::array<double, NumAccs> accs{};
@@ -95,7 +92,7 @@ template<std::size_t NumAccs> double hand_unrolled_multi_acc(std::size_t count, 
     return reduce(accs);
 }
 
-// ── dynamic_for multi-acc wrapper (templated on Unroll) ──────────────────────
+// -- dynamic_for multi-acc wrapper (templated on Unroll) ----------------------
 
 template<std::size_t Unroll> double dynamic_for_multi_acc(std::size_t count, std::uint32_t salt) {
     std::array<double, Unroll> accs{};
@@ -121,9 +118,9 @@ int main(int argc, char **argv) {
 
     const auto salt = next_salt();
 
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     // Multi-acc: for loop (1 acc) vs hand-unrolled vs dynamic_for
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     {
         constexpr std::size_t N = 10000;
 
@@ -140,9 +137,9 @@ int main(int argc, char **argv) {
         reg("Multi-acc/dynamic_for_optimal_accs", N, [salt] { return dynamic_for_multi_acc<optimal_accs>(N, salt); });
     }
 
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     // Unroll comparison: plain for vs optimal vs spill
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     {
         constexpr std::size_t N = 10000;
 

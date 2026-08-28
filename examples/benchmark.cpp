@@ -7,7 +7,7 @@
 //
 // On Compiler Explorer this example links against the Google Benchmark
 // library (registered as the `benchmark` lib in the URL) and runs in
-// "Execute" mode — the output pane shows actual timings.
+// "Execute" mode: the output pane shows actual timings.
 //
 // Build locally:
 //   cmake -S . -B build -DPOET_BUILD_EXAMPLES=ON -DPOET_BUILD_EXAMPLE_BENCHMARK=ON

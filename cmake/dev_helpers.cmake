@@ -3,19 +3,16 @@ include_guard(GLOBAL)
 # ==============================================================================
 # POET Development Helpers
 # ==============================================================================
-# This file provides CMake helper functions and targets for POET development:
-# - Compiler warnings configuration (poet_enable_warnings)
-# - Sanitizers setup (poet_enable_sanitizers)
-# - Static analysis tools (poet_configure_static_analysis)
-# - Documentation generation (doxygen, sphinx, docs targets)
-# - Code coverage reporting (coverage target)
+# CMake helper functions and targets for POET development:
+# - poet_enable_warnings
+# - poet_enable_sanitizers
+# - poet_configure_static_analysis
+# - docs targets (doxygen, sphinx, docs)
+# - coverage target
 #
-# These helpers are only used for development/testing builds and are not
-# required when using POET as a header-only library.
+# Development and test builds only; not needed to consume POET header-only.
 # ==============================================================================
 
-# Prepare CPM (CMake Package Manager) for fetching dependencies
-# Note: This is only used for developer/test builds, not for header-only library consumers
 include(FetchContent)
 
 FetchContent_Declare(
@@ -33,21 +30,17 @@ endif()
 include(${cpm_SOURCE_DIR}/CPM.cmake)
 
 # -------------------------
-# Warnings helper (from PoetWarnings.cmake)
+# Warnings helper
 # -------------------------
 option(POET_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 
-# Enable comprehensive compiler warnings for a target
-# Supports GCC, Clang, AppleClang, and MSVC compilers
-# Applies warnings with PRIVATE scope for regular targets, INTERFACE scope for interface libraries
+# Apply the warning profile to a target. INTERFACE scope for interface
+# libraries, PRIVATE otherwise.
 function(poet_enable_warnings target)
   if (NOT TARGET "${target}")
     message(FATAL_ERROR "poet_enable_warnings called with non-existent target '${target}'")
   endif()
 
-  # Determine the appropriate scope for applying warnings
-  # INTERFACE scope for interface libraries (warnings propagate to consumers)
-  # PRIVATE scope for other targets (warnings only apply to this target's sources)
   get_target_property(_target_type "${target}" TYPE)
   if(_target_type STREQUAL "INTERFACE_LIBRARY")
     set(_scope INTERFACE)
@@ -55,7 +48,6 @@ function(poet_enable_warnings target)
     set(_scope PRIVATE)
   endif()
 
-  # Generator expressions for compiler detection (evaluated at build time)
   set(_clang_like $<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>)
   set(_gnu $<CXX_COMPILER_ID:GNU>)
   set(_gnu_or_clang $<OR:${_gnu},${_clang_like}>)
@@ -80,8 +72,7 @@ function(poet_enable_warnings target)
     -Wformat=2
   )
 
-  # Additional curated warnings that are checked for compiler support before enabling
-  # These are only added if the compiler supports them (GCC-specific flags)
+  # Warnings enabled only when the compiler supports them (GCC-specific flags).
   set(_additional_warnings
     -Wduplicated-cond
     -Wlogical-op
@@ -91,7 +82,6 @@ function(poet_enable_warnings target)
     -Wredundant-decls
   )
 
-  # Check which additional warnings are supported by the current compiler and add them
   include(CheckCXXCompilerFlag)
   foreach(_f IN LISTS _additional_warnings)
     check_cxx_compiler_flag("${_f}" _flag_supported)
@@ -130,8 +120,8 @@ function(poet_enable_warnings target)
     /w14928
   )
 
-  # Build compiler-specific warning flags using generator expressions
-  # Flags are only applied when compiling C++ code with the matching compiler
+  # Build compiler-specific warning flags as generator expressions. A flag
+  # applies only to C++ code built with the matching compiler.
   set(_compile_options)
   foreach(flag IN LISTS _warnings_clang_like)
     list(APPEND _compile_options $<$<AND:${_lang_is_cxx},${_gnu_or_clang}>:${flag}>)
@@ -143,7 +133,6 @@ function(poet_enable_warnings target)
     list(APPEND _compile_options $<$<AND:${_lang_is_cxx},${_msvc}>:${flag}>)
   endforeach()
 
-  # Add -Werror / /WX if treating warnings as errors
   if(POET_WARNINGS_AS_ERRORS)
     list(APPEND _compile_options $<$<AND:${_lang_is_cxx},${_gnu_or_clang}>:-Werror>)
     list(APPEND _compile_options $<$<AND:${_lang_is_cxx},${_msvc}>:/WX>)
@@ -153,21 +142,19 @@ function(poet_enable_warnings target)
 endfunction()
 
 # -------------------------
-# Sanitizers helper (from PoetSanitizers.cmake)
+# Sanitizers helper
 # -------------------------
 option(POET_ENABLE_SANITIZERS "Master switch to enable all sanitizers at once" OFF)
 
 option(POET_ENABLE_ASAN "Enable AddressSanitizer (memory error detection)" ${POET_ENABLE_SANITIZERS})
 option(POET_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (undefined behavior detection)" ${POET_ENABLE_SANITIZERS})
 
-# Applies sanitizer flags to a target. Flags are set directly rather than via
-# arsenm/sanitizers-cmake: that module's find_package() ran inside a function, so
-# the ASan_*_FLAGS variables it defines died with that scope and add_sanitizers()
-# silently applied nothing -- POET_ENABLE_SANITIZERS=ON built with no -fsanitize
-# at all. Two flag strings do not warrant a downloaded dependency.
+# Apply sanitizer flags to a target. Two flag strings, so no dependency on a
+# sanitizers module.
 #
-# -fno-sanitize-recover=all matters as much as the sanitizers themselves: without
-# it UBSan prints a diagnostic and carries on, so ctest still reports success.
+# -fno-sanitize-recover=all matters as much as the sanitizers themselves:
+# without this flag, UBSan prints a diagnostic and continues, so ctest still
+# reports success.
 function(poet_enable_sanitizers target)
   if(NOT TARGET "${target}")
     message(FATAL_ERROR "poet_enable_sanitizers called with non-existent target '${target}'")
@@ -185,7 +172,7 @@ function(poet_enable_sanitizers target)
   endif()
 
   if(MSVC)
-    # cl.exe only implements AddressSanitizer, and it takes no link flag.
+    # cl.exe implements only AddressSanitizer, and it takes no link flag.
     if(POET_ENABLE_ASAN)
       set(_flags /fsanitize=address)
     else()
@@ -211,18 +198,18 @@ function(poet_enable_sanitizers target)
     target_link_options(${target} ${_scope} ${_link_flags})
   endif()
 
-  # Record what was really applied, so poet_print_summary() reports effective
-  # state rather than the requested options.
+  # Record the applied flags, so poet_print_summary() reports effective state
+  # instead of the requested options.
   set_property(GLOBAL PROPERTY POET_APPLIED_SANITIZERS "${_flags}")
   set_property(GLOBAL APPEND PROPERTY POET_SANITIZED_TARGETS "${target}")
 endfunction()
 
 # -------------------------
-# Static analysis helper (from PoetStaticAnalysis.cmake)
+# Static analysis helper
 # -------------------------
 option(POET_ENABLE_CLANG_TIDY "Enable clang-tidy static analysis" ON)
-# STRING, not option(): option() defaults are booleans, so a string default
-# collapses to OFF and the value is silently lost.
+# STRING, not option(): an option() default is a boolean, so a string default
+# would collapse to OFF and the value would be lost.
 set(POET_CLANG_TIDY_CHECKS "" CACHE STRING
   "Override default clang-tidy checks (leave empty to use the .clang-tidy config)")
 option(POET_CLANG_TIDY_WARNINGS_AS_ERRORS "Treat clang-tidy warnings as errors" ON)
@@ -230,8 +217,8 @@ option(POET_ENABLE_CPPCHECK "Enable cppcheck static analysis" ON)
 set(POET_CPPCHECK_OPTIONS "--enable=warning,style,performance,portability" CACHE STRING
   "Additional cppcheck options")
 
-# Configure static analysis tools (clang-tidy and/or cppcheck) for a target
-# Tools are only enabled if found on PATH, otherwise a warning is issued
+# Configure clang-tidy and/or cppcheck for a target. A tool that is absent from
+# PATH produces a warning, not a failure.
 function(poet_configure_static_analysis target)
   if(NOT TARGET "${target}")
     message(FATAL_ERROR "poet_configure_static_analysis called with non-existent target '${target}'")
@@ -241,14 +228,15 @@ function(poet_configure_static_analysis target)
     find_program(_clang_tidy_exe NAMES clang-tidy clang-tidy-17 clang-tidy-16)
     if(_clang_tidy_exe)
       set(_clang_tidy_command "${_clang_tidy_exe}")
-      # When POET_CLANG_TIDY_CHECKS is set, use those checks; otherwise let
-      # clang-tidy pick up the .clang-tidy config file from the source tree.
+      # When POET_CLANG_TIDY_CHECKS is empty, clang-tidy reads the .clang-tidy
+      # config from the source tree.
       if(POET_CLANG_TIDY_CHECKS)
         set(_clang_tidy_command "${_clang_tidy_command};-checks=${POET_CLANG_TIDY_CHECKS}")
       endif()
-      # Only analyze headers in the project's include/poet and src directories (not external dependencies)
+      # Restrict header analysis to the project's own headers, not external
+      # dependencies.
       set(_clang_tidy_command "${_clang_tidy_command};-header-filter=^${PROJECT_SOURCE_DIR}/(include/poet|src)")
-      # Speed up analysis by only checking syntax, not generating code
+      # Syntax-only checks keep the analysis fast.
       set(_clang_tidy_command "${_clang_tidy_command};--extra-arg=-fsyntax-only")
       if(POET_CLANG_TIDY_WARNINGS_AS_ERRORS)
         set(_clang_tidy_command "${_clang_tidy_command};-warnings-as-errors=*")
@@ -275,19 +263,16 @@ function(poet_configure_static_analysis target)
 endfunction()
 
 # -------------------------
-# Docs helper (from PoetDocs.cmake)
+# Docs helper
 # -------------------------
 option(POET_GENERATE_DOCS "Generate documentation using Doxygen + Sphinx pipeline" OFF)
 
 if(POET_GENERATE_DOCS)
-    # Require Doxygen for API documentation extraction
     find_package(Doxygen REQUIRED)
-    # Require Sphinx for generating HTML documentation
     find_program(SPHINX_BUILD_EXECUTABLE NAMES sphinx-build REQUIRED)
-    # Require Python for Sphinx and its extensions
     find_package(Python COMPONENTS Interpreter REQUIRED)
 
-    # Check if required Python packages (breathe, exhale) are installed
+    # Sphinx needs the breathe and exhale Python packages.
     execute_process(
         COMMAND ${Python_EXECUTABLE} -c "import breathe, exhale"
         RESULT_VARIABLE DOCS_DEPS_CHECK_RESULT
@@ -298,17 +283,14 @@ if(POET_GENERATE_DOCS)
         message(WARNING "Python packages 'breathe' and 'exhale' not found. Docs generation may fail. Please run 'pip install -r docs/requirements.txt'.")
     endif()
 
-    # Generate Doxyfile from template
     configure_file(${CMAKE_SOURCE_DIR}/docs/Doxyfile.in ${CMAKE_BINARY_DIR}/docs/Doxyfile @ONLY)
 
-    # Target: Generate Doxygen XML output from source code
     add_custom_target(doxygen
         COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_BINARY_DIR}/docs/Doxyfile
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/docs
         COMMENT "Generating API documentation with Doxygen"
     )
 
-    # Target: Generate HTML documentation from Doxygen XML using Sphinx
     add_custom_target(sphinx
         DEPENDS doxygen
         COMMAND ${CMAKE_COMMAND} -E env DOXYGEN_XML_OUTPUT=${CMAKE_BINARY_DIR}/docs/xml
@@ -317,27 +299,20 @@ if(POET_GENERATE_DOCS)
         COMMENT "Generating HTML documentation with Sphinx"
     )
 
-    # Target: Complete documentation build (alias for sphinx target)
     add_custom_target(docs DEPENDS sphinx)
     message(STATUS "POET: Documentation targets enabled (doxygen, sphinx, docs)")
 endif()
 
 # -------------------------
-# Coverage target (moved from top-level)
+# Coverage target
 # -------------------------
-# Creates a `coverage` custom target that:
-# 1. Builds all test executables
-# 2. Runs the test suite using CTest
-# 3. Collects code coverage data
-# 4. Generates an HTML coverage report
-#
-# Prefers lcov+genhtml (more robust), falls back to gcovr if unavailable
+# The `coverage` custom target builds all test executables, runs ctest,
+# collects coverage, and writes an HTML report.
 find_program(GCOVR_EXECUTABLE gcovr)
 find_program(LCOV_EXECUTABLE lcov)
 find_program(GENHTML_EXECUTABLE genhtml)
 
-# Prefer lcov+genhtml when available (generally more robust and handles complex build trees better)
-# Falls back to gcovr if lcov/genhtml are not found
+# Prefer lcov+genhtml; fall back to gcovr.
 if(LCOV_EXECUTABLE AND GENHTML_EXECUTABLE)
   set(LCOV_INFO ${CMAKE_BINARY_DIR}/coverage.info)
   set(LCOV_FILTERED ${CMAKE_BINARY_DIR}/coverage.filtered.info)
@@ -347,8 +322,8 @@ if(LCOV_EXECUTABLE AND GENHTML_EXECUTABLE)
     DEPENDS poet_tests
     COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR} --output-on-failure
     COMMAND ${LCOV_EXECUTABLE} --capture --directory ${CMAKE_BINARY_DIR} --output-file ${LCOV_INFO} --ignore-errors inconsistent,unused
-    # Remove system headers (/usr/*) and CMake FetchContent dependencies (*/_deps/*)
-    # to focus coverage reports on project sources only
+    # Drop system headers (/usr/*) and FetchContent dependencies (*/_deps/*);
+    # the report covers project sources only.
     COMMAND ${LCOV_EXECUTABLE} --remove ${LCOV_INFO} "/usr/*" "*/_deps/*" --output-file ${LCOV_FILTERED} --ignore-errors inconsistent,unused
     COMMAND ${GENHTML_EXECUTABLE} -o ${COVERAGE_DIR} ${LCOV_FILTERED}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -356,11 +331,10 @@ if(LCOV_EXECUTABLE AND GENHTML_EXECUTABLE)
     VERBATIM
   )
 elseif(GCOVR_EXECUTABLE)
-  # Fallback to gcovr if lcov/genhtml aren't available
   add_custom_target(coverage
     DEPENDS poet_tests
     COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR} --output-on-failure
-    # Filter to project sources (include/poet and tests), excluding external dependencies and system headers
+    # Cover project sources (include/poet and tests), not dependencies or system headers.
     COMMAND ${GCOVR_EXECUTABLE} -r ${CMAKE_SOURCE_DIR} --filter "include/poet/|tests/" --exclude ".*/_deps/.*" --exclude "/usr/.*" --gcov-ignore-errors=no_working_dir_found --html --html-details -o ${CMAKE_BINARY_DIR}/coverage-report.html
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     COMMENT "Running tests and generating coverage report (gcovr) -> ${CMAKE_BINARY_DIR}/coverage-report.html"
@@ -373,8 +347,8 @@ else()
   )
 endif()
 
-# Ensure coverage target builds all test executables before running CTest
-# This adds dependencies on all C++ standard-specific test targets (C++17, C++20, C++23)
+# The coverage target depends on every standard-specific test target (C++17,
+# C++20, C++23), so ctest never runs against stale binaries.
 if(TARGET coverage)
   set(POET_TEST_STANDARDS 23 20 17)
   foreach(POET_STD IN LISTS POET_TEST_STANDARDS)
@@ -382,7 +356,6 @@ if(TARGET coverage)
       add_dependencies(coverage poet_tests_std${POET_STD})
     endif()
   endforeach()
-  # Also add dependency on the main test target if it exists
   if(TARGET poet_tests)
     add_dependencies(coverage poet_tests)
   endif()
@@ -391,10 +364,9 @@ endif()
 # -------------------------
 # Configuration summary
 # -------------------------
-# Reports EFFECTIVE state, not requested options. A tool that was asked for but
-# silently did nothing (missing binary, unsupported compiler, a helper that
-# returned early) is the failure mode this exists to make visible -- otherwise
-# the only way to tell is to grep compile_commands.json.
+# Report effective state, not requested options. This makes a silently inactive
+# tool visible (missing binary, unsupported compiler, a helper that returned
+# early); the only other way to tell is grepping compile_commands.json.
 function(poet_print_summary)
   get_property(_san GLOBAL PROPERTY POET_APPLIED_SANITIZERS)
   get_property(_san_targets GLOBAL PROPERTY POET_SANITIZED_TARGETS)

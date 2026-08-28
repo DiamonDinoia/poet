@@ -22,7 +22,7 @@
 
 namespace {
 
-// ── PRNG & anti-optimization ────────────────────────────────────────────────
+// -- PRNG & anti-optimization ------------------------------------------------
 
 static inline std::uint32_t xorshift32(std::uint32_t x) noexcept {
     x ^= x << 13;
@@ -39,7 +39,7 @@ std::uint32_t next_salt() noexcept {
     return s;
 }
 
-// ── Horner polynomial evaluation ────────────────────────────────────────────
+// -- Horner polynomial evaluation --------------------------------------------
 
 inline double horner_runtime(const double *coeffs, int n, double x) noexcept {
     double result = coeffs[n - 1];
@@ -63,7 +63,7 @@ struct HornerDispatch {
     template<int N> double operator()() const { return horner_compiletime<N>(coeffs, x); }
 };
 
-// ── Coefficient generation ──────────────────────────────────────────────────
+// -- Coefficient generation --------------------------------------------------
 
 template<std::size_t N> std::array<double, N> make_coeffs(std::uint32_t salt) {
     std::array<double, N> c{};
@@ -77,7 +77,7 @@ template<std::size_t N> std::array<double, N> make_coeffs(std::uint32_t salt) {
 
 using dispatch_range = poet::inclusive_range<4, 32>;
 
-// ── Bench helper ────────────────────────────────────────────────────────────
+// -- Bench helper ------------------------------------------------------------
 
 template<typename Fn> void reg(const char *name, Fn &&fn) {
     benchmark::RegisterBenchmark(name, [fn = std::forward<Fn>(fn)](benchmark::State &state) mutable {
@@ -85,7 +85,7 @@ template<typename Fn> void reg(const char *name, Fn &&fn) {
     })->MinTime(0.1);
 }
 
-// ── Per-N benchmark pair ────────────────────────────────────────────────────
+// -- Per-N benchmark pair ----------------------------------------------------
 
 template<int N> void bench_pair(std::uint32_t salt) {
     auto coeffs = make_coeffs<N>(salt);

@@ -1,4 +1,4 @@
-// Example: poet::available_registers and poet::cache_line — compile-time CPU info.
+// Example: poet::available_registers and poet::cache_line, compile-time CPU info.
 //
 // Build:
 //   cmake -S . -B build -DPOET_BUILD_EXAMPLES=ON

@@ -2,9 +2,9 @@
 /// \brief Compares dynamic_for callable forms (lane vs index-only) across workloads.
 ///
 /// Three sections:
-///   1. Accumulation (serial dependency) — lane form breaks dep chains, should win
-///   2. Element-wise independent work — body dominates, all roughly equal
-///   3. Small N tail overhead — dispatch cost for tiny ranges
+///   1. Accumulation (serial dependency): the lane form breaks dep chains
+///   2. Element-wise independent work: body dominates, all forms roughly equal
+///   3. Small N tail overhead: dispatch cost for tiny ranges
 
 #include <array>
 #include <cstddef>
@@ -18,13 +18,13 @@
 
 namespace {
 
-// ── Register-aware tuning ────────────────────────────────────────────────────
+// -- Register-aware tuning ----------------------------------------------------
 
 constexpr auto regs = poet::available_registers();
 constexpr std::size_t lanes_64 = regs.lanes_64bit;
 constexpr std::size_t optimal_accs = lanes_64 * 2;
 
-// ── Workload ─────────────────────────────────────────────────────────────────
+// -- Workload -----------------------------------------------------------------
 
 static inline std::uint32_t xorshift32(std::uint32_t x) noexcept {
     x ^= x << 13;
@@ -43,7 +43,7 @@ static inline double heavy_work(std::size_t i, std::uint32_t salt) noexcept {
     return x;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// -- Helpers ------------------------------------------------------------------
 
 volatile std::uint32_t g_salt = 1;
 
@@ -79,9 +79,9 @@ int main(int argc, char **argv) {
 
     const auto salt = next_salt();
 
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     // Section 1: Accumulation (serial dependency)
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     {
         constexpr std::size_t N = 10000;
 
@@ -109,9 +109,9 @@ int main(int argc, char **argv) {
         });
     }
 
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     // Section 2: Element-wise independent work
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     {
         constexpr std::size_t N = 10000;
         static std::array<double, N> out{};
@@ -135,9 +135,9 @@ int main(int argc, char **argv) {
         });
     }
 
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     // Section 3: Small N tail overhead
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     {
         auto run_small_n = [](std::size_t n, std::uint32_t s) {
             const std::string suffix = "_N=" + std::to_string(n);

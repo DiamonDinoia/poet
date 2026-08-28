@@ -132,7 +132,7 @@ struct mutator {
 };
 }// namespace
 
-// Merged constexpr-friendly tests (previously in static_for_constexpr_tests.cpp)
+// Constexpr-friendly tests.
 namespace {
 
 constexpr auto compute_squares_with_arg() {
@@ -318,7 +318,7 @@ TEST_CASE("static_for index detection", "[static_for][detection]") {
     STATIC_REQUIRE(takes_index_v<both_forms, 0>);
     STATIC_REQUIRE_FALSE(takes_index_v<unrelated_arg, 0>);
 
-    // Only the index that is actually asked about matters.
+    // Only the queried index matters.
     STATIC_REQUIRE_FALSE(takes_index_v<index_form, 1>);
 
     // A lambda taking the index generically satisfies it at every index.

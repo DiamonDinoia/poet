@@ -1,4 +1,4 @@
-// Example: poet::dynamic_for — runtime loops emitted as compile-time blocks.
+// Example: poet::dynamic_for, runtime loops emitted as compile-time blocks.
 //
 // Build:
 //   cmake -S . -B build -DPOET_BUILD_EXAMPLES=ON

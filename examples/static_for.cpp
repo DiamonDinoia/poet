@@ -1,4 +1,4 @@
-// Example: poet::static_for — compile-time unrolled loops.
+// Example: poet::static_for, compile-time unrolled loops.
 //
 // Build:
 //   cmake -S . -B build -DPOET_BUILD_EXAMPLES=ON
@@ -12,7 +12,7 @@
 
 int main() {
     // Each loop writes to a `volatile` sink inside the lambda, so every
-    // unrolled iteration is an observable side effect — the compiler can't
+    // unrolled iteration is an observable side effect. The compiler can't
     // collapse the work into a single constant store, and the asm pane on
     // Compiler Explorer shows the full unrolled emission.
     volatile int sink_i = 0;

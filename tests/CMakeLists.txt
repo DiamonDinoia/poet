@@ -17,7 +17,7 @@ if(Catch2_SOURCE_DIR)
 endif()
 
 include(Catch)
-# ── Hardware ISA detection from /proc/cpuinfo ──────────────────────────────
+# -- Hardware ISA detection from /proc/cpuinfo ------------------------------
 # Reads the host CPU flags to determine the actual ISA and register layout.
 # This is the ground truth that POET's compile-time API is validated against.
 # Only enabled on Linux (non-cross-compile) where /proc/cpuinfo is available.
@@ -251,8 +251,9 @@ if(TARGET poet_tests_std17)
   add_custom_target(poet_tests DEPENDS poet_tests_std17)
 endif()
 
-# Every public header must compile on its own, not just via poet.hpp — an include
-# missing from one header is invisible when the umbrella pulls its siblings first.
+# Every public header must compile standalone, not only through poet.hpp: an
+# include missing from one header is invisible when the umbrella pulls its
+# siblings first.
 file(GLOB_RECURSE POET_PUBLIC_HEADERS
   RELATIVE "${CMAKE_SOURCE_DIR}/include/poet"
   "${CMAKE_SOURCE_DIR}/include/poet/*.hpp")

@@ -4,7 +4,7 @@
 /// \brief Umbrella header for the public POET API.
 
 // clang-format off
-// Include order matters: macros.hpp must come first and undef_macros.hpp last.
+// macros.hpp comes first: the other headers use its macros. undef_macros.hpp comes last: it removes them.
 // NOLINTBEGIN(llvm-include-order)
 #include <poet/core/macros.hpp>
 #include <poet/version.hpp>

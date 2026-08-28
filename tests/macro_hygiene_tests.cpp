@@ -2,7 +2,7 @@
 
 // The macros.hpp/undef_macros.hpp cycle must be repeatable. An include guard on
 // either side turns every pass after the first into a no-op, leaking the macros
-// into user code — which is exactly what undef_macros.hpp exists to prevent.
+// into user code, which is what undef_macros.hpp exists to prevent.
 
 #include <poet/poet.hpp>// ends with undef_macros.hpp
 

@@ -35,15 +35,13 @@ namespace detail {
 
     /// \brief True when `Callable` accepts the loop index as an integral_constant.
     ///
-    /// Function overloads rather than `std::is_invocable_v` or a detector class:
-    /// both instantiate a class template per (callable, index) pair, which
-    /// dominates frontend time once a TU has thousands of `static_for`s. On one
-    /// FFT TU (14251 instantiations) that was 34537 class instantiations / 53.2s
-    /// of clang `InstantiateClass` down to 1021 / 1.3s, identical objects.
-    /// `int` beats `long` on the `0` argument, so no variadic fallback is needed.
+    /// Function overloads, not `std::is_invocable_v` or a detector class: those
+    /// instantiate one class template per (callable, index) pair, which dominates
+    /// frontend time once a TU has thousands of `static_for`s. `int` beats `long`
+    /// on the `0` argument, so no variadic fallback is needed.
     ///
-    /// Narrower than `is_invocable` on purpose: it detects a direct `func(ic)`
-    /// call, which is all `static_for` ever performs.
+    /// Narrower than `is_invocable` on purpose: detects only the direct `func(ic)`
+    /// call, which is the only call `static_for` performs.
     template<typename Callable, std::ptrdiff_t I>
     constexpr auto detect_takes_index(int /*rank*/) noexcept
       -> decltype(std::declval<Callable &>()(std::integral_constant<std::ptrdiff_t, I>{}), true) {

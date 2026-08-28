@@ -141,8 +141,8 @@ TEST_CASE("dynamic_for honours custom unroll factors", "[dynamic_for]") {
 }
 
 TEST_CASE("dynamic_for non-power-of-2 unroll tail correctness", "[dynamic_for]") {
-    // Regression: tail_binary used N/2 which doesn't produce correct binary
-    // decomposition for non-power-of-2 N, dropping elements.
+    // For a non-power-of-2 N, halving by N/2 is not a valid binary
+    // decomposition and drops elements. The tail must halve to half_below(N).
     auto test_unroll = [](auto unroll_tag, std::size_t count) {
         constexpr std::size_t Unroll = decltype(unroll_tag)::value;
         std::vector<std::size_t> visited;
@@ -151,7 +151,7 @@ TEST_CASE("dynamic_for non-power-of-2 unroll tail correctness", "[dynamic_for]")
         for (std::size_t i = 0; i < count; ++i) { REQUIRE(visited[i] == i); }
     };
 
-    // Non-power-of-2 unroll factors with various tail sizes
+    // Non-power-of-2 unroll factors with various tail sizes.
     SECTION("Unroll=3") {
         for (std::size_t n = 0; n <= 10; ++n) test_unroll(std::integral_constant<std::size_t, 3>{}, n);
     }
@@ -222,7 +222,7 @@ TEST_CASE("dynamic_for with compile-time step lane form", "[dynamic_for][ct-step
     std::vector<std::pair<std::size_t, int>> visited;
     poet::dynamic_for<4, 2>(
       0, 12, [&visited](auto lane_c, int i) { visited.emplace_back(decltype(lane_c)::value, i); });
-    // 6 iterations: 0,2,4,6,8,10 — one full block of 4 + tail of 2
+    // 6 iterations: 0,2,4,6,8,10, one full block of 4 plus a tail of 2
     REQUIRE(visited.size() == 6);
     // Verify all indices are correct
     for (std::size_t j = 0; j < visited.size(); ++j) { REQUIRE(visited[j].second == static_cast<int>(j * 2)); }
@@ -454,7 +454,7 @@ TEST_CASE("dynamic_for passes compile-time lane in tiny and tail ranges", "[dyna
         REQUIRE(with_tail[iter].first == 5U + iter);
         REQUIRE(with_tail[iter].second == iter);
     }
-    // Tail of 3: binary decomposition emits blocks [1, 2] → lanes [0], [0, 1].
+    // Tail of 3: binary decomposition emits blocks [1, 2], so lanes are [0], [0, 1].
     REQUIRE(with_tail[8] == std::make_pair(std::size_t{ 13 }, std::size_t{ 0 }));
     REQUIRE(with_tail[9] == std::make_pair(std::size_t{ 14 }, std::size_t{ 0 }));
     REQUIRE(with_tail[10] == std::make_pair(std::size_t{ 15 }, std::size_t{ 1 }));

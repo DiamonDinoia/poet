@@ -7,13 +7,13 @@
 ///
 /// Different heuristics apply to each section:
 ///
-///   Map (no serial deps — maximize ILP):
-///     optimal_bs_map = vec_regs × lanes_64 / 2
-///                  SSE2 → 16   AVX2 → 32   AVX-512 → 128
+///   Map (no serial deps; maximize ILP):
+///     optimal_bs_map = vec_regs * lanes_64 / 2
+///                  SSE2 = 16   AVX2 = 32   AVX-512 = 128
 ///
-///   MultiAcc (serial dep per chain — avoid accumulator register spill):
-///     optimal_bs_multiacc = lanes_64 × 2   (2 SIMD regs of accumulators)
-///                       SSE2 → 4   AVX2 → 8   AVX-512 → 16
+///   MultiAcc (serial dep per chain; avoid accumulator register spill):
+///     optimal_bs_multiacc = lanes_64 * 2   (2 SIMD regs of accumulators)
+///                       SSE2 = 4   AVX2 = 8   AVX-512 = 16
 ///     heavy_work needs ~10 registers for its FMA constants/intermediates;
 ///     keeping accumulators to 2 SIMD regs leaves ample headroom.
 
@@ -29,13 +29,13 @@
 
 namespace {
 
-// ── Register-aware tuning ────────────────────────────────────────────────────
+// -- Register-aware tuning ----------------------------------------------------
 
 constexpr auto regs = poet::available_registers();
 constexpr std::size_t vec_regs = regs.vector_registers;
 constexpr std::size_t lanes_64 = regs.lanes_64bit;
 
-// ── Workload ─────────────────────────────────────────────────────────────────
+// -- Workload -----------------------------------------------------------------
 
 static inline std::uint32_t xorshift32(std::uint32_t x) noexcept {
     x ^= x << 13;
@@ -54,7 +54,7 @@ static inline double heavy_work(std::size_t i, std::uint32_t salt) noexcept {
     return x;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// -- Helpers ------------------------------------------------------------------
 
 volatile std::uint32_t g_salt = 1;
 
@@ -77,7 +77,7 @@ template<std::size_t N> double reduce(const std::array<double, N> &a) {
     return t;
 }
 
-// ── Functors ─────────────────────────────────────────────────────────────────
+// -- Functors -----------------------------------------------------------------
 
 template<std::size_t N> struct MapFunctor {
     std::array<double, N> &out;
@@ -97,7 +97,7 @@ template<std::size_t NumAccs> struct MultiAccFunctor {
     }
 };
 
-// ── Multi-acc helpers ────────────────────────────────────────────────────────
+// -- Multi-acc helpers --------------------------------------------------------
 
 constexpr std::size_t kSweepN = 256;
 
@@ -123,9 +123,9 @@ int main(int argc, char **argv) {
 
     const auto salt = next_salt();
 
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     // Section 1: Map (N=256, heavy body)
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     {
         reg("Map/for_loop", kSweepN, [salt] {
             std::array<double, kSweepN> out{};
@@ -147,9 +147,9 @@ int main(int argc, char **argv) {
         });
     }
 
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     // Section 2: Multi-accumulator (N=256, heavy body)
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     {
         reg("MultiAcc/for_loop", kSweepN, [salt] {
             double acc = 0.0;

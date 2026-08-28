@@ -124,7 +124,7 @@ TEST_CASE("detected_isa does not overclaim vs /proc/cpuinfo", "[linux]") {
     constexpr auto isa = detected_isa();
     constexpr auto regs = available_registers();
 
-    // Verify POET never claims an ISA the CPU doesn't actually support.
+    // POET must never claim an ISA the CPU does not support.
     if (has_flag(flags, "sse2") || has_flag(flags, "avx") || has_flag(flags, "avx2")) {
         switch (isa) {
         case instruction_set::avx_512:

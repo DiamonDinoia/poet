@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# bench_all.sh — Build and run all POET benchmarks across multiple compilers.
+# bench_all.sh: Build and run all POET benchmarks across multiple compilers.
 #
 # Usage:
 #   bash scripts/bench_all.sh                           # all detected compilers
 #   POET_COMPILERS="gcc-15 clang-22" bash scripts/bench_all.sh  # subset
 #
 # Outputs:
-#   build_bench/<compiler>/<variant>/   — isolated CMake build dirs
-#   results/<compiler>/<variant>/       — benchmark JSON and ASM
-#   results/summary/                    — aggregated Markdown/CSV/ASM reports
+#   build_bench/<compiler>/<variant>/   isolated CMake build dirs
+#   results/<compiler>/<variant>/       benchmark JSON and ASM
+#   results/summary/                    aggregated Markdown/CSV/ASM reports
 
 set -euo pipefail
 
@@ -17,7 +17,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$PROJECT_ROOT"
 
-# ── Compiler discovery ────────────────────────────────────────────────────────
+# -- Compiler discovery --------------------------------------------------------
 
 ALL_COMPILERS=(
     gcc-12 gcc-13 gcc-14 gcc-15
@@ -47,11 +47,11 @@ echo "Compilers: ${COMPILERS[*]}"
 echo "Project:   $PROJECT_ROOT"
 echo ""
 
-# ── Variants ──────────────────────────────────────────────────────────────────
+# -- Variants ------------------------------------------------------------------
 
 VARIANTS=("default" "native")
 
-# ── Benchmark targets ─────────────────────────────────────────────────────────
+# -- Benchmark targets ---------------------------------------------------------
 
 BENCH_TARGETS=(
     poet_compiler_comparison_bench
@@ -73,7 +73,7 @@ BENCH_NAMES=(
     dynamic_for_emission_bench
 )
 
-# ── Build & run loop ─────────────────────────────────────────────────────────
+# -- Build & run loop ---------------------------------------------------------
 
 CPM_CACHE="${HOME}/.cpm"
 
@@ -101,7 +101,7 @@ for compiler in "${COMPILERS[@]}"; do
 
         mkdir -p "$build_dir" "$result_dir" "$asm_dir"
 
-        # ── Configure ─────────────────────────────────────────────────────
+        # -- Configure -----------------------------------------------------
         cmake_extra_flags=""
         if [[ "$variant" == "native" ]]; then
             cmake_extra_flags="-DCMAKE_CXX_FLAGS=-march=native"
@@ -121,12 +121,12 @@ for compiler in "${COMPILERS[@]}"; do
             continue
         fi
 
-        # ── Build ─────────────────────────────────────────────────────────
+        # -- Build ---------------------------------------------------------
         if ! cmake --build "$build_dir" --target "${BENCH_TARGETS[@]}" -j"$(nproc)" 2>&1 | tail -5; then
             echo "WARNING: Build failed for $compiler/$variant, running available benchmarks"
         fi
 
-        # ── Run benchmarks ────────────────────────────────────────────────
+        # -- Run benchmarks ------------------------------------------------
         for idx in "${!BENCH_TARGETS[@]}"; do
             target="${BENCH_TARGETS[$idx]}"
             name="${BENCH_NAMES[$idx]}"
@@ -168,7 +168,7 @@ for compiler in "${COMPILERS[@]}"; do
     done
 done
 
-# ── Aggregate results ─────────────────────────────────────────────────────────
+# -- Aggregate results ---------------------------------------------------------
 
 echo "=== Generating summary reports ==="
 python3 "$SCRIPT_DIR/analyze_bench.py" \

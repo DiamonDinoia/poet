@@ -3,10 +3,10 @@
 /// \file cpu_info.hpp
 /// \brief Compile-time CPU register, vector-width, and cache-line queries.
 ///
-/// Everything here is resolved from the compiler's target predefines, so the
-/// answers describe the machine the code is being *compiled* for, not the one it
-/// happens to run on. Build with `-march=native` (or an explicit `-m<isa>`) to
-/// get anything above the baseline.
+/// Every value resolves from the compiler's target predefines. The result
+/// describes the compile target, not the machine that runs the binary. Build
+/// with `-march=native` or an explicit `-m<isa>` to get anything above the
+/// baseline.
 
 #include <cstddef>
 #include <poet/core/macros.hpp>
@@ -52,9 +52,10 @@ struct cache_line_info {
 
 namespace detail {
 
-    /// SVE is scalable, so a width is only known when the build pins one with
-    /// `-msve-vector-bits=N` -- the same macro macros.hpp locks the hot paths to.
-    /// Otherwise report the 128-bit floor the architecture guarantees.
+    /// SVE is scalable: a width is known only when the build pins one through
+    /// `-msve-vector-bits=N`, which sets the same macro macros.hpp locks the
+    /// hot paths to. Without a pin, the width is the 128-bit floor the
+    /// architecture guarantees.
 #if defined(__ARM_FEATURE_SVE_BITS) && __ARM_FEATURE_SVE_BITS > 0
     inline constexpr std::size_t sve_vector_bits = __ARM_FEATURE_SVE_BITS;
 #else
@@ -82,10 +83,10 @@ namespace detail {
         return instruction_set::sse2;
 #endif
 
-        // MSVC ships none of the __SSE*__ / __ARM_NEON predefines: x64 and ARM64
-        // guarantee SSE2 and NEON respectively, and 32-bit x86 reports its
-        // floating-point ISA through _M_IX86_FP instead. Without this, every
-        // MSVC build below /arch:AVX reports `generic`.
+        // MSVC defines none of the __SSE*__ / __ARM_NEON predefines. x64 and
+        // ARM64 guarantee SSE2 and NEON respectively, and 32-bit x86 reports its
+        // floating-point ISA through _M_IX86_FP. Without these branches, every
+        // MSVC build below /arch:AVX would report `generic`.
 #if defined(_M_X64) || defined(_M_AMD64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
         return instruction_set::sse2;
 #endif
@@ -250,7 +251,7 @@ namespace detail {
 
 }// namespace detail
 
-/// \brief The ISA the current translation unit is being compiled for.
+/// \brief The ISA the current translation unit compiles for.
 ///
 /// Returns `instruction_set::generic` when no SIMD ISA is enabled.
 POET_CPP20_CONSTEVAL auto detected_isa() noexcept -> instruction_set { return detail::detect_instruction_set(); }

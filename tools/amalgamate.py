@@ -36,7 +36,6 @@ def strip_header_guard(text: str) -> str:
     and remove '#pragma once' lines.
     """
     lines = text.splitlines()
-    # Remove pragma once
     lines = [ln for ln in lines if not PRAGMA_ONCE_RE.match(ln)]
     guard = None
     guard_idx = None
@@ -49,9 +48,7 @@ def strip_header_guard(text: str) -> str:
                 guard_idx = i
                 break
     if guard and guard_idx is not None:
-        # remove the #ifndef and #define
         del lines[guard_idx : guard_idx + 2]
-        # remove the last #endif
         for j in range(len(lines) - 1, -1, -1):
             if ENDIF_RE.match(lines[j]):
                 del lines[j]
@@ -112,7 +109,6 @@ def inline_file(path: Path, root: Path, processed: set, include_roots=None) -> s
                 )
                 continue
             else:
-                # leave unchanged (could be non-project path)
                 out_lines.append(line + "\n")
                 continue
 
@@ -138,11 +134,9 @@ def inline_file(path: Path, root: Path, processed: set, include_roots=None) -> s
                     f"If it is generated, run: cmake -P cmake/GenerateVersion.cmake"
                 )
             else:
-                # system header: preserve
                 out_lines.append(line + "\n")
                 continue
 
-        # normal line
         out_lines.append(line + ("\n" if not line.endswith("\n") else ""))
     out_lines.append(f"// END_FILE: {path.relative_to(root)}\n")
     return "".join(out_lines)

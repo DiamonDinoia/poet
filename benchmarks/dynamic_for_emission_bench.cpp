@@ -2,9 +2,9 @@
 /// \brief Validates carried-index vs computed-index emission strategy.
 ///
 /// Three sections:
-///   1. Heavy body (accumulation) — body dominates, both strategies similar
-///   2. Light body (index-visible overhead) — where SLP behavior matters
-///   3. CT stride vs RT stride — compile-time stride template parameter benefit
+///   1. Heavy body (accumulation): body dominates, both strategies similar
+///   2. Light body (index-visible overhead): where SLP behavior matters
+///   3. CT stride vs RT stride: compile-time stride template parameter benefit
 
 #include <array>
 #include <cstddef>
@@ -17,13 +17,13 @@
 
 namespace {
 
-// ── Register-aware tuning ────────────────────────────────────────────────────
+// -- Register-aware tuning ----------------------------------------------------
 
 constexpr auto regs = poet::available_registers();
 constexpr std::size_t lanes_64 = regs.lanes_64bit;
 constexpr std::size_t optimal_accs = lanes_64 * 2;
 
-// ── Workload ─────────────────────────────────────────────────────────────────
+// -- Workload -----------------------------------------------------------------
 
 static inline std::uint32_t xorshift32(std::uint32_t x) noexcept {
     x ^= x << 13;
@@ -42,7 +42,7 @@ static inline double heavy_work(std::size_t i, std::uint32_t salt) noexcept {
     return x;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// -- Helpers ------------------------------------------------------------------
 
 volatile std::uint32_t g_salt = 1;
 
@@ -65,7 +65,7 @@ template<std::size_t N> double reduce(const std::array<double, N> &a) {
     return t;
 }
 
-// ── Hand-written emission strategies ─────────────────────────────────────────
+// -- Hand-written emission strategies -----------------------------------------
 
 template<std::size_t Unroll, typename WorkFn>
 double carried_index_multi_acc(std::size_t count, std::size_t start, WorkFn work) {
@@ -120,9 +120,9 @@ int main(int argc, char **argv) {
 
     const auto salt = next_salt();
 
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     // Section 1: Heavy body (accumulation)
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     {
         constexpr std::size_t N = 10000;
 
@@ -145,9 +145,9 @@ int main(int argc, char **argv) {
         });
     }
 
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     // Section 2: Light body (index-visible overhead)
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     {
         constexpr std::size_t N = 10000;
 
@@ -174,9 +174,9 @@ int main(int argc, char **argv) {
         });
     }
 
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     // Section 3: CT stride vs RT stride
-    // ════════════════════════════════════════════════════════════════════════
+    // ========================================================================
     {
         constexpr std::size_t N = 10000;
         constexpr std::size_t effective_iters = 5000;

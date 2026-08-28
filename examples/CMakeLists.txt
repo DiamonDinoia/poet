@@ -24,10 +24,10 @@ foreach(example IN LISTS POET_EXAMPLES)
   add_test(NAME ${target} COMMAND ${target})
 endforeach()
 
-# Google Benchmark microbench example. Off by default to avoid pulling
-# the dependency for plain example builds; enable with
-# -DPOET_BUILD_EXAMPLE_BENCHMARK=ON. The benchmark/ subdirectory already
-# fetches Google Benchmark, so we just reuse its target if visible.
+# Google Benchmark microbench example. Off by default so plain example builds
+# do not pull the dependency; enable with -DPOET_BUILD_EXAMPLE_BENCHMARK=ON.
+# When benchmarks are also enabled, the benchmark/ subdirectory's copy of
+# Google Benchmark is reused.
 option(POET_BUILD_EXAMPLE_BENCHMARK
   "Build the Google Benchmark example (requires benchmark::benchmark)" OFF)
 
@@ -40,8 +40,8 @@ if(POET_BUILD_EXAMPLE_BENCHMARK)
   target_link_libraries(example_benchmark PRIVATE poet::poet benchmark::benchmark)
   target_compile_features(example_benchmark PRIVATE cxx_std_17)
 
-  # Skip -Wredundant-decls et al. — Google Benchmark's BENCHMARK_MAIN
-  # macro declares main twice, which is fine but trips strict warnings.
+  # poet_enable_warnings is not applied: Google Benchmark's BENCHMARK_MAIN
+  # declares main twice, and -Wredundant-decls with -Werror would fail the build.
   if(COMMAND poet_enable_sanitizers)
     poet_enable_sanitizers(example_benchmark)
   endif()

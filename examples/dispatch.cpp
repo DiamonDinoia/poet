@@ -1,4 +1,4 @@
-// Example: poet::dispatch — runtime-to-compile-time specialization.
+// Example: poet::dispatch, runtime-to-compile-time specialization.
 //
 // Build:
 //   cmake -S . -B build -DPOET_BUILD_EXAMPLES=ON

@@ -7,10 +7,10 @@
 // ============================================================================
 // POET_CPLUSPLUS
 // ============================================================================
-/// The language standard actually in effect. MSVC leaves `__cplusplus` at
-/// 199711L unless `/Zc:__cplusplus` is passed, so testing it directly hides
-/// every C++20 code path from MSVC users -- silently, since `#if` on an
-/// undefined macro is 0 rather than an error.
+/// The language standard in effect. MSVC leaves `__cplusplus` at 199711L
+/// unless `/Zc:__cplusplus` is passed. Testing `__cplusplus` directly hides
+/// every C++20 code path from MSVC users, because `#if` treats an undefined
+/// macro as 0 instead of raising an error.
 #ifdef _MSVC_LANG
 #define POET_CPLUSPLUS _MSVC_LANG// NOLINT(cppcoreguidelines-macro-usage)
 #else
@@ -65,14 +65,14 @@
 // ============================================================================
 // POET_NOINLINE_FLATTEN
 // ============================================================================
-/// Prevents a function from being inlined into its caller (register isolation)
-/// while forcing all functions it calls to be inlined into it.
+/// Keeps a function out of its caller (register isolation) and forces
+/// everything the function calls to inline into it.
 ///
-/// `flatten` is what makes `noinline` usable on GCC: on its own, GCC's ISRA
-/// pass extracts each functor `operator()` instantiation into an out-of-line
-/// clone, so every call reloads the body's constants from .rodata. With
-/// `flatten` the constants are hoisted into registers once at block entry.
-/// Clang already inlines everything inside a noinline block.
+/// Without `flatten`, GCC's ISRA pass extracts each functor `operator()`
+/// instantiation into an out-of-line clone, so every call reloads the body's
+/// constants from .rodata. With `flatten` the constants are hoisted into
+/// registers once at block entry. Clang already inlines everything inside a
+/// noinline block.
 #ifdef _MSC_VER
 #define POET_NOINLINE_FLATTEN __declspec(noinline)
 #elif defined(__GNUC__) || defined(__clang__)
@@ -143,9 +143,9 @@ inline auto count_trailing_zeros(std::size_t value) noexcept -> unsigned int {
 
 #else
 
-/// Portable fallback: width-agnostic, so it is correct for any std::size_t.
-/// Only reached on C++17 compilers that are neither GCC/Clang nor MSVC, and
-/// only once per dynamic_for call with a non-constant power-of-two stride.
+/// Portable fallback: width-agnostic, correct for any std::size_t. Reached
+/// only on C++17 compilers other than GCC/Clang/MSVC, and only once per
+/// `dynamic_for` call with a non-constant power-of-two stride.
 constexpr auto count_trailing_zeros(std::size_t value) noexcept -> unsigned int {
     unsigned int count = 0;
     while ((value & std::size_t{ 1 }) == 0) {
@@ -203,24 +203,21 @@ constexpr auto count_trailing_zeros(std::size_t value) noexcept -> unsigned int 
 #ifndef POET_DISABLE_PUSH_OPTIMIZE
 #if defined(__GNUC__) && !defined(__clang__)
 #if POET_HIGH_OPTIMIZATION
-// -fno-semantic-interposition is deliberately absent: gcc 13.2/13.3 reject it as
-//   a `pragma optimize` option outright (-Werror=pragmas), and where it is
-//   accepted it is a whole-TU/IPA switch with no per-function meaning -- so it
-//   never did anything here. Pass it on the command line if you want it.
-// -fvect-cost-model=cheap: vectorize when the cost model is merely uncertain,
+// -fvect-cost-model=cheap: vectorizes when the cost model is uncertain,
 //   which is what SLP needs to pack static_for's independent accumulators.
-// Vector width: GCC 13/14 sometimes drop to 128-bit even with AVX2 enabled;
-//   on SVE, pinning the VL lets it unroll without predication. Machine flags,
-//   so `target` rather than `optimize`, and scoped to the push/pop so user code
-//   outside POET is unaffected. Fixed-128-bit ISAs need no pragma.
+// Vector width: GCC 13/14 sometimes drop to 128-bit even with AVX2 enabled.
+//   On SVE, pinning the VL permits unrolling without predication. These are
+//   machine flags, so they use `target`, not `optimize`, and stay scoped to
+//   the push/pop so user code outside POET sees no change. Fixed-128-bit ISAs
+//   need no pragma.
 
-// -- Internal: optimization flags common to all GCC hot paths
+// Internal: optimization flags common to all GCC hot paths
 #define POET_PUSH_OPTIMIZE_BASE_                                                                              \
     _Pragma("GCC push_options") _Pragma("GCC optimize(\"-fira-hoist-pressure\")")                             \
       _Pragma("GCC optimize(\"-fno-ira-share-spill-slots\")") _Pragma("GCC optimize(\"-frename-registers\")") \
         _Pragma("GCC optimize(\"-fvect-cost-model=cheap\")")
 
-// -- Internal: target pragma for widest available vector width
+// Internal: target pragma for widest available vector width
 #if defined(__AVX512F__)
 #define POET_PUSH_VECTOR_WIDTH_ _Pragma("GCC target(\"prefer-vector-width=512\")")
 #elif defined(__AVX2__) || defined(__AVX__)
@@ -238,13 +235,12 @@ constexpr auto count_trailing_zeros(std::size_t value) noexcept -> unsigned int 
 #define POET_PUSH_OPTIMIZE POET_PUSH_OPTIMIZE_BASE_ POET_PUSH_VECTOR_WIDTH_
 #define POET_POP_OPTIMIZE _Pragma("GCC pop_options")
 #else
-// Not optimizing for speed (-O0/-Og/-Os/-Oz): leave the caller's level alone.
+// The build does not optimize for speed (-O0/-Og/-Os/-Oz): keep the caller's level.
 #define POET_PUSH_OPTIMIZE
 #define POET_POP_OPTIMIZE
 #endif
 #elif defined(_MSC_VER)
-// In Debug builds, /RTC1 (runtime checks) is incompatible with /O2.
-// Only enable optimization pragma in non-debug MSVC builds.
+// /RTC1 is incompatible with /O2, so the optimize pragma applies to non-debug builds only.
 #ifndef _DEBUG
 #define POET_PUSH_OPTIMIZE __pragma(optimize("gt", on))
 #define POET_POP_OPTIMIZE __pragma(optimize("", on))
@@ -253,12 +249,12 @@ constexpr auto count_trailing_zeros(std::size_t value) noexcept -> unsigned int 
 #define POET_POP_OPTIMIZE
 #endif
 #else
-// Clang and others: no-op (Clang can only disable opts, not enable)
+// Clang and others: no-op. Clang can only disable optimizations, not enable them.
 #define POET_PUSH_OPTIMIZE
 #define POET_POP_OPTIMIZE
 #endif
 #else
-// User opted out: no-op to preserve their custom flags
+// POET_DISABLE_PUSH_OPTIMIZE: no-op, preserves user flags.
 #define POET_PUSH_OPTIMIZE
 #define POET_POP_OPTIMIZE
 #endif

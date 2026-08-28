@@ -83,9 +83,9 @@ def _make_state(
 ) -> dict:
     # Compiler Explorer's web client expands `#include <https://...>` by
     # fetching the URL via XHR (CORS-permitting host required) and inlining
-    # the contents before compilation. Since POET ships a single amalgamated
-    # header on the `single-header` branch, we just point the example at the
-    # raw GitHub URL — no need to bundle the header in clientstate.
+    # the contents before compilation. POET ships a single amalgamated
+    # header on the `single-header` branch, so the example points at the
+    # raw GitHub URL; bundling the header in clientstate is unnecessary.
     # See: https://github.com/compiler-explorer/compiler-explorer/issues/1442
     rewritten = example_text.replace("<poet/poet.hpp>", f"<{header_url}>")
 
@@ -161,9 +161,8 @@ def _canonical(state: dict) -> str:
 
 
 def _existing_short_matches(short_url: str, new_state: dict) -> bool:
-    """Return True if `short_url` already resolves to a saved clientstate
-    equivalent to `new_state` — used to keep stable shortlinks across
-    regenerations when nothing actually changed."""
+    """Return True if `short_url` resolves to a saved clientstate equivalent
+    to `new_state`. Keeps shortlinks stable across regenerations."""
     if not short_url.startswith("https://godbolt.org/z/"):
         return False
     short_id = short_url.rsplit("/", 1)[-1]
@@ -275,9 +274,9 @@ def main() -> int:
         print("error: no examples found", file=sys.stderr)
         return 1
 
-    # Load the existing JSON so we can reuse stable shortlinks when the
-    # underlying clientstate hasn't changed. CI passes --existing-json
-    # pointing at a copy fetched from the godbolt-links branch.
+    # Load the existing JSON to reuse stable shortlinks when the underlying
+    # clientstate has not changed. CI passes --existing-json pointing at a
+    # copy fetched from the godbolt-links branch.
     out_path = Path(args.out)
     existing_path = Path(args.existing_json) if args.existing_json else out_path
     existing: "dict[str, str]" = {}

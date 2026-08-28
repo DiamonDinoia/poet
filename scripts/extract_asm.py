@@ -153,13 +153,11 @@ def main():
         print(f"Error: binary not found: {binary_path}", file=sys.stderr)
         sys.exit(1)
 
-    # Select patterns
     bench_name = args.bench
     if not bench_name:
         bench_name = binary_path.stem.replace("poet_", "").replace("_native", "")
     patterns = BENCH_PATTERNS.get(bench_name, [r".*"])
 
-    # Find and run objdump
     objdump_bin = find_objdump(args.compiler)
     disasm = run_objdump(objdump_bin, str(binary_path))
 
@@ -167,11 +165,9 @@ def main():
         print(f"Warning: empty disassembly for {binary_path}", file=sys.stderr)
         sys.exit(1)
 
-    # Split and filter
     functions = split_functions(disasm)
     hot_functions = filter_functions(functions, patterns)
 
-    # Write output
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 

@@ -41,7 +41,7 @@ int next_noise() {
 }// namespace
 
 int main(int argc, char **argv) {
-    // ── 1D Dispatch ─────────────────────────────────────────────────────
+    // -- 1D Dispatch -----------------------------------------------------
     benchmark::RegisterBenchmark("Dispatch/1D_contiguous_hit", [](benchmark::State &state) {
         for (auto _ : state) {
             auto v = 3 + (next_noise() & 3);
@@ -75,7 +75,7 @@ int main(int argc, char **argv) {
         }
     })->MinTime(0.1);
 
-    // ── 2D Dispatch ─────────────────────────────────────────────────────
+    // -- 2D Dispatch -----------------------------------------------------
     benchmark::RegisterBenchmark("Dispatch/2D_contiguous_hit", [](benchmark::State &state) {
         for (auto _ : state) {
             auto w = 2 + (next_noise() & 3);
@@ -125,7 +125,7 @@ int main(int argc, char **argv) {
         }
     })->MinTime(0.1);
 
-    // ── 5D Dispatch (table size = 4^5 = 1024) ──────────────────────────
+    // -- 5D Dispatch (table size = 4^5 = 1024) --------------------------
     benchmark::RegisterBenchmark("Dispatch/5D_contiguous_hit", [](benchmark::State &state) {
         for (auto _ : state) {
             const int n = next_noise();

@@ -42,22 +42,22 @@ function(_poet_configure_benchmark_target TARGET_NAME)
   poet_enable_sanitizers(${TARGET_NAME})
 endfunction()
 
-# ── Compiler comparison benchmark ──────────────────────────────────────────
+# -- Compiler comparison benchmark ------------------------------------------
 _poet_configure_benchmark_target(poet_compiler_comparison_bench compiler_comparison_bench.cpp)
 
-# ── Dispatch benchmark ─────────────────────────────────────────────────────
+# -- Dispatch benchmark -----------------------------------------------------
 _poet_configure_benchmark_target(poet_dispatch_bench dispatch_bench.cpp)
 
-# ── Dispatch optimization benchmark ──────────────────────────────────────────
+# -- Dispatch optimization benchmark ------------------------------------------
 _poet_configure_benchmark_target(poet_dispatch_optimization_bench dispatch_optimization_bench.cpp)
 
-# ── Register-tuned benchmarks (default ISA) ────────────────────────────────
+# -- Register-tuned benchmarks (default ISA) --------------------------------
 _poet_configure_benchmark_target(poet_static_for_bench static_for_bench.cpp)
 _poet_configure_benchmark_target(poet_dynamic_for_bench dynamic_for_bench.cpp)
 _poet_configure_benchmark_target(poet_dynamic_for_forms_bench dynamic_for_forms_bench.cpp)
 _poet_configure_benchmark_target(poet_dynamic_for_emission_bench dynamic_for_emission_bench.cpp)
 _poet_configure_benchmark_target(poet_dynamic_for_index_only_bench dynamic_for_index_only_bench.cpp)
-# ── Register-tuned benchmarks (-march=native) ─────────────────────────────
+# -- Register-tuned benchmarks (-march=native) -----------------------------
 if(COMPILER_SUPPORTS_MARCH_NATIVE)
   _poet_configure_benchmark_target(poet_compiler_comparison_bench_native compiler_comparison_bench.cpp)
   target_compile_options(poet_compiler_comparison_bench_native PRIVATE -march=native)
@@ -81,12 +81,12 @@ if(COMPILER_SUPPORTS_MARCH_NATIVE)
 endif()
 
 
-# ── Umbrella build target (CI uses --target poet_benchmarks) ───────────────
+# -- Umbrella build target (CI uses --target poet_benchmarks) ---------------
 add_custom_target(poet_benchmarks
   DEPENDS poet_compiler_comparison_bench poet_dispatch_bench poet_dispatch_optimization_bench poet_static_for_bench poet_dynamic_for_bench poet_dynamic_for_forms_bench poet_dynamic_for_emission_bench poet_dynamic_for_index_only_bench
 )
 
-# ── Run targets ────────────────────────────────────────────────────────────
+# -- Run targets ------------------------------------------------------------
 add_custom_target(poet_run_bench
   COMMAND $<TARGET_FILE:poet_dispatch_bench>
   COMMAND $<TARGET_FILE:poet_dispatch_optimization_bench>

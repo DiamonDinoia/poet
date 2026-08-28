@@ -18,7 +18,7 @@
 ///    branches each guarding a fully unrolled block, instead of O(Unroll).
 ///    Technique from Andrei Alexandrescu's CppCon 2025 talk.
 /// 3. **Tiny ranges.** When `count < Unroll` there is no main loop, so the tail
-///    is emitted inline rather than through the outlined helper — the lane
+///    is emitted inline rather than through the outlined helper. The lane
 ///    constants stay visible to the optimizer.
 ///
 /// ## When it helps
@@ -27,8 +27,8 @@
 /// (`func(lane_constant, index)`) and keep one accumulator per lane, breaking
 /// the serial dependency that limits a plain loop.
 ///
-/// It does not help for plain element-wise work (`out[i] = f(i)`) — a `for` loop
-/// has less overhead — nor for a serial chain (`acc += work(i)`), where
+/// It does not help for plain element-wise work (`out[i] = f(i)`), where a plain
+/// `for` loop has less overhead, or for a serial chain (`acc += work(i)`), where
 /// unrolling adds instructions without adding ILP.
 
 #include <cstddef>
@@ -45,7 +45,7 @@ namespace poet {
 namespace detail {
 
     // ========================================================================
-    // Callable form — resolved once per instantiation, never per iteration
+    // Callable form: resolved once per instantiation, never per iteration
     // ========================================================================
 
     /// \brief True if F accepts `(index, args...)` or `(lane_constant, index, args...)`.
@@ -75,10 +75,10 @@ namespace detail {
     // Stride carrier
     // ========================================================================
 
-    /// A stride fixed at compile time. Empty and only ever a template argument,
-    /// so it costs no register and its value reaches every expression below as
-    /// a literal. A runtime stride is carried as a plain `T`, which lets one
-    /// implementation serve both without an `if constexpr` per use site.
+    /// A stride fixed at compile time. The type is empty and appears only as a
+    /// template argument, so it costs no register and its value reaches every
+    /// expression below as a literal. A runtime stride is a plain `T`. One
+    /// implementation serves both forms without an `if constexpr` per use site.
     template<std::ptrdiff_t Step> using static_stride = std::integral_constant<std::ptrdiff_t, Step>;
 
     /// Narrows either stride flavour to `T`. `static_stride` is an
@@ -95,9 +95,9 @@ namespace detail {
     /// True when the stride runs backward.
     ///
     /// An unsigned `T` carries a "negative" stride wrapped into the top half of
-    /// its range, so that counts as backward iteration too. Phrased as
-    /// `if constexpr` because `stride < 0` is not merely false for an unsigned
-    /// `T`, it is a comparison the compiler is right to complain about.
+    /// its range, and that also counts as backward iteration. The
+    /// `if constexpr` guards against the unsigned case: for an unsigned `T`,
+    /// `stride < 0` is a comparison the compiler is right to flag.
     template<typename T> POET_FORCEINLINE constexpr auto is_backward(T stride) noexcept -> bool {
         if constexpr (std::is_signed_v<T>) {
             return stride < 0;
@@ -121,18 +121,18 @@ namespace detail {
         using unsigned_t = std::make_unsigned_t<T>;
         const T stride = stride_of<T>(stride_in);
 
-        // Every public overload asserts `Step != 0`, so only a runtime stride can
-        // still be zero here -- and dividing by it below would be UB.
+        // Every public overload asserts `Step != 0`, so only a runtime stride
+        // can still be zero here, and dividing by zero below would be UB.
         if constexpr (std::is_integral_v<Stride>) {
             if (POET_UNLIKELY(stride == 0)) { return 0; }
         }
 
         if (POET_UNLIKELY(is_backward(stride))) {
             if (POET_UNLIKELY(begin <= end)) { return 0; }
-            // Negate at T's width, where wrapping is defined: that recovers `2`
-            // from a signed `-2` and from an unsigned `T(-2)` alike, whereas
-            // negating in size_t would zero-extend the latter first. Spelled
-            // `0 - x` because the deliberate wrap is what MSVC flags as C4146.
+            // Negate at T's width, where wrapping is defined. This recovers `2`
+            // from a signed `-2` and from an unsigned `T(-2)`; negating in
+            // size_t would zero-extend the unsigned form first. Written as
+            // `0 - x` because MSVC's C4146 flags the deliberate wrap.
             const auto negated = static_cast<unsigned_t>(unsigned_t{ 0 } - static_cast<unsigned_t>(stride));
             const auto magnitude = static_cast<std::size_t>(negated);
             return ((static_cast<std::size_t>(begin - end) + magnitude) - 1) / magnitude;
@@ -142,8 +142,8 @@ namespace detail {
 
         const auto magnitude = static_cast<std::size_t>(stride);
         const std::size_t span = (static_cast<std::size_t>(end - begin) + magnitude) - 1;
-        // Power-of-two strides — which includes the dominant stride==1 case —
-        // shift instead of dividing.
+        // A power-of-two stride, including the dominant stride==1 case,
+        // shifts instead of dividing.
         if (POET_LIKELY(is_power_of_two(magnitude))) { return span >> count_trailing_zeros(magnitude); }
         return span / magnitude;
     }
@@ -203,7 +203,7 @@ namespace detail {
 
     /// The same tail, kept out of line so its register allocation cannot perturb
     /// the hot loop's. `flatten` stops GCC's ISRA pass from re-outlining each
-    /// functor body inside it, which would reload loop constants per call.
+    /// functor body inside the tail, which would reload loop constants per call.
     template<std::size_t N, bool WantsLane, typename Func, typename T, typename Stride, typename... Args>
     POET_NOINLINE_FLATTEN void
       tail_binary_outlined(std::size_t count, Func &func, T index, Stride stride, Args... args) {
@@ -212,13 +212,13 @@ namespace detail {
 
     /// \brief Returns `count` in a form the optimizer cannot constant-fold.
     ///
-    /// `Unroll == 1` is a contract, not a hint: without this, a caller with a
-    /// provably constant trip count lets the compiler re-inflate the loop it
-    /// asked to keep rolled, and gcc's and clang's auto-unroll heuristics
-    /// disagree on when. GNU/clang: an empty asm barrier costs zero
-    /// instructions, the value merely becomes opaque. MSVC has no x64 inline
-    /// asm, so a `volatile` round-trip (one stack store+load per call) does the
-    /// same job.
+    /// `Unroll == 1` is a contract, not a hint. Without this barrier, a caller
+    /// with a provably constant trip count lets the compiler re-inflate the
+    /// loop it asked to keep rolled, and gcc's and clang's auto-unroll
+    /// heuristics disagree on when. GNU/clang: an empty asm barrier costs zero
+    /// instructions and makes the value opaque. MSVC has no x64 inline asm, so
+    /// a `volatile` round-trip (one stack store+load per call) does the same
+    /// job.
     template<typename T> POET_FORCEINLINE auto opaque_count(T count) -> T {
 #if defined(__GNUC__) || defined(__clang__)
         asm volatile("" : "+r"(count));// NOLINT(hicpp-no-assembler)
@@ -240,9 +240,9 @@ namespace detail {
     /// \brief The whole of dynamic_for: main unrolled loop plus binary tail.
     ///
     /// `Args...` are loop-invariant "hot" values threaded by value through every
-    /// level. Passing them as named parameters rather than closure fields keeps
-    /// them in registers: GCC fails to scalar-replace a closure holding large
-    /// types (AVX-512 zmm values, say) and reloads it once per iteration.
+    /// level. GCC fails to scalar-replace a closure that holds large types
+    /// (AVX-512 zmm values, say) and reloads the closure once per iteration;
+    /// named by-value parameters stay in registers.
     template<std::size_t Unroll, bool WantsLane, typename T, typename Func, typename Stride, typename... Args>
     POET_HOT_LOOP void run_loop(const T begin, const T end, Stride stride, Func &func, Args... args) {
         const std::size_t count = iteration_count(begin, end, stride);
@@ -293,8 +293,8 @@ namespace detail {
 /// \param end Exclusive end bound.
 /// \param step Increment per iteration. May be negative.
 /// \param func Callable invoked per iteration, in either form:
-///   - `func(std::integral_constant<std::size_t, lane>{}, index)` — lane as type
-///   - `func(index)` — index only
+///   - `func(std::integral_constant<std::size_t, lane>{}, index)`: lane as type
+///   - `func(index)`: index only
 template<std::size_t Unroll,
   typename T1,
   typename T2,
@@ -369,10 +369,10 @@ POET_FORCEINLINE void dynamic_for(std::size_t count, Func &&func) {
 /// \brief Executes a runtime-sized loop over `[0, count)`, passing loop-invariant
 /// "hot" values to the callable by value instead of through a closure.
 ///
-/// GCC fails to scalar-replace a capturing lambda's closure when it holds large
-/// types (AVX-512 zmm values, say): the closure is spilled to the stack and
-/// reloaded every iteration even with full inlining. Naming those values as
-/// by-value parameters at every level keeps them in registers instead.
+/// GCC fails to scalar-replace a capturing lambda's closure when the closure
+/// holds large types (AVX-512 zmm values, say): the closure is spilled to the
+/// stack and reloaded every iteration even with full inlining. Named by-value
+/// parameters at every level stay in registers.
 ///
 /// Overload resolution stays unambiguous because this form requires at least
 /// one hot argument, so a zero-arg call still selects the `(count, func)` form.
@@ -381,7 +381,7 @@ POET_FORCEINLINE void dynamic_for(std::size_t count, Func &&func) {
 /// \tparam Step Compile-time stride (must be non-zero).
 /// \param count Iteration count, i.e. the range `[0, count)`.
 /// \param func Callable `void(T index, HotArgs...)`. Do not also capture the hot
-///   values — that would reintroduce the closure this form exists to avoid.
+///   values; a capture would reintroduce the closure this form exists to avoid.
 /// \param args Loop-invariant values forwarded by value at each level.
 template<std::size_t Unroll,
   std::ptrdiff_t Step = 1,
@@ -427,7 +427,7 @@ void operator|(Range &&r, dynamic_for_adaptor<Func, Unroll> const &ad) {
     const auto at = [first](std::size_t pos) -> decltype(auto) {
         return first[static_cast<std::ranges::range_difference_t<Range>>(pos)];
     };
-    // O(1) whenever the sentinel can be subtracted, which random access usually
+    // O(1) when the sentinel can be subtracted, which random access usually
     // implies; `ranges::size` would reject views like `iota(0) | take(n)`.
     const auto count = static_cast<std::size_t>(std::ranges::distance(r));
 

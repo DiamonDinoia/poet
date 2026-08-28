@@ -6,26 +6,26 @@
 # Usage
 # -----
 # - From the main project: include(cmake/GenerateVersion.cmake) during configure.
-# - Standalone: cmake -P cmake/GenerateVersion.cmake — required once for
+# - Standalone: cmake -P cmake/GenerateVersion.cmake, required once for
 #   non-CMake consumers, since include/poet/version.hpp is not tracked in git.
 #   With -DCHECK=ON, exits 1 if the generated file would change.
 #
 # Version composition
 # -------------------
-# Let BASE = contents of ./VERSION (e.g. 0.0.0). Let TAG = `git describe
-# --exact-match --tags HEAD` (stripped of a leading `v`). If TAG == BASE we are
-# on an exact release commit and POET_VERSION_FULL = BASE. Otherwise the suffix
-# is `-dev.N` where N is the number of commits since the nearest reachable tag
-# (whole history if the repo has no tags at all). With no git available (release
-# tarball, vendored copy) POET_VERSION_FULL = BASE.
+# BASE = contents of ./VERSION (e.g. 0.0.0). TAG = `git describe --exact-match
+# --tags HEAD`, stripped of a leading `v`. When TAG == BASE, HEAD is an exact
+# release commit and POET_VERSION_FULL = BASE. Otherwise the suffix is `-dev.N`,
+# where N is the number of commits since the nearest reachable tag (whole
+# history when the repo has no tags). Without git (release tarball, vendored
+# copy) POET_VERSION_FULL = BASE.
 #
-# N is derived from committed history only, so it advances only when a new
-# commit lands, never from the index or the working tree.
+# N comes from committed history only. N advances on a new commit, never on
+# a change in the index or the working tree.
 
 cmake_minimum_required(VERSION 3.20)
 
 # poet's root, resolved relative to this file (poet/cmake/GenerateVersion.cmake).
-# Works in every mode — standalone, add_subdirectory, and `cmake -P`. Do NOT use
+# Works standalone, under add_subdirectory, and with `cmake -P`. Do NOT use
 # CMAKE_SOURCE_DIR: under add_subdirectory it points at the consumer, not poet.
 get_filename_component(_poet_src "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 
@@ -45,8 +45,8 @@ set(_on_exact_tag FALSE)
 set(_commit_count 0)
 
 # No git to consult (release tarball, vendored copy): the VERSION file is the
-# only authority, so report it as-is. Guessing `-dev.0` would label a pristine
-# release archive as a prerelease, which semver sorts below the release itself.
+# only authority. Reporting `-dev.0` would label a pristine release archive as
+# a prerelease, and semver sorts a prerelease below the release itself.
 set(_have_git_info FALSE)
 
 if(Git_FOUND AND EXISTS "${_poet_src}/.git")
@@ -66,9 +66,9 @@ if(Git_FOUND AND EXISTS "${_poet_src}/.git")
   endif()
 
   if(NOT _on_exact_tag)
-    # Count from the nearest reachable tag, not from v<BASE>: right after a
-    # release the base is already bumped, so no v<BASE> tag exists yet and
-    # counting whole history would report a meaningless total.
+    # Count from the nearest reachable tag, not from v<BASE>. Right after a
+    # release the base is already bumped, so no v<BASE> tag exists yet, and
+    # counting the whole history would report a meaningless total.
     execute_process(
       COMMAND "${GIT_EXECUTABLE}" -C "${_poet_src}" describe --tags --abbrev=0
       OUTPUT_VARIABLE _last_tag

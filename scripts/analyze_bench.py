@@ -18,7 +18,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-# Compiler sort order: GCC (12→15) then Clang (18→22)
+# Compiler sort order: GCC 12..15, then Clang 18..22
 COMPILER_ORDER = [
     "gcc-12",
     "gcc-13",
