@@ -110,7 +110,7 @@ def parse_bench_file(text: str) -> dict:
 
         # Table title line (no | separator, not metadata)
         if "|" not in stripped and not stripped.startswith("Warning"):
-            # Could be a table title
+            # Candidate table-title line
             if header_cols and rows:
                 # Flush previous table
                 result["tables"].append(

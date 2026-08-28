@@ -1,21 +1,8 @@
 /// \file undef_macros.hpp
-/// \brief Undefines every POET macro to prevent namespace pollution.
-///
-/// The umbrella header `<poet/poet.hpp>` includes this header last, so macros
-/// are cleaned up by default. When including individual POET headers, include
-/// this header after all code that uses POET macros.
-///
-/// Re-including `<poet/core/macros.hpp>` afterwards restores them.
-///
-/// Only macros are removed: `poet::detail::count_trailing_zeros` and the
-/// template utilities (static_for, dynamic_for, dispatch) stay available.
-///
-/// No include guard by design: the macros.hpp/undef_macros.hpp cycle must be
-/// repeatable, and a guard would silently make every pass after the first a
-/// no-op. `#undef` is idempotent, so re-including costs nothing.
+/// \brief Undefines every POET macro; `<poet/poet.hpp>` includes it last.
+/// With individual headers, include it after all POET macro use.
+/// No include guard: the macros.hpp/undef_macros.hpp cycle must be repeatable.
 
-// Re-arms macros.hpp so a subsequent include redefines everything. `#undef`
-// of an undefined macro is a well-formed no-op, so nothing is guarded.
 #undef POET_CORE_MACROS_HPP
 
 #undef POET_CPLUSPLUS

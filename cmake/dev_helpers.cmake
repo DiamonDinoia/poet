@@ -1,17 +1,10 @@
 include_guard(GLOBAL)
 
-# ==============================================================================
-# POET Development Helpers
-# ==============================================================================
-# CMake helper functions and targets for POET development:
-# - poet_enable_warnings
-# - poet_enable_sanitizers
-# - poet_configure_static_analysis
-# - docs targets (doxygen, sphinx, docs)
-# - coverage target
-#
+# --- POET development helpers ---
+# Helpers and targets for POET development:
+# - poet_enable_warnings, poet_enable_sanitizers, poet_configure_static_analysis
+# - docs targets (doxygen, sphinx, docs), coverage target
 # Development and test builds only; not needed to consume POET header-only.
-# ==============================================================================
 
 include(FetchContent)
 
@@ -150,11 +143,7 @@ option(POET_ENABLE_ASAN "Enable AddressSanitizer (memory error detection)" ${POE
 option(POET_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (undefined behavior detection)" ${POET_ENABLE_SANITIZERS})
 
 # Apply sanitizer flags to a target. Two flag strings, so no dependency on a
-# sanitizers module.
-#
-# -fno-sanitize-recover=all matters as much as the sanitizers themselves:
-# without this flag, UBSan prints a diagnostic and continues, so ctest still
-# reports success.
+# sanitizers module. Abort on UBSan findings so ctest fails.
 function(poet_enable_sanitizers target)
   if(NOT TARGET "${target}")
     message(FATAL_ERROR "poet_enable_sanitizers called with non-existent target '${target}'")
@@ -208,8 +197,7 @@ endfunction()
 # Static analysis helper
 # -------------------------
 option(POET_ENABLE_CLANG_TIDY "Enable clang-tidy static analysis" ON)
-# STRING, not option(): an option() default is a boolean, so a string default
-# would collapse to OFF and the value would be lost.
+# STRING, not option(): an option() default is boolean, so a string default would be lost.
 set(POET_CLANG_TIDY_CHECKS "" CACHE STRING
   "Override default clang-tidy checks (leave empty to use the .clang-tidy config)")
 option(POET_CLANG_TIDY_WARNINGS_AS_ERRORS "Treat clang-tidy warnings as errors" ON)
@@ -364,9 +352,7 @@ endif()
 # -------------------------
 # Configuration summary
 # -------------------------
-# Report effective state, not requested options. This makes a silently inactive
-# tool visible (missing binary, unsupported compiler, a helper that returned
-# early); the only other way to tell is grepping compile_commands.json.
+# Report effective state, not requested options, so a silently inactive tool stays visible.
 function(poet_print_summary)
   get_property(_san GLOBAL PROPERTY POET_APPLIED_SANITIZERS)
   get_property(_san_targets GLOBAL PROPERTY POET_SANITIZED_TARGETS)

@@ -138,7 +138,6 @@ namespace {
 constexpr auto compute_squares_with_arg() {
     std::array<int, 4> values{};
     poet::static_for<0, 4>([&values](auto index_constant) {
-        // Use the integral-constant type's ::value in a constexpr-friendly way.
         constexpr auto v = decltype(index_constant)::value;
         values[static_cast<std::size_t>(v)] = static_cast<int>(v * v);
     });
@@ -203,11 +202,9 @@ TEST_CASE("static_for handles large iteration counts", "[static_for][limits]") {
 
 TEST_CASE("static_for preserves lvalue functor state", "[static_for][lvalue]") {
     mutator m;
-    // Passing an lvalue functor should update `m` itself.
     poet::static_for<0, 4>(m);
     REQUIRE(m.sum == (0 + 1 + 2 + 3));
 
-    // Passing an rvalue should not modify `m`.
     poet::static_for<0, 4>(mutator{});
     REQUIRE(m.sum == (0 + 1 + 2 + 3));
 }
@@ -221,8 +218,7 @@ TEST_CASE("static_for helper overload works", "[static_for][overload]") {
 
 TEST_CASE("static_for negative step with custom block size and remainder", "[static_for][negative][remainder]") {
     std::vector<int> values;
-    // Range: 10 to 0 (exclusive), step -3 -> 10, 7, 4, 1
-    // Count: 4 iterations, with block size 3, should have 1 full block + 1 remainder
+    // 4 iterations at block size 3: one full block plus a remainder.
     constexpr std::size_t kBlockSize = 3;
     poet::static_for<10, 0, -3, kBlockSize>(
       [&values](auto index_constant) { values.push_back(static_cast<int>(index_constant)); });
@@ -232,7 +228,6 @@ TEST_CASE("static_for negative step with custom block size and remainder", "[sta
 
 TEST_CASE("static_for with all iterations in full blocks (no remainder)", "[static_for][blocks]") {
     std::vector<int> values;
-    // 8 iterations with block size 4 -> exactly 2 full blocks, no remainder
     constexpr std::size_t kBlockSize = 4;
     poet::static_for<0, 8, 1, kBlockSize>(
       [&values](auto index_constant) { values.push_back(static_cast<int>(index_constant)); });
@@ -265,7 +260,6 @@ TEST_CASE("static_for exception safety", "[static_for][exception]") {
 
 TEST_CASE("static_for with step > 1 forward", "[static_for][step]") {
     std::vector<int> values;
-    // Range: 0 to 10, step 2 -> 0, 2, 4, 6, 8
     poet::static_for<0, 10, 2>([&values](auto index_constant) { values.push_back(static_cast<int>(index_constant)); });
 
     REQUIRE(values == std::vector<int>{ 0, 2, 4, 6, 8 });
@@ -273,7 +267,6 @@ TEST_CASE("static_for with step > 1 forward", "[static_for][step]") {
 
 TEST_CASE("static_for with step > 1 backward", "[static_for][step]") {
     std::vector<int> values;
-    // Range: 10 to 0, step -2 -> 10, 8, 6, 4, 2
     poet::static_for<10, 0, -2>([&values](auto index_constant) { values.push_back(static_cast<int>(index_constant)); });
 
     REQUIRE(values == std::vector<int>{ 10, 8, 6, 4, 2 });
@@ -310,9 +303,8 @@ struct unrelated_arg {
 TEST_CASE("static_for index detection", "[static_for][detection]") {
     using poet::detail::takes_index_v;
 
-    // The detection predicate behind static_for's two dispatch arms. Asserted
-    // directly so a change to it fails here rather than silently routing every
-    // callable through the template_invoker adapter.
+    // Drives static_for's two dispatch arms; asserting it directly makes a
+    // change fail here instead of silently routing every callable through `template_invoker`.
     STATIC_REQUIRE(takes_index_v<index_form, 0>);
     STATIC_REQUIRE_FALSE(takes_index_v<template_form, 0>);
     STATIC_REQUIRE(takes_index_v<both_forms, 0>);

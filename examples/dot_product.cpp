@@ -1,13 +1,8 @@
 // Example: lane-aware dot product breaks the serial accumulator dependency.
 //
-// A scalar `for` loop has one accumulator: `acc += a[i]*b[i]`. The next
-// iteration can't issue its FMA until the previous `acc` retires, so the
-// loop is bound by the FMA latency (~4 cycles on Zen4/Skylake).
-//
-// `poet::dynamic_for<L>` with a lane-aware lambda gives the compiler L
-// independent accumulators, indexed by a compile-time lane id. The chains
-// run in parallel and throughput becomes FMA-throughput-limited (one per
-// cycle), not latency-limited.
+// A scalar `for` loop accumulates into one register, so every FMA waits on
+// the previous one. `poet::dynamic_for<L>` with a lane-aware lambda gives the
+// compiler L independent accumulators on parallel dependency chains.
 //
 // Build:
 //   cmake -S . -B build -DPOET_BUILD_EXAMPLES=ON

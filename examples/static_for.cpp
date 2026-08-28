@@ -11,10 +11,8 @@
 #include <poet/poet.hpp>
 
 int main() {
-    // Each loop writes to a `volatile` sink inside the lambda, so every
-    // unrolled iteration is an observable side effect. The compiler can't
-    // collapse the work into a single constant store, and the asm pane on
-    // Compiler Explorer shows the full unrolled emission.
+    // Each iteration writes to a `volatile` sink, so the compiler cannot
+    // collapse the loop and the asm pane shows the full unrolled emission.
     volatile int sink_i = 0;
     volatile long sink_l = 0;
 

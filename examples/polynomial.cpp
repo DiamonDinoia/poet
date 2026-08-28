@@ -1,8 +1,7 @@
 // Example: Horner's polynomial evaluation specialized at runtime.
 //
-// `poet::dispatch` picks a compile-time degree N in [1, 8] from a runtime
-// integer; once N is fixed, `poet::static_for` unrolls Horner's recurrence
-// completely and the compiler constant-folds the coefficient lookups.
+// `poet::dispatch` picks a compile-time degree N from a runtime integer, then
+// `poet::static_for` unrolls Horner's recurrence at that fixed N.
 //
 // Build:
 //   cmake -S . -B build -DPOET_BUILD_EXAMPLES=ON

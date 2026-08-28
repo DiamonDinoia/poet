@@ -1,21 +1,7 @@
 /// \file static_for_bench.cpp
-/// \brief static_for benchmark: register-tuned BlockSize.
-///
-/// Two sections:
-///   1. Map: apply heavy_work element-wise (no serial deps, pure ILP).
-///   2. Multi-accumulator: for loop vs tuned BS vs default BS at N=256.
-///
-/// Different heuristics apply to each section:
-///
-///   Map (no serial deps; maximize ILP):
-///     optimal_bs_map = vec_regs * lanes_64 / 2
-///                  SSE2 = 16   AVX2 = 32   AVX-512 = 128
-///
-///   MultiAcc (serial dep per chain; avoid accumulator register spill):
-///     optimal_bs_multiacc = lanes_64 * 2   (2 SIMD regs of accumulators)
-///                       SSE2 = 4   AVX2 = 8   AVX-512 = 16
-///     heavy_work needs ~10 registers for its FMA constants/intermediates;
-///     keeping accumulators to 2 SIMD regs leaves ample headroom.
+/// \brief static_for with register-tuned BlockSize: element-wise map (pure ILP) vs multi-accumulator reduction (serial
+/// chains), N=256. Block sizes come from `optimal_bs_map` / `optimal_bs_multiacc`, derived from
+/// `poet::available_registers()` below.
 
 #include <array>
 #include <cstddef>
@@ -123,9 +109,7 @@ int main(int argc, char **argv) {
 
     const auto salt = next_salt();
 
-    // ========================================================================
-    // Section 1: Map (N=256, heavy body)
-    // ========================================================================
+    // --- Section 1: Map (N=256, heavy body) ---
     {
         reg("Map/for_loop", kSweepN, [salt] {
             std::array<double, kSweepN> out{};
@@ -147,9 +131,7 @@ int main(int argc, char **argv) {
         });
     }
 
-    // ========================================================================
-    // Section 2: Multi-accumulator (N=256, heavy body)
-    // ========================================================================
+    // --- Section 2: Multi-accumulator (N=256, heavy body) ---
     {
         reg("MultiAcc/for_loop", kSweepN, [salt] {
             double acc = 0.0;

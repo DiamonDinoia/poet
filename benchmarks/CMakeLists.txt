@@ -1,6 +1,5 @@
 if(CODSPEED_MODE)
-  # CodSpeed compatibility layer (wraps Google Benchmark with instrumentation).
-  # The instrument-hooks C file requires Clang; use this path only in CI.
+  # CodSpeed CI wrapper around Google Benchmark; the hooks file requires Clang.
   CPMAddPackage(
     NAME google_benchmark
     GIT_REPOSITORY https://github.com/CodSpeedHQ/codspeed-cpp

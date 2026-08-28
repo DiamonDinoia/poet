@@ -44,9 +44,7 @@ find_package(Git QUIET)
 set(_on_exact_tag FALSE)
 set(_commit_count 0)
 
-# No git to consult (release tarball, vendored copy): the VERSION file is the
-# only authority. Reporting `-dev.0` would label a pristine release archive as
-# a prerelease, and semver sorts a prerelease below the release itself.
+# Without git, the VERSION file alone decides; -dev.0 would mislabel a release archive.
 set(_have_git_info FALSE)
 
 if(Git_FOUND AND EXISTS "${_poet_src}/.git")
@@ -66,9 +64,7 @@ if(Git_FOUND AND EXISTS "${_poet_src}/.git")
   endif()
 
   if(NOT _on_exact_tag)
-    # Count from the nearest reachable tag, not from v<BASE>. Right after a
-    # release the base is already bumped, so no v<BASE> tag exists yet, and
-    # counting the whole history would report a meaningless total.
+    # Count from the nearest reachable tag: right after a release no v<BASE> tag exists yet.
     execute_process(
       COMMAND "${GIT_EXECUTABLE}" -C "${_poet_src}" describe --tags --abbrev=0
       OUTPUT_VARIABLE _last_tag

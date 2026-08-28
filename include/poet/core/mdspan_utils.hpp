@@ -1,10 +1,7 @@
 #pragma once
 
 /// \file mdspan_utils.hpp
-/// \brief Multidimensional index utilities for N-D dispatch table generation.
-///
-/// Provides the row-major stride computation used by the N-D
-/// function-pointer-table dispatch in dispatch.hpp.
+/// \brief Row-major stride computation for the N-D dispatch in dispatch.hpp.
 
 #include <array>
 #include <cstddef>
@@ -12,7 +9,7 @@
 
 namespace poet::detail {
 
-/// Compute row-major strides. stride[i] = product of dims[i+1..N-1].
+/// stride[i] = product of dims[i+1..N-1].
 template<std::size_t N>
 POET_CPP20_CONSTEVAL auto compute_strides(const std::array<std::size_t, N> &dims) -> std::array<std::size_t, N> {
     std::array<std::size_t, N> strides{};

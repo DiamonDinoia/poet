@@ -81,12 +81,6 @@ def _make_state(
     options: str,
     override: "dict | None" = None,
 ) -> dict:
-    # Compiler Explorer's web client expands `#include <https://...>` by
-    # fetching the URL via XHR (CORS-permitting host required) and inlining
-    # the contents before compilation. POET ships a single amalgamated
-    # header on the `single-header` branch, so the example points at the
-    # raw GitHub URL; bundling the header in clientstate is unnecessary.
-    # See: https://github.com/compiler-explorer/compiler-explorer/issues/1442
     rewritten = example_text.replace("<poet/poet.hpp>", f"<{header_url}>")
 
     override = override or {}
@@ -177,10 +171,9 @@ def _existing_short_matches(short_url: str, new_state: dict) -> bool:
 
 
 def _emit_redirects(links: "dict[str, str]", out_dir: Path) -> None:
-    """Write a tiny `<example>.html` meta-refresh page per shortlink, plus
-    an `index.html` listing them. The pages live on the `godbolt-links`
-    branch (served via GitHub Pages) so README/docs URLs stay stable while
-    the underlying godbolt.org/z/<id> targets rotate."""
+    """Write a meta-refresh page per shortlink (plus `index.html`) on the
+    `godbolt-links` branch, so README/docs URLs stay stable while the
+    godbolt.org/z/<id> targets rotate."""
     out_dir.mkdir(parents=True, exist_ok=True)
     template = (
         "<!doctype html>\n"
@@ -207,7 +200,7 @@ def _emit_redirects(links: "dict[str, str]", out_dir: Path) -> None:
         '<html lang="en"><head><meta charset="utf-8">\n'
         "<title>POET · Compiler Explorer redirects</title></head>\n"
         "<body>\n"
-        "<h1>POET — Compiler Explorer redirects</h1>\n"
+        "<h1>POET - Compiler Explorer redirects</h1>\n"
         "<p>Each link below redirects to the current Compiler Explorer "
         "shortlink for that example.</p>\n"
         f"<ul>\n{rows}\n</ul>\n"
@@ -274,9 +267,7 @@ def main() -> int:
         print("error: no examples found", file=sys.stderr)
         return 1
 
-    # Load the existing JSON to reuse stable shortlinks when the underlying
-    # clientstate has not changed. CI passes --existing-json pointing at a
-    # copy fetched from the godbolt-links branch.
+    # Reuse unchanged shortlinks from the previous JSON; CI passes --existing-json from the godbolt-links branch.
     out_path = Path(args.out)
     existing_path = Path(args.existing_json) if args.existing_json else out_path
     existing: "dict[str, str]" = {}

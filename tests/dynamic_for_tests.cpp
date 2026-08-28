@@ -12,9 +12,7 @@
 #include <utility>
 #include <vector>
 
-// ============================================================================
-// Core basic tests
-// ============================================================================
+// --- Core basic tests ---
 
 TEST_CASE("dynamic_for handles divisible counts", "[dynamic_for]") {
     std::vector<std::size_t> visited;
@@ -90,9 +88,7 @@ TEST_CASE("dynamic_for mixed types deduction", "[dynamic_for]") {
     REQUIRE(visited == expected);
 }
 
-// ============================================================================
-// Step tests
-// ============================================================================
+// --- Step tests ---
 
 TEST_CASE("dynamic_for supports step > 1", "[dynamic_for]") {
     std::vector<int> visited;
@@ -189,9 +185,7 @@ TEST_CASE("dynamic_for auto-detects backward direction", "[dynamic_for][auto-ste
     REQUIRE(visited == std::vector<int>{ 10, 9, 8, 7, 6 });
 }
 
-// ============================================================================
-// Compile-time step overload: dynamic_for<Unroll, Step>(begin, end, func)
-// ============================================================================
+// --- Compile-time step overload: dynamic_for<Unroll, Step>(begin, end, func) ---
 
 TEST_CASE("dynamic_for with compile-time step +2", "[dynamic_for][ct-step]") {
     std::vector<int> visited;
@@ -224,7 +218,6 @@ TEST_CASE("dynamic_for with compile-time step lane form", "[dynamic_for][ct-step
       0, 12, [&visited](auto lane_c, int i) { visited.emplace_back(decltype(lane_c)::value, i); });
     // 6 iterations: 0,2,4,6,8,10, one full block of 4 plus a tail of 2
     REQUIRE(visited.size() == 6);
-    // Verify all indices are correct
     for (std::size_t j = 0; j < visited.size(); ++j) { REQUIRE(visited[j].second == static_cast<int>(j * 2)); }
 }
 
@@ -263,9 +256,7 @@ TEST_CASE("dynamic_for tail dispatch completeness for Unroll=16", "[dynamic_for]
     }
 }
 
-// ============================================================================
-// Edge and stress tests
-// ============================================================================
+// --- Edge and stress tests ---
 
 TEST_CASE("dynamic_for supports unsigned backward iteration with wrapped step", "[dynamic_for]") {
     std::vector<unsigned> visited;
@@ -402,9 +393,7 @@ TEST_CASE("dynamic_for tiny range bypasses main loop", "[dynamic_for][tiny]") {
     }
 }
 
-// ============================================================================
-// Advanced tests
-// ============================================================================
+// --- Advanced tests ---
 
 TEST_CASE("dynamic_for with Unroll=1 comprehensive", "[dynamic_for][unroll-1]") {
     std::vector<int> visited;
@@ -454,7 +443,6 @@ TEST_CASE("dynamic_for passes compile-time lane in tiny and tail ranges", "[dyna
         REQUIRE(with_tail[iter].first == 5U + iter);
         REQUIRE(with_tail[iter].second == iter);
     }
-    // Tail of 3: binary decomposition emits blocks [1, 2], so lanes are [0], [0, 1].
     REQUIRE(with_tail[8] == std::make_pair(std::size_t{ 13 }, std::size_t{ 0 }));
     REQUIRE(with_tail[9] == std::make_pair(std::size_t{ 14 }, std::size_t{ 0 }));
     REQUIRE(with_tail[10] == std::make_pair(std::size_t{ 15 }, std::size_t{ 1 }));
@@ -519,7 +507,6 @@ TEST_CASE("dynamic_for exception safety", "[dynamic_for][exception]") {
 }
 
 TEST_CASE("dynamic_for lane form with various unroll factors", "[dynamic_for][lane]") {
-    // Unroll=2
     {
         std::vector<std::pair<std::size_t, std::size_t>> visited;
         poet::dynamic_for<2>(std::size_t{ 0 }, std::size_t{ 5 }, [&visited](auto lane_c, std::size_t i) {
@@ -531,7 +518,6 @@ TEST_CASE("dynamic_for lane form with various unroll factors", "[dynamic_for][la
             REQUIRE(visited[i].second == i);
         }
     }
-    // Unroll=3
     {
         std::vector<std::pair<std::size_t, std::size_t>> visited;
         poet::dynamic_for<3>(std::size_t{ 0 }, std::size_t{ 7 }, [&visited](auto lane_c, std::size_t i) {
@@ -543,7 +529,6 @@ TEST_CASE("dynamic_for lane form with various unroll factors", "[dynamic_for][la
             REQUIRE(visited[i].second == i);
         }
     }
-    // Unroll=16
     {
         std::vector<std::pair<std::size_t, std::size_t>> visited;
         poet::dynamic_for<16>(std::size_t{ 0 }, std::size_t{ 20 }, [&visited](auto lane_c, std::size_t i) {
@@ -557,9 +542,7 @@ TEST_CASE("dynamic_for lane form with various unroll factors", "[dynamic_for][la
     }
 }
 
-// ============================================================================
-// Ranges tests (C++20)
-// ============================================================================
+// --- Ranges tests (C++20) ---
 
 #if __cplusplus >= 202002L
 
@@ -649,8 +632,8 @@ TEST_CASE("opaque_count is value-preserving", "[dynamic_for][unroll1]") {
 }
 
 TEST_CASE("dynamic_for<1> honours a compile-time-constant trip count", "[dynamic_for][unroll1]") {
-    // A constant count is exactly the case where the optimizer would otherwise
-    // be free to re-inflate the loop opaque_count() exists to keep rolled.
+    // A constant count is where the optimizer would otherwise re-inflate the loop.
+    // `opaque_count()` exists to keep it rolled.
     std::size_t calls = 0;
     poet::dynamic_for<1>(std::size_t{ 0 }, std::size_t{ 8 }, [&calls](std::size_t) { ++calls; });
     REQUIRE(calls == 8U);

@@ -1,7 +1,5 @@
 /// \file dynamic_for_forms_bench.cpp
-/// \brief Compares dynamic_for callable forms (lane vs index-only) across workloads.
-///
-/// Three sections:
+/// \brief Compares dynamic_for callable forms (lane vs index-only), three sections:
 ///   1. Accumulation (serial dependency): the lane form breaks dep chains
 ///   2. Element-wise independent work: body dominates, all forms roughly equal
 ///   3. Small N tail overhead: dispatch cost for tiny ranges
@@ -79,9 +77,7 @@ int main(int argc, char **argv) {
 
     const auto salt = next_salt();
 
-    // ========================================================================
-    // Section 1: Accumulation (serial dependency)
-    // ========================================================================
+    // --- Section 1: Accumulation (serial dependency) ---
     {
         constexpr std::size_t N = 10000;
 
@@ -109,9 +105,7 @@ int main(int argc, char **argv) {
         });
     }
 
-    // ========================================================================
-    // Section 2: Element-wise independent work
-    // ========================================================================
+    // --- Section 2: Element-wise independent work ---
     {
         constexpr std::size_t N = 10000;
         static std::array<double, N> out{};
@@ -135,9 +129,7 @@ int main(int argc, char **argv) {
         });
     }
 
-    // ========================================================================
-    // Section 3: Small N tail overhead
-    // ========================================================================
+    // --- Section 3: Small N tail overhead ---
     {
         auto run_small_n = [](std::size_t n, std::uint32_t s) {
             const std::string suffix = "_N=" + std::to_string(n);

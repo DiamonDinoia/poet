@@ -7,9 +7,7 @@
 
 using namespace poet;
 
-// ============================================================================
-// Compile-time structural invariants
-// ============================================================================
+// --- Compile-time structural invariants ---
 
 // Helper: validate cache_line_info for a given ISA's defaults
 constexpr bool validate_cache_line(cache_line_info cl) {
@@ -25,9 +23,7 @@ static_assert(validate_cache_line(cache_line()), "detected cache line info fails
 static_assert(destructive_interference_size() == cache_line().destructive_size);
 static_assert(constructive_interference_size() == cache_line().constructive_size);
 
-// ============================================================================
-// Validate __GCC_DESTRUCTIVE_SIZE consistency (when available)
-// ============================================================================
+// --- Validate __GCC_DESTRUCTIVE_SIZE consistency (when available) ---
 
 #if defined(__GCC_DESTRUCTIVE_SIZE) && defined(__GCC_CONSTRUCTIVE_SIZE)
 static_assert(cache_line().destructive_size == __GCC_DESTRUCTIVE_SIZE,
@@ -36,9 +32,7 @@ static_assert(cache_line().constructive_size == __GCC_CONSTRUCTIVE_SIZE,
   "cache_line().constructive_size disagrees with __GCC_CONSTRUCTIVE_SIZE");
 #endif
 
-// ============================================================================
-// Compile-time: validate against hardware ground truth from sysfs
-// ============================================================================
+// --- Compile-time: validate against hardware ground truth from sysfs ---
 
 #ifdef POET_HAS_HW_DETECTION
 #if POET_HW_CACHE_LINE_SIZE > 0
@@ -47,9 +41,7 @@ static_assert(constructive_interference_size() == POET_HW_CACHE_LINE_SIZE,
 #endif
 #endif
 
-// ============================================================================
-// Runtime: Catch2 tests
-// ============================================================================
+// --- Runtime: Catch2 tests ---
 
 TEST_CASE("cache_line_info struct properties") {
     constexpr auto cl = cache_line();

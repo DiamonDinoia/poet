@@ -18,9 +18,7 @@ endif()
 
 include(Catch)
 # -- Hardware ISA detection from /proc/cpuinfo ------------------------------
-# Reads the host CPU flags to determine the actual ISA and register layout.
-# This is the ground truth that POET's compile-time API is validated against.
-# Only enabled on Linux (non-cross-compile) where /proc/cpuinfo is available.
+# Derives the actual ISA and register layout from the host CPU flags.
 
 set(POET_HW_DETECTION_AVAILABLE OFF)
 
@@ -101,8 +99,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_CROSSCOMPILING AND EXISTS "/
   endif()
 endif()
 
-# Disable LTO/IPO for test targets to reduce memory usage during compilation.
-# Template-heavy test instantiations can cause excessive memory consumption with IPO enabled.
+# Disable LTO/IPO for tests: template-heavy instantiations exhaust link-time memory.
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 
 set(HEADERS_TEST_SRCS
@@ -128,7 +125,6 @@ option(POET_ENABLE_TEST_PCH "Enable precompiled headers for test targets" ON)
 
 # Internal macro: applies common configuration to all test targets
 macro(_configure_poet_test target_name cxx_feature)
-  # Disable IPO for this target (already disabled globally for tests, but be explicit)
   set_property(TARGET ${target_name} PROPERTY INTERPROCEDURAL_OPTIMIZATION FALSE)
 
   # Mark Catch2 includes as system to suppress warnings
@@ -147,7 +143,7 @@ macro(_configure_poet_test target_name cxx_feature)
 
   target_link_libraries(${target_name} PRIVATE Catch2::Catch2WithMain poet)
 
-  # Keep test builds lightweight; O3 on template-heavy tests is very costly.
+  # -O1 for tests: O3 on template-heavy instantiations is too costly.
   target_compile_options(${target_name} PRIVATE
     $<$<CXX_COMPILER_ID:GNU>:-O1>
     $<$<CXX_COMPILER_ID:Clang>:-O1>
@@ -188,8 +184,7 @@ macro(add_poet_test_exec target_name cxx_feature)
   set_property(GLOBAL APPEND PROPERTY POET_TEST_EXEC_TARGETS ${target_name})
 endmacro()
 
-# Creates a complete test suite with separate executables for each test category
-# Heavy tests are split by category into separate executables to reduce linking memory usage
+# One executable per test category: keeps link memory bounded and enables parallel compilation.
 macro(add_poet_tests_suite suite_target cxx_feature)
   set(_suite_execs
     ${suite_target}_headers
@@ -200,13 +195,11 @@ macro(add_poet_tests_suite suite_target cxx_feature)
     ${suite_target}_dispatch
   )
 
-  # Create separate executables for each test category to enable parallel compilation
   add_poet_test_exec(${suite_target}_headers ${cxx_feature} ${HEADERS_TEST_SRCS})
   add_poet_test_exec(${suite_target}_dynamic_for ${cxx_feature} ${DYNAMIC_FOR_TEST_SRCS})
   add_poet_test_exec(${suite_target}_static_for ${cxx_feature} ${STATIC_FOR_TEST_SRCS})
   add_poet_test_exec(${suite_target}_cpu_info ${cxx_feature} ${CPU_INFO_TEST_SRCS})
-  # Compile cpu_info tests with -march=native so POET detects the full
-  # hardware ISA, then validate against the /proc/cpuinfo ground truth.
+  # -march=native so POET detects the full hardware ISA, validated against /proc/cpuinfo.
   if(POET_HW_DETECTION_AVAILABLE)
     target_compile_options(${suite_target}_cpu_info PRIVATE -march=native)
     target_compile_definitions(${suite_target}_cpu_info PRIVATE POET_HAS_HW_DETECTION)
@@ -246,14 +239,13 @@ foreach(POET_STD IN LISTS POET_TEST_STANDARDS)
   endif()
 endforeach()
 
-# Compatibility aggregate target: avoid recompiling a duplicate std17 monolith.
+# Aggregate target grouping the std17 tests without a second build of the same sources.
 if(TARGET poet_tests_std17)
   add_custom_target(poet_tests DEPENDS poet_tests_std17)
 endif()
 
-# Every public header must compile standalone, not only through poet.hpp: an
-# include missing from one header is invisible when the umbrella pulls its
-# siblings first.
+# Every public header must compile standalone, not only through poet.hpp:
+# the umbrella can mask a missing include by pulling a header's siblings first.
 file(GLOB_RECURSE POET_PUBLIC_HEADERS
   RELATIVE "${CMAKE_SOURCE_DIR}/include/poet"
   "${CMAKE_SOURCE_DIR}/include/poet/*.hpp")

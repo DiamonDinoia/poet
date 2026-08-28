@@ -1,15 +1,6 @@
 /// \file dispatch_optimization_bench.cpp
-/// \brief Dispatch optimization benchmark: compile-time N vs runtime n.
-///
-/// Demonstrates that `poet::dispatch(F<N>, ...)` lets the compiler optimize
-/// the *body* better than `f(runtime_n)`.  When N is known at compile time,
-/// the compiler can fully unroll loops, constant-fold coefficients, and
-/// schedule instructions optimally.
-///
-/// Workload: Horner polynomial evaluation of degree N.  With compile-time N
-/// the compiler unrolls the evaluation chain and can interleave independent
-/// operations; with runtime N it emits a counted loop with a data dependency
-/// on every iteration.
+/// \brief Compile-time N vs runtime n on Horner polynomial evaluation of degree N.
+/// `poet::dispatch(F<N>, ...)` fixes N at compile time so the compiler can unroll and specialize the body.
 
 #include <array>
 #include <cstddef>

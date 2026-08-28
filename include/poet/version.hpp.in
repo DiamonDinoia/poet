@@ -4,7 +4,7 @@
 /// \brief POET version macros and constants.
 ///
 /// Generated from version.hpp.in by cmake/GenerateVersion.cmake.
-/// Do not edit by hand; re-run CMake configure or the pre-commit hook.
+/// Do not edit by hand; re-run CMake configure or cmake -P cmake/GenerateVersion.cmake.
 
 // NOLINTBEGIN(cppcoreguidelines-macro-usage,cppcoreguidelines-macro-to-enum,modernize-macro-to-enum)
 #define POET_VERSION_MAJOR @POET_VERSION_MAJOR@

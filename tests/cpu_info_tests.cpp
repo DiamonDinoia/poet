@@ -13,9 +13,7 @@
 
 using namespace poet;
 
-// ============================================================================
-// Compile-time structural invariants for every ISA
-// ============================================================================
+// --- Compile-time structural invariants for every ISA ---
 
 template<instruction_set ISA> constexpr bool validate_register_info() {
     auto r = registers_for(ISA);
@@ -38,12 +36,9 @@ static_assert(validate_register_info<instruction_set::ppc_altivec>());
 static_assert(validate_register_info<instruction_set::ppc_vsx>());
 static_assert(validate_register_info<instruction_set::mips_msa>());
 
-// ============================================================================
-// Compile-time: validate against hardware ground truth from /proc/cpuinfo
-// ============================================================================
-// CMake reads /proc/cpuinfo at configure time and populates POET_HW_* macros.
-// This test is compiled with -march=native so POET detects the full hardware
-// ISA. The static_asserts verify POET agrees with the OS-reported hardware.
+// --- Compile-time: validate against hardware ground truth from /proc/cpuinfo ---
+// CMake populates the POET_HW_* macros from /proc/cpuinfo at configure time;
+// -march=native makes POET detect the full hardware ISA, checked against them here.
 
 #ifdef POET_HAS_HW_DETECTION
 
@@ -64,9 +59,7 @@ static_assert(available_registers().lanes_32bit == POET_HW_LANES_32BIT, "POET la
 
 #endif// POET_HAS_HW_DETECTION
 
-// ============================================================================
-// Runtime: Catch2 tests
-// ============================================================================
+// --- Runtime: Catch2 tests ---
 
 TEST_CASE("instruction_set enum properties") {
     static_assert(std::is_enum_v<instruction_set>);
@@ -94,9 +87,7 @@ TEST_CASE("detected ISA matches hardware (/proc/cpuinfo)") {
 }
 #endif
 
-// ============================================================================
-// Linux runtime: validate against /proc/cpuinfo directly
-// ============================================================================
+// --- Linux runtime: validate against /proc/cpuinfo directly ---
 
 #ifdef __linux__
 

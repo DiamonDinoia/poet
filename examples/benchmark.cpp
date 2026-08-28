@@ -1,13 +1,8 @@
 // Example: Google Benchmark microbench, runnable on Compiler Explorer.
 //
-// Compares scalar dot product vs lane-aware `dynamic_for<L>` for L in
-// {4, 8}. The lane-aware path breaks the serial FMA dependency chain
-// of the scalar loop, so wall-time-per-element drops on FMA-throughput-
-// bound machines (Zen3/4, Skylake-X, Ice Lake, ...).
-//
-// On Compiler Explorer this example links against the Google Benchmark
-// library (registered as the `benchmark` lib in the URL) and runs in
-// "Execute" mode: the output pane shows actual timings.
+// Scalar dot product vs lane-aware `dynamic_for<L>` for L in {4, 8}.
+// The lane-aware path uses one independent accumulator per lane instead of the
+// scalar loop's serial FMA chain.
 //
 // Build locally:
 //   cmake -S . -B build -DPOET_BUILD_EXAMPLES=ON -DPOET_BUILD_EXAMPLE_BENCHMARK=ON

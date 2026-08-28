@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# python
 """
 Amalgamate local headers into a single header.
 
@@ -126,9 +125,8 @@ def inline_file(path: Path, root: Path, processed: set, include_roots=None) -> s
                 )
                 continue
             elif inc.startswith("poet/"):
-                # A poet header that did not resolve would be emitted as a dangling
-                # include of a file the single header does not ship. version.hpp is
-                # generated, so this fires when the generation step was skipped.
+                # An unresolved poet include would dangle in the output.
+                # version.hpp is generated, so this fires when the generation step was skipped.
                 raise SystemExit(
                     f"{path.relative_to(root)}: cannot resolve <{inc}>. "
                     f"If it is generated, run: cmake -P cmake/GenerateVersion.cmake"

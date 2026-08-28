@@ -13,9 +13,7 @@
 #include <utility>
 #include <vector>
 
-// ============================================================================
-// Test support types (shared across all dispatch tests)
-// ============================================================================
+// --- Test support types (shared across all dispatch tests) ---
 
 namespace {
 using poet::dispatch_param;
@@ -125,9 +123,7 @@ struct quad_sum {
 
 }// namespace
 
-// ============================================================================
-// Basic dispatch tests
-// ============================================================================
+// --- Basic dispatch tests ---
 
 TEST_CASE("dispatch routes to the matching template instantiation", "[static_dispatch]") {
     std::vector<int> values;
@@ -298,9 +294,7 @@ TEST_CASE("dispatch handles negative non-contiguous sequences", "[static_dispatc
     REQUIRE(invoked);
 }
 
-// ============================================================================
-// Variadic dispatch form (dispatch_param args directly, no std::make_tuple)
-// ============================================================================
+// --- Variadic dispatch form (dispatch_param args directly, no std::make_tuple) ---
 
 TEST_CASE("dispatch variadic form 1D", "[static_dispatch][variadic]") {
     bool invoked = false;
@@ -331,9 +325,7 @@ TEST_CASE("dispatch variadic form with no extra args", "[static_dispatch][variad
     REQUIRE(out == 5);
 }
 
-// ============================================================================
-// Sparse 1D dispatch (non-contiguous single dimension)
-// ============================================================================
+// --- Sparse 1D dispatch (non-contiguous single dimension) ---
 
 TEST_CASE("dispatch sparse 1D iterates all values", "[static_dispatch][sparse]") {
     using Sparse = std::integer_sequence<int, 1, 5, 10, 50>;
@@ -355,9 +347,7 @@ TEST_CASE("dispatch sparse 1D miss between values", "[static_dispatch][sparse]")
     }
 }
 
-// ============================================================================
-// Sparse 1D dispatch: strided (equal-gap) path
-// ============================================================================
+// --- Sparse 1D dispatch: strided (equal-gap) path ---
 
 TEST_CASE("dispatch strided sparse 1D hits all values", "[static_dispatch][sparse][strided]") {
     // {0, 10, 20}: uniform stride 10, so the lookup takes the O(1) strided path.
@@ -392,9 +382,7 @@ TEST_CASE("dispatch strided sparse 1D miss cases", "[static_dispatch][sparse][st
     }
 }
 
-// ============================================================================
-// Sparse 1D dispatch: non-strided (unequal-gap) path
-// ============================================================================
+// --- Sparse 1D dispatch: non-strided (unequal-gap) path ---
 
 TEST_CASE("dispatch non-strided sparse 1D hits all values", "[static_dispatch][sparse][non-strided]") {
     // {1, 3, 7}: first gap 2 but 7-3=4, so the lookup falls back to binary search.
@@ -417,9 +405,7 @@ TEST_CASE("dispatch non-strided sparse 1D miss cases", "[static_dispatch][sparse
     }
 }
 
-// ============================================================================
-// Stateful functor
-// ============================================================================
+// --- Stateful functor ---
 
 TEST_CASE("dispatch with stateful functor", "[static_dispatch][stateful]") {
     int total = 0;
@@ -434,9 +420,7 @@ TEST_CASE("dispatch with stateful functor", "[static_dispatch][stateful]") {
     REQUIRE(total == 116);// 12 + 4 + 100
 }
 
-// ============================================================================
-// Throw tests
-// ============================================================================
+// --- Throw tests ---
 
 TEST_CASE("dispatch throws when no match exists with throw_on_no_match (non-void)", "[static_dispatch][throw]") {
     bool invoked = false;
@@ -549,9 +533,7 @@ TEST_CASE("dispatch with throw_on_no_match tuple form", "[static_dispatch][throw
     }
 }
 
-// ============================================================================
-// Advanced tests
-// ============================================================================
+// --- Advanced tests ---
 
 TEST_CASE("dispatch preserves return value types correctly", "[static_dispatch]") {
     auto params = std::make_tuple(dispatch_param<inclusive_range<1, 5>>{ 3 });
@@ -706,9 +688,7 @@ TEST_CASE("dispatch with single-element non-contiguous sequence", "[static_dispa
     REQUIRE_FALSE(invoked);
 }
 
-// ============================================================================
-// dispatch_set / tuple tests
-// ============================================================================
+// --- dispatch_set / tuple tests ---
 
 TEST_CASE("dispatch_set matches exact allowed tuples", "[static_dispatch][tuples]") {
     using DS = dispatch_set<int, tuple_<1, 2>, tuple_<2, 4>>;
@@ -885,9 +865,7 @@ TEST_CASE("dispatch_tuples_impl throws on no match with ThrowOnNoMatch", "[stati
     REQUIRE_THROWS_AS(poet::detail::dispatch_tuples_impl<true>(sum, TL{}, rt, 5), std::runtime_error);
 }
 
-// ============================================================================
-// Heavy tests: 1D array dispatch
-// ============================================================================
+// --- Heavy tests: 1D array dispatch ---
 
 TEST_CASE("dispatch fills array using runtime index (lambda)", "[static_dispatch][array]") {
     constexpr int N = 8;
@@ -970,9 +948,7 @@ TEST_CASE("dispatch non-contiguous subset set", "[static_dispatch][array][non-co
     }
 }
 
-// ============================================================================
-// Heavy tests: N-D array dispatch
-// ============================================================================
+// --- Heavy tests: N-D array dispatch ---
 
 TEST_CASE("dispatch 2D sets selected random indexes only (lambda ND)", "[static_dispatch][array][random][nd]") {
     constexpr int N1 = 4;
@@ -1070,9 +1046,7 @@ TEST_CASE("dispatch non-contiguous subset set (lambda ND)", "[static_dispatch][a
     }
 }
 
-// ============================================================================
-// Heavy tests: return value handling
-// ============================================================================
+// --- Heavy tests: return value handling ---
 
 TEST_CASE("dispatch ND lambda returns std::vector", "[static_dispatch][return][nd][vector]") {
     using Seq1 = inclusive_range<0, 2>;
@@ -1190,9 +1164,8 @@ TEST_CASE("dispatch ND lambda returns pointer (lvalue)", "[static_dispatch][retu
 }
 
 TEST_CASE("dispatch permuted sequence resolves to the declared slot", "[static_dispatch][permutation]") {
-    // A permutation such as {2, 0, 1} spans max-min+1 == 3 over 3 values. A
-    // span-only contiguity test would classify it as unit-stride and resolve it
-    // by index arithmetic, silently dispatching to the wrong slot.
+    // {2, 0, 1} spans max-min+1 == 3 over 3 values, so a span-only contiguity
+    // test misreads it as unit-stride and dispatches to the wrong slot.
     using Permuted = std::integer_sequence<int, 2, 0, 1>;
 
     auto identity = [](auto V) { return static_cast<int>(V); };

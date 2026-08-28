@@ -3,6 +3,4 @@
 
 include_guard(GLOBAL)
 
-# Developer helper modules (warnings/sanitizers/static-analysis) are not
-# installed with the package. Consumers should only get the exported targets
-# from poet-targets.cmake.
+# Dev helpers are not installed; consumers get only the exported targets from poet-targets.cmake.

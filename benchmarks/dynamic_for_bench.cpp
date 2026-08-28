@@ -1,20 +1,7 @@
 /// \file dynamic_for_bench.cpp
-/// \brief Register-tuned dynamic_for benchmark.
-///
-/// Two benchmark groups:
-///
-/// 1. **Multi-acc ILP**: for loop (1-acc) vs for loop (optimal accs) vs
-///    dynamic_for (optimal accs).  Shows that dynamic_for's compile-time lane
-///    indices enable independent accumulator chains that break serial
-///    dependency bottlenecks.
-///
-/// 2. **Unroll comparison**: plain for (1-acc) vs dynamic_for<optimal> vs
-///    dynamic_for<spill>.  Contrasts the optimal accumulator count against one
-///    in register-spill territory.
-///
-/// Tuning constants:
-///   optimal_accs = lanes_64 * 2 (2 SIMD registers of accumulators)
-///   spill_accs   = optimal_accs * 4 (register spill territory)
+/// \brief Register-tuned dynamic_for benchmark: 1-acc vs optimal-acc loops, and optimal vs spill accumulator counts.
+/// The compile-time lane indices of `dynamic_for` turn the accumulator count `optimal_accs` below into independent
+/// dependency chains.
 
 #include <array>
 #include <cstddef>
@@ -118,9 +105,7 @@ int main(int argc, char **argv) {
 
     const auto salt = next_salt();
 
-    // ========================================================================
-    // Multi-acc: for loop (1 acc) vs hand-unrolled vs dynamic_for
-    // ========================================================================
+    // --- Multi-acc: for loop (1 acc) vs hand-unrolled vs dynamic_for ---
     {
         constexpr std::size_t N = 10000;
 
@@ -137,9 +122,7 @@ int main(int argc, char **argv) {
         reg("Multi-acc/dynamic_for_optimal_accs", N, [salt] { return dynamic_for_multi_acc<optimal_accs>(N, salt); });
     }
 
-    // ========================================================================
-    // Unroll comparison: plain for vs optimal vs spill
-    // ========================================================================
+    // --- Unroll comparison: plain for vs optimal vs spill ---
     {
         constexpr std::size_t N = 10000;
 

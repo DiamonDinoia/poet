@@ -1,7 +1,5 @@
 /// \file dynamic_for_emission_bench.cpp
-/// \brief Validates carried-index vs computed-index emission strategy.
-///
-/// Three sections:
+/// \brief Validates carried-index vs computed-index emission strategy, three sections:
 ///   1. Heavy body (accumulation): body dominates, both strategies similar
 ///   2. Light body (index-visible overhead): where SLP behavior matters
 ///   3. CT stride vs RT stride: compile-time stride template parameter benefit
@@ -120,9 +118,7 @@ int main(int argc, char **argv) {
 
     const auto salt = next_salt();
 
-    // ========================================================================
-    // Section 1: Heavy body (accumulation)
-    // ========================================================================
+    // --- Section 1: Heavy body (accumulation) ---
     {
         constexpr std::size_t N = 10000;
 
@@ -145,9 +141,7 @@ int main(int argc, char **argv) {
         });
     }
 
-    // ========================================================================
-    // Section 2: Light body (index-visible overhead)
-    // ========================================================================
+    // --- Section 2: Light body (index-visible overhead) ---
     {
         constexpr std::size_t N = 10000;
 
@@ -174,9 +168,7 @@ int main(int argc, char **argv) {
         });
     }
 
-    // ========================================================================
-    // Section 3: CT stride vs RT stride
-    // ========================================================================
+    // --- Section 3: CT stride vs RT stride ---
     {
         constexpr std::size_t N = 10000;
         constexpr std::size_t effective_iters = 5000;

@@ -126,8 +126,8 @@ namespace detail {
 
     /// True when the values form a unit-stride run, ascending or descending.
     ///
-    /// A span equal to the value count is not enough: `seq_lookup` resolves
-    /// these by `position == distance from First`, and a permutation such as
+    /// `seq_lookup` resolves runs by `position == distance from First`, so a
+    /// span equal to the value count is not enough: a permutation such as
     /// `{2, 0, 1}` matches the span but not the positions.
     template<typename V, V... Values> POET_CPP20_CONSTEVAL auto is_unit_stride() noexcept -> bool {
         constexpr std::size_t count = sizeof...(Values);
@@ -235,10 +235,9 @@ namespace detail {
     /// Maps a runtime value to its slot in `Seq`.
     ///
     /// `find` returns a slot in `[0, count)` on a hit and some value `>= count`
-    /// on a miss, by contract rather than by a fixed sentinel. The contiguous
-    /// case returns its raw unsigned difference, whose natural underflow already
-    /// lands out of range. A hit therefore costs one subtraction and no select.
-    /// Callers test `idx < count`, the same single compare a sentinel needs.
+    /// on a miss, by contract rather than by a fixed sentinel: the contiguous
+    /// finder's raw unsigned difference underflows out of range on its own, so
+    /// a hit costs one subtraction and no select. Callers test `idx < count`.
     template<typename Seq, bool IsContiguous = is_contiguous_sequence<Seq>::value> struct seq_lookup;
 
     template<typename V, V... Values> struct seq_lookup<std::integer_sequence<V, Values...>, true> {
@@ -261,7 +260,7 @@ namespace detail {
     };
 
     // Non-contiguous sequences: detect a uniform positive stride at compile time and
-    // specialise `find` to a div/mod (strided) instead of a binary search (truly sparse).
+    // specialize `find` to a div/mod (strided) instead of a binary search (truly sparse).
     template<typename V, V... Values> struct seq_lookup<std::integer_sequence<V, Values...>, false> {
         using sparse_data = sparse_index<std::integer_sequence<V, Values...>>;
 
@@ -284,10 +283,9 @@ namespace detail {
 
         static constexpr std::size_t count = sparse_data::value_count;
 
-        /// `indices` is a permutation of `[0, count)`. GCC and Clang cannot see
-        /// that through the table load, so the compiler re-checks the bound the
-        /// caller already applies. Stating the invariant drops the duplicate
-        /// compare.
+        /// `indices` is a permutation of `[0, count)`, but GCC and Clang cannot
+        /// see that through the table load and re-check the bound the caller
+        /// already applies. Stating the invariant drops the duplicate compare.
         static POET_FORCEINLINE auto bounded(std::size_t slot) -> std::size_t {
             if (slot >= count) { POET_UNREACHABLE(); }
             return slot;
@@ -334,9 +332,8 @@ namespace detail {
 
     /// Row-major flat index of the runtime coordinate, or `dispatch_npos` on a miss.
     ///
-    /// Per-dimension lookup is `seq_lookup::find`, which already specialises to
-    /// index arithmetic, a div/mod, or a binary search depending on the sequence
-    /// shape. One flattening path serves every shape.
+    /// `seq_lookup::find` already specializes each per-dimension lookup, so one
+    /// flattening path serves every sequence shape.
     template<typename ParamTuple, std::size_t... Idx>
     POET_FORCEINLINE auto flat_index(const ParamTuple &params, std::index_sequence<Idx...> /*idxs*/) -> std::size_t {
         using P = std::decay_t<ParamTuple>;
@@ -471,7 +468,8 @@ namespace detail {
         // Stateless functors are default-constructed inside the thunk; stateful
         // functors arrive by reference, so every table entry has one signature.
         // Two overloads, not one `if constexpr` with two returns: nvcc reports
-        // the `if constexpr` form as a missing return.
+        // the `if constexpr` form as a missing return. This note is referenced
+        // from nd_table_builder below.
         template<V Value> static POET_CPP20_CONSTEVAL auto make_entry(std::true_type /*stateless*/) {
             return +[](pass_t<Args &&>... args) -> R {
                 Functor func{};
@@ -516,13 +514,12 @@ namespace detail {
             static constexpr V value = values[I];
         };
 
-        // Decodes a flat table index to its per-dimension coordinate via row-major strides.
         template<std::size_t FlatIdx, std::size_t DimIdx>
         static constexpr std::size_t dim_index_v = FlatIdx / strides_[DimIdx] % dims_[DimIdx];
 
         // Exposes each dimension of a flat index as `ic<N>`, which is what the
-        // functor receives. Each dimension has its own value type, so one shared
-        // array cannot hold them.
+        // functor receives. Dimensions have distinct value types, so no shared
+        // array can hold them.
         template<std::size_t FlatIdx, std::size_t... SeqIdx> struct value_extractor {
             template<std::size_t N> using seq_at = std::tuple_element_t<N, std::tuple<Seqs...>>;
 
@@ -560,8 +557,7 @@ namespace detail {
             }
         };
 
-        // Two overloads, not one `if constexpr` with two returns: nvcc reports
-        // the `if constexpr` form as a missing return statement.
+        // Two overloads for the nvcc reason stated at table_builder::make_entry.
         template<typename R> static constexpr auto make_table(std::true_type /*stateless*/) {
             using fn_type = decltype(&nd_index_caller<0>::template call_stateless<R>);
             return std::array<fn_type, sizeof...(FlatIndices)>{
@@ -642,7 +638,6 @@ template<typename ValueType, typename... Tuples> struct dispatch_set {
     template<typename... Args, typename = std::enable_if_t<sizeof...(Args) == tuple_arity>>
     explicit dispatch_set(Args &&...args) : runtime_val{ static_cast<ValueType>(std::forward<Args>(args))... } {}
 
-    /// \brief The bound runtime values as a tuple.
     [[nodiscard]] auto runtime_tuple() const { return runtime_tuple_impl(std::make_index_sequence<tuple_arity>{}); }
 };
 
@@ -749,28 +744,23 @@ namespace detail {
         // without copies.
         auto all_refs = std::forward_as_tuple(std::forward<All>(all)...);
 
-        // The leading `num_params` entries are the dispatch_params. Copy them
-        // into a value tuple; each is a small struct holding one runtime int.
+        // Copy the leading dispatch_params into a value tuple; each holds one
+        // runtime int, so the copy is trivial.
         auto params = std::make_tuple(std::get<ParamIdx>(all_refs)...);
 
-        // The remaining entries keep their original value categories.
-        // `std::move(all_refs)` moves only the tuple; the references inside are
-        // unaffected.
+        // `std::move(all_refs)` moves only the tuple; the references inside keep
+        // the remaining entries' value categories.
         return dispatch_impl<ThrowOnNoMatch>(functor,
           params,
           std::get<num_params + ArgIdx>(
             std::move(all_refs))...);// NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
     }
 
-    // Splits the variadic pack into [leading dispatch_params | trailing regular
-    // args]: count dispatch_param types until the first non-dispatch_param.
-    // Everything after goes to the chosen specialisation as plain args.
+    // Splits the pack into leading dispatch_params and trailing args: count
+    // dispatch_param types until the first non-param; the rest are plain args.
     template<bool ThrowOnNoMatch, typename Functor, typename FirstParam, typename... Rest>
     POET_FORCEINLINE auto dispatch_variadic_impl(Functor &functor, FirstParam &&first_param, Rest &&...rest)
       -> decltype(auto) {
-        // `first_param` is known to be a dispatch_param (enable_if on the public
-        // overload). Count contiguous dispatch_params in `rest`; the remainder
-        // is the regular arg pack.
         constexpr std::size_t num_params = 1 + leading_param_count<Rest...>::value;
         constexpr std::size_t num_args = sizeof...(Rest) + 1 - num_params;
 
@@ -789,32 +779,30 @@ namespace detail {
 
 /// \brief Dispatches runtime integers to compile-time specializations.
 ///
-/// Accepts either leading `dispatch_param` arguments or a tuple of them,
-/// followed by any remaining arguments, which are forwarded to `functor`
-/// untouched. `functor` is invoked in whichever form it provides:
+/// Accepts leading `dispatch_param` arguments, followed by any remaining
+/// arguments, which are forwarded to `functor` untouched. `functor` is invoked
+/// in whichever form it provides, with the value form preferred when both are
+/// viable (which is what makes a generic lambda work):
 ///
 /// - `functor(std::integral_constant<V, Value>{}..., args...)`: values
 /// - `functor.template operator()<Value...>(args...)`: template parameters
-///
-/// The value form is preferred when both are viable, which is what makes a
-/// generic lambda (`[](auto N, auto... args){}`) work.
 ///
 /// \warning On a miss this overload is **silent**: it returns a
 /// default-constructed result (or nothing, for `void`) and never calls
 /// `functor`. Prefix the call with `poet::throw_on_no_match` to get a
 /// `no_match_error` instead.
 ///
-/// \param functor The callable to specialize. Taken by reference, so a stateful
-///   functor's mutations are visible to the caller.
-/// \param first_param First `dispatch_param`; any immediately following
-///   `dispatch_param`s form a cartesian product with it.
-/// \param rest Further `dispatch_param`s, then the arguments to forward.
+/// \param functor The callable to specialize. Bound by reference, so a
+///   stateful functor's mutations stay visible to the caller.
+/// \param first_param First `dispatch_param`.
+/// \param rest Further `dispatch_param`s (consecutive ones form a cartesian
+///   product), then the arguments to forward.
 template<typename Functor,
   typename FirstParam,
   typename... Rest,
   std::enable_if_t<detail::is_dispatch_param_v<FirstParam>, int> = 0>
-auto dispatch(Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward). Universal ref avoids a copy.
-                                // The impl binds the functor as an lvalue ref, so std::forward has nothing to do.
+auto dispatch(Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward): the impl binds the functor as an
+                                // lvalue ref, so forwarding is a no-op.
   FirstParam &&first_param,
   Rest &&...rest) -> decltype(auto) {
     return detail::dispatch_variadic_impl<false>(
@@ -826,8 +814,8 @@ template<typename Functor,
   typename ParamTuple,
   typename... Args,
   std::enable_if_t<detail::is_dispatch_param_tuple_v<ParamTuple>, int> = 0>
-auto dispatch(Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward). Universal ref avoids a copy.
-                                // The impl binds the functor as an lvalue ref, so std::forward has nothing to do.
+auto dispatch(Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward): the impl binds the functor as an
+                                // lvalue ref, so forwarding is a no-op.
   ParamTuple const &params,
   Args &&...args) -> decltype(auto) {
     return detail::dispatch_impl<false>(functor, params, std::forward<Args>(args)...);
@@ -886,8 +874,8 @@ namespace detail {
 
 /// \brief Dispatches using a `dispatch_set`.
 template<typename Functor, typename ValueType, typename... Tuples, typename... Args>
-auto dispatch(Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward). Universal ref avoids a copy.
-                                // The impl binds the functor as an lvalue ref, so std::forward has nothing to do.
+auto dispatch(Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward): the impl binds the functor as an
+                                // lvalue ref, so forwarding is a no-op.
   const dispatch_set<ValueType, Tuples...> &set,
   Args &&...args) -> decltype(auto) {
     return detail::dispatch_tuples_impl<false>(functor,
@@ -899,8 +887,8 @@ auto dispatch(Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward)
 /// \brief Throwing overload for `dispatch_set` dispatch.
 template<typename Functor, typename ValueType, typename... Tuples, typename... Args>
 auto dispatch(throw_on_no_match_t /*tag*/,
-  Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward). Universal ref avoids a copy.
-                    // The impl binds the functor as an lvalue ref, so std::forward has nothing to do.
+  Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward): the impl binds the functor as an lvalue ref, so
+                    // forwarding is a no-op.
   const dispatch_set<ValueType, Tuples...> &set,
   Args &&...args) -> decltype(auto) {
     return detail::dispatch_tuples_impl<true>(functor,
@@ -915,8 +903,8 @@ template<typename Functor,
   typename... Rest,
   std::enable_if_t<detail::is_dispatch_param_v<FirstParam>, int> = 0>
 auto dispatch(throw_on_no_match_t /*tag*/,
-  Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward). Universal ref avoids a copy.
-                    // The impl binds the functor as an lvalue ref, so std::forward has nothing to do.
+  Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward): the impl binds the functor as an lvalue ref, so
+                    // forwarding is a no-op.
   FirstParam &&first_param,
   Rest &&...rest) -> decltype(auto) {
     return detail::dispatch_variadic_impl<true>(
@@ -929,8 +917,8 @@ template<typename Functor,
   typename... Args,
   std::enable_if_t<detail::is_dispatch_param_tuple_v<ParamTuple>, int> = 0>
 auto dispatch(throw_on_no_match_t /*tag*/,
-  Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward). Universal ref avoids a copy.
-                    // The impl binds the functor as an lvalue ref, so std::forward has nothing to do.
+  Functor &&functor,// NOLINT(cppcoreguidelines-missing-std-forward): the impl binds the functor as an lvalue ref, so
+                    // forwarding is a no-op.
   ParamTuple const &params,
   Args &&...args) -> decltype(auto) {
     return detail::dispatch_impl<true>(functor, params, std::forward<Args>(args)...);

@@ -3,10 +3,8 @@
 /// \file cpu_info.hpp
 /// \brief Compile-time CPU register, vector-width, and cache-line queries.
 ///
-/// Every value resolves from the compiler's target predefines. The result
-/// describes the compile target, not the machine that runs the binary. Build
-/// with `-march=native` or an explicit `-m<isa>` to get anything above the
-/// baseline.
+/// Every value resolves from the compiler's target predefines; the result
+/// describes the compile target, not the machine that runs the binary.
 
 #include <cstddef>
 #include <poet/core/macros.hpp>
@@ -14,7 +12,7 @@
 namespace poet {
 
 enum class instruction_set : unsigned char {
-    generic,///< Generic/unknown ISA
+    generic,///< Baseline: no ISA predefines matched
     sse2,///< x86-64 SSE2 (128-bit vectors)
     sse4_2,///< x86-64 SSE4.2 (128-bit vectors)
     avx,///< x86-64 AVX (256-bit vectors)
@@ -30,8 +28,8 @@ enum class instruction_set : unsigned char {
 
 /// \brief Register and vector characteristics for a target ISA.
 ///
-/// Counts are the architectural totals, not the number free for a given
-/// function: on x86-64 `gp_registers` includes the stack and frame pointers.
+/// Counts are architectural totals: on x86-64 `gp_registers` includes the
+/// stack and frame pointers.
 struct register_info {
     std::size_t gp_registers;///< Architectural general-purpose registers.
     std::size_t vector_registers;///< Architectural SIMD registers.
@@ -52,10 +50,8 @@ struct cache_line_info {
 
 namespace detail {
 
-    /// SVE is scalable: a width is known only when the build pins one through
-    /// `-msve-vector-bits=N`, which sets the same macro macros.hpp locks the
-    /// hot paths to. Without a pin, the width is the 128-bit floor the
-    /// architecture guarantees.
+    /// SVE is scalable: the width is known only when the build pins it with
+    /// `-msve-vector-bits=N`. Without a pin it is the 128-bit architectural floor.
 #if defined(__ARM_FEATURE_SVE_BITS) && __ARM_FEATURE_SVE_BITS > 0
     inline constexpr std::size_t sve_vector_bits = __ARM_FEATURE_SVE_BITS;
 #else
@@ -84,9 +80,8 @@ namespace detail {
 #endif
 
         // MSVC defines none of the __SSE*__ / __ARM_NEON predefines. x64 and
-        // ARM64 guarantee SSE2 and NEON respectively, and 32-bit x86 reports its
-        // floating-point ISA through _M_IX86_FP. Without these branches, every
-        // MSVC build below /arch:AVX would report `generic`.
+        // ARM64 guarantee SSE2 and NEON; 32-bit x86 reports its FP ISA through
+        // _M_IX86_FP.
 #if defined(_M_X64) || defined(_M_AMD64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
         return instruction_set::sse2;
 #endif
@@ -267,23 +262,18 @@ POET_CPP20_CONSTEVAL auto registers_for(instruction_set isa) noexcept -> registe
     return detail::get_register_info(isa);
 }
 
-/// \brief SIMD register count for the detected ISA.
 POET_CPP20_CONSTEVAL auto vector_register_count() noexcept -> std::size_t {
     return available_registers().vector_registers;
 }
 
-/// \brief SIMD register width in bits for the detected ISA.
 POET_CPP20_CONSTEVAL auto vector_width_bits() noexcept -> std::size_t {
     return available_registers().vector_width_bits;
 }
 
-/// \brief 64-bit lanes per SIMD register for the detected ISA.
 POET_CPP20_CONSTEVAL auto vector_lanes_64bit() noexcept -> std::size_t { return available_registers().lanes_64bit; }
 
-/// \brief 32-bit lanes per SIMD register for the detected ISA.
 POET_CPP20_CONSTEVAL auto vector_lanes_32bit() noexcept -> std::size_t { return available_registers().lanes_32bit; }
 
-/// \brief Cache line sizes for the detected target.
 POET_CPP20_CONSTEVAL auto cache_line() noexcept -> cache_line_info { return detail::detect_cache_line_info(); }
 
 /// \brief Minimum separation that avoids false sharing.
