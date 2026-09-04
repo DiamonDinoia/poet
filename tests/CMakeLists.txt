@@ -265,6 +265,26 @@ if(POET_STRICT_WARNINGS)
   poet_enable_warnings(poet_standalone_headers)
 endif()
 
+# Exact-unroll guarantee: dynamic_for<U> emits U bodies per back-edge. The check
+# compiles exact_unroll_fixture.cpp to assembly with this build's own compiler
+# over several flag sets and counts, so it covers the compiler in use and not a
+# recorded one. MSVC has no unroll-disabling pragma, so there is nothing to
+# assert under a /-flag front end.
+if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang|IntelLLVM)$"
+   AND NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+  add_executable(poet_exact_unroll_check exact_unroll_check.cpp)
+  target_compile_features(poet_exact_unroll_check PRIVATE cxx_std_17)
+  if(POET_STRICT_WARNINGS)
+    poet_enable_warnings(poet_exact_unroll_check)
+  endif()
+  add_test(NAME exact_unroll
+    COMMAND poet_exact_unroll_check
+      "${CMAKE_CXX_COMPILER}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/exact_unroll_fixture.cpp"
+      "${CMAKE_SOURCE_DIR}/include"
+      "${CMAKE_CURRENT_BINARY_DIR}/exact_unroll")
+endif()
+
 add_executable(poet_header_analysis header_analysis.cpp)
 target_link_libraries(poet_header_analysis PRIVATE poet)
 target_compile_features(poet_header_analysis PRIVATE cxx_std_17)

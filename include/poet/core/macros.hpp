@@ -155,6 +155,24 @@ constexpr auto count_trailing_zeros(std::size_t value) noexcept -> unsigned int 
 #define POET_HOT_LOOP inline
 #endif
 
+// --- POET_NO_UNROLL ---
+/// Blocks any further unrolling of the loop that follows, `-funroll-loops`
+/// included. Place it immediately before the `for` or `while` it governs.
+/// `dynamic_for<Unroll>` already emits the body `Unroll` times, so a compiler
+/// unroller on top of that multiplies the block and breaks the contract.
+/// Clang is tested first: it also defines `__GNUC__`. Classic ICC likewise, and
+/// it spells the same request `nounroll`. MSVC has no equivalent pragma, so
+/// there the trip-count barrier is the only thing holding the shape.
+#ifdef __clang__
+#define POET_NO_UNROLL _Pragma("clang loop unroll(disable)")
+#elif defined(__INTEL_COMPILER)
+#define POET_NO_UNROLL _Pragma("nounroll")
+#elif defined(__GNUC__)
+#define POET_NO_UNROLL _Pragma("GCC unroll 1")
+#else
+#define POET_NO_UNROLL
+#endif
+
 // --- POET_PUSH_OPTIMIZE / POET_POP_OPTIMIZE ---
 /// Register-allocator tuning for hot paths, in push/pop pairs. Active only
 /// when the build already optimizes for speed; it never raises the

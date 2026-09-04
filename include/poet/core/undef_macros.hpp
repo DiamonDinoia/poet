@@ -14,6 +14,7 @@
 #undef POET_UNLIKELY
 #undef POET_HIGH_OPTIMIZATION
 #undef POET_HOT_LOOP
+#undef POET_NO_UNROLL
 #undef POET_CPP20_CONSTEVAL
 
 // Optimization pragmas and the internal pieces POET_PUSH_OPTIMIZE is built from.

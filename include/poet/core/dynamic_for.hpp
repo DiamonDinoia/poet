@@ -10,6 +10,10 @@
 /// decomposition with O(log2 Unroll) branches; a range smaller than `Unroll`
 /// is inlined so the lane constants stay visible.
 ///
+/// `Unroll` is exact, not a hint: `POET_NO_UNROLL` on both runtime loops holds
+/// the emitted main loop at exactly `Unroll` bodies per back-edge, `Unroll == 1`
+/// and `-funroll-loops` included. `tests/exact_unroll_check.cpp` counts them.
+///
 /// `dynamic_for` pays off for multi-accumulator work: the lane form
 /// (`func(lane_constant, index)`) gives one accumulator per lane, breaking the
 /// serial dependence of a plain loop. For element-wise work or one serial
@@ -176,11 +180,12 @@ namespace detail {
 
     /// \brief Returns `count` in a form the optimizer cannot constant-fold.
     ///
-    /// `Unroll == 1` is a contract: without this barrier, a provably constant
-    /// trip count lets the compiler re-inflate the loop it must keep rolled.
-    /// GNU/clang: an empty asm barrier costs zero instructions. MSVC has no
-    /// x64 inline asm, so a `volatile` round-trip (one stack store+load) does
-    /// the same job.
+    /// Hides the trip count, where `POET_NO_UNROLL` holds the loop shape. The
+    /// two cover disjoint compilers: `POET_NO_UNROLL` is empty on MSVC, so this
+    /// is the whole of the `Unroll == 1` contract there. On GNU and clang the
+    /// pragma alone already holds every cell the check measures, and an empty
+    /// asm barrier costs zero instructions, so this stays. MSVC has no x64
+    /// inline asm and pays one stack store and load for it.
     template<typename T> POET_FORCEINLINE auto opaque_count(T count) -> T {
 #if defined(__GNUC__) || defined(__clang__)
         asm volatile("" : "+r"(count));// NOLINT(hicpp-no-assembler)
@@ -210,6 +215,7 @@ namespace detail {
 
         if constexpr (Unroll == 1) {
             const std::size_t trips = opaque_count(count);
+            POET_NO_UNROLL
             for (std::size_t i = 0; i < trips; ++i) {
                 invoke_lane<WantsLane, 0>(func, index, args...);
                 index += stride_of<T>(stride);
@@ -221,6 +227,7 @@ namespace detail {
         } else {
             const T block_step = static_cast<T>(Unroll) * stride_of<T>(stride);
             std::size_t remaining = count;
+            POET_NO_UNROLL
             while (remaining >= Unroll) {
                 emit_block<Unroll, WantsLane>(func, index, stride, args...);
                 index += block_step;
@@ -241,9 +248,10 @@ namespace detail {
 /// Iterates over `[begin, end)` with the given `step`, emitting blocks of
 /// `Unroll` iterations. `step == 1` selects the compile-time-stride path.
 ///
-/// \tparam Unroll Iterations per unrolled block. No default: choose per call
-///   site. `2` small codegen, `4` balanced, `8` profiled hot loops, `1` plain
-///   loop.
+/// \tparam Unroll Iterations per unrolled block, exactly: the main loop carries
+///   `Unroll` bodies per back-edge and the compiler does not unroll it further.
+///   No default: choose per call site. `2` small codegen, `4` balanced, `8`
+///   profiled hot loops, `1` a loop that stays rolled.
 /// \param begin Inclusive start bound.
 /// \param end Exclusive end bound.
 /// \param step Increment per iteration. May be negative.

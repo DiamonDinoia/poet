@@ -29,6 +29,9 @@
 #ifdef POET_PUSH_OPTIMIZE
 #error "second undef_macros.hpp pass left POET_PUSH_OPTIMIZE defined"
 #endif
+#ifdef POET_NO_UNROLL
+#error "second undef_macros.hpp pass left POET_NO_UNROLL defined"
+#endif
 
 // The templates and count_trailing_zeros survive the macro cleanup.
 TEST_CASE("POET API stays usable after undef_macros", "[macros]") {
