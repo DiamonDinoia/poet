@@ -277,12 +277,19 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang|IntelLLVM)$"
   if(POET_STRICT_WARNINGS)
     poet_enable_warnings(poet_exact_unroll_check)
   endif()
+  # The bare Xcode clang++ has no SDK, so the check compiles nothing there
+  # without the sysroot this build resolved.
+  set(_exact_unroll_sysroot)
+  if(CMAKE_OSX_SYSROOT)
+    set(_exact_unroll_sysroot -isysroot "${CMAKE_OSX_SYSROOT}")
+  endif()
   add_test(NAME exact_unroll
     COMMAND poet_exact_unroll_check
       "${CMAKE_CXX_COMPILER}"
       "${CMAKE_CURRENT_SOURCE_DIR}/exact_unroll_fixture.cpp"
       "${CMAKE_SOURCE_DIR}/include"
-      "${CMAKE_CURRENT_BINARY_DIR}/exact_unroll")
+      "${CMAKE_CURRENT_BINARY_DIR}/exact_unroll"
+      ${_exact_unroll_sysroot})
 endif()
 
 add_executable(poet_header_analysis header_analysis.cpp)

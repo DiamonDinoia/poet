@@ -270,14 +270,18 @@ auto run(const std::string &command) -> int { return std::system(command.c_str()
 }// namespace
 
 auto main(int argc, char **argv) -> int {
-    if (argc != 5) {
-        std::cerr << "usage: exact_unroll_check <compiler> <fixture.cpp> <include-dir> <work-dir>\n";
+    if (argc < 5) {
+        std::cerr << "usage: exact_unroll_check <compiler> <fixture.cpp> <include-dir> <work-dir> [compiler-arg...]\n";
         return 2;
     }
     const std::string compiler = argv[1];
     const std::string fixture = argv[2];
     const std::string include_dir = argv[3];
     const std::string work_dir = argv[4];
+    // Arguments the build itself needs to find the standard library: on macOS
+    // the bare Xcode `clang++` has no SDK until `-isysroot` names one.
+    std::string toolchain_args;
+    for (int i = 5; i < argc; ++i) { toolchain_args += " " + quoted(argv[i]); }
 
     const std::string probe = work_dir + "/probe.cpp";
     const std::string log = work_dir + "/compile.log";
@@ -328,7 +332,7 @@ auto main(int argc, char **argv) -> int {
     for (const std::string &standard : standards) {
         for (const std::string &flags : flag_sets) {
             const std::string cell = standard + " " + flags;
-            const std::string base = "-std=" + standard + " " + flags;
+            const std::string base = "-std=" + standard + " " + flags + toolchain_args;
             const std::string probe_cmd = quoted(compiler) + " " + base + " -Werror -c -o "
                                           + quoted(work_dir + "/probe.o") + " " + quoted(probe) + " > " + quoted(log)
                                           + " 2>&1";
