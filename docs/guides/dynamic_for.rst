@@ -4,8 +4,9 @@ Dynamic Loops
 ``poet::dynamic_for`` runs a runtime range by emitting compile-time unrolled blocks.
 
 ``Unroll`` is exact: the emitted main loop carries ``Unroll`` copies of the body
-per back-edge and the compiler does not unroll it again, ``Unroll`` of 1 and a
-``-funroll-loops`` build included.
+per back-edge and the compiler does not unroll it again, ``Unroll`` of 1, a
+``-funroll-loops`` build and a compile-time-constant iteration count included. A
+range of exactly ``Unroll`` is one block and no loop.
 
 Basic form
 ----------

@@ -11,8 +11,13 @@
 /// is inlined so the lane constants stay visible.
 ///
 /// `Unroll` is exact, not a hint: `POET_NO_UNROLL` on both runtime loops holds
-/// the emitted main loop at exactly `Unroll` bodies per back-edge, `Unroll == 1`
-/// and `-funroll-loops` included. `tests/exact_unroll_check.cpp` counts them.
+/// the emitted main loop at exactly `Unroll` bodies per back-edge, `Unroll == 1`,
+/// `-funroll-loops` and a compile-time-constant count included. The last case
+/// needs `opaque_count` too: the pragma outranks GCC's size heuristic rather
+/// than capping it, so a visible trip count invites the complete unroller to
+/// peel the loop away. A single block carries no loop at all, since one block is
+/// already exactly `Unroll` bodies, so a count of `Unroll` folds to straight-line
+/// code. `tests/exact_unroll_check.cpp` counts the bodies.
 ///
 /// `dynamic_for` pays off for multi-accumulator work: the lane form
 /// (`func(lane_constant, index)`) gives one accumulator per lane, breaking the
@@ -226,12 +231,30 @@ namespace detail {
             tail_binary<Unroll, WantsLane>(count, func, index, stride, args...);
         } else {
             const T block_step = static_cast<T>(Unroll) * stride_of<T>(stride);
-            std::size_t remaining = count;
-            POET_NO_UNROLL
-            while (remaining >= Unroll) {
+            const std::size_t blocks = count / Unroll;
+            const std::size_t remaining = count % Unroll;
+            if (blocks == 1) {
+                // One block is already exactly `Unroll` bodies, so there is
+                // nothing to unroll and nothing to hide. Hiding it here would
+                // cost a constant count its straight-line form.
                 emit_block<Unroll, WantsLane>(func, index, stride, args...);
                 index += block_step;
-                remaining -= Unroll;
+            } else {
+                // Only the BLOCK count is hidden, and only where a loop runs.
+                // `POET_NO_UNROLL` outranks GCC's size heuristic instead of
+                // merely capping it, so a visible trip count lets the complete
+                // unroller peel the loop away and the contract with it.
+                // `remaining` keeps reading the original `count`, so a constant
+                // count still folds the tail to its exact blocks.
+                // A `do` loop would drop the entry test, since `blocks >= 2`
+                // here, but GCC 14 ignores a loop annotation on `do` and says
+                // so, which leaves the shape to `opaque_count` alone.
+                const std::size_t trips = opaque_count(blocks);
+                POET_NO_UNROLL
+                for (std::size_t block = 0; block < trips; ++block) {
+                    emit_block<Unroll, WantsLane>(func, index, stride, args...);
+                    index += block_step;
+                }
             }
             if (remaining > 0) { tail_binary_outlined<Unroll, WantsLane>(remaining, func, index, stride, args...); }
         }
@@ -250,6 +273,7 @@ namespace detail {
 ///
 /// \tparam Unroll Iterations per unrolled block, exactly: the main loop carries
 ///   `Unroll` bodies per back-edge and the compiler does not unroll it further.
+///   A range of exactly `Unroll` is one block and no loop.
 ///   No default: choose per call site. `2` small codegen, `4` balanced, `8`
 ///   profiled hot loops, `1` a loop that stays rolled.
 /// \param begin Inclusive start bound.

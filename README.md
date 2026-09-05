@@ -49,8 +49,9 @@ poet::static_for<0, 64, 1, 8>([&](auto I) {
 ### `dynamic_for`
 
 `Unroll` is exact: the emitted main loop carries `Unroll` copies of the body per
-back-edge and the compiler does not unroll it again, `Unroll` of 1 and a
-`-funroll-loops` build included.
+back-edge and the compiler does not unroll it again, `Unroll` of 1, a
+`-funroll-loops` build and a compile-time-constant iteration count included. A
+range of exactly `Unroll` is one block and no loop.
 
 ```cpp
 poet::dynamic_for<4>(0u, n, [](std::size_t i) {
