@@ -344,7 +344,9 @@ auto main(int argc, char **argv) -> int {
                                       + quoted(log) + " 2>&1";
             std::cout << "exact-unroll CELL  [" << cell << "] " << build << "\n";
             if (run(build) != 0) {
-                std::cout << "exact-unroll FAIL  [" << cell << "] fixture did not compile, see " << log << "\n";
+                // The log lives in a build tree CI does not keep, so it goes to stdout.
+                std::cout << "exact-unroll FAIL  [" << cell << "] fixture did not compile:\n" << std::ifstream(log).rdbuf()
+                          << "\n";
                 ++failures;
                 continue;
             }
