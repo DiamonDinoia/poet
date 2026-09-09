@@ -99,6 +99,21 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_CROSSCOMPILING AND EXISTS "/
   endif()
 endif()
 
+# -march=native must survive -Werror: llvm-18 rejects the computed feature set
+# on AVX10.1 hosts (+avx10.1-256 promotion). A failed probe drops the native
+# build and the hardware cross-check assertions with it.
+if(POET_HW_DETECTION_AVAILABLE)
+  include(CheckCXXCompilerFlag)
+  set(_save_req "${CMAKE_REQUIRED_FLAGS}")
+  set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -Werror")
+  check_cxx_compiler_flag("-march=native" POET_MARCH_NATIVE_OK)
+  set(CMAKE_REQUIRED_FLAGS "${_save_req}")
+  if(NOT POET_MARCH_NATIVE_OK)
+    set(POET_HW_DETECTION_AVAILABLE OFF)
+    message(STATUS "POET: -march=native rejected under -Werror; hardware ISA cross-checks disabled")
+  endif()
+endif()
+
 # Disable LTO/IPO for tests: template-heavy instantiations exhaust link-time memory.
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 
