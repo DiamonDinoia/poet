@@ -274,6 +274,9 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64" AND NOT CMAKE_CROSSCOMPILING AN
     target_compile_options(poet_mixed_isa_link PRIVATE -O0)
     set_source_files_properties(mixed_isa/tu_avx512.cpp PROPERTIES COMPILE_OPTIONS "-mavx512f")
     add_test(NAME poet_mixed_isa_link COMMAND poet_mixed_isa_link)
+    # The coverage target builds via DEPENDS poet_tests; without this the test
+    # is registered but its executable is never built there.
+    add_dependencies(poet_tests poet_mixed_isa_link)
   else()
     message(STATUS "poet_mixed_isa_link: skipped (-mavx512f unsupported by ${CMAKE_CXX_COMPILER_ID})")
   endif()
