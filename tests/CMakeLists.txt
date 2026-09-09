@@ -244,6 +244,28 @@ if(TARGET poet_tests_std17)
   add_custom_target(poet_tests DEPENDS poet_tests_std17)
 endif()
 
+# Mixed-ISA link regression: two TUs with different ISA flags must keep their
+# own cpu_info answers at runtime. Needs per-file flags, hence no suite target.
+# x86-64 + GNU/Clang only: 32-bit x86 has no SSE2 baseline; MSVC's D9002
+# warning exits 0, defeating the flag probe.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64" AND NOT CMAKE_CROSSCOMPILING AND NOT MSVC)
+  include(CheckCXXCompilerFlag)
+  check_cxx_compiler_flag("-mavx512f" POET_HAS_MAVX512F)
+  if(POET_HAS_MAVX512F)
+    add_executable(poet_mixed_isa_link mixed_isa/main.cpp mixed_isa/tu_base.cpp mixed_isa/tu_avx512.cpp)
+    target_link_libraries(poet_mixed_isa_link PRIVATE poet)
+    # Exactly C++17 -O0: the merge was observable there.
+    set_target_properties(poet_mixed_isa_link PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+    target_compile_options(poet_mixed_isa_link PRIVATE -O0)
+    set_source_files_properties(mixed_isa/tu_avx512.cpp PROPERTIES COMPILE_OPTIONS "-mavx512f")
+    add_test(NAME poet_mixed_isa_link COMMAND poet_mixed_isa_link)
+  else()
+    message(STATUS "poet_mixed_isa_link: skipped (-mavx512f unsupported by ${CMAKE_CXX_COMPILER_ID})")
+  endif()
+else()
+  message(STATUS "poet_mixed_isa_link: skipped (not an x86-64 host build)")
+endif()
+
 # Every public header must compile standalone, not only through poet.hpp:
 # the umbrella can mask a missing include by pulling a header's siblings first.
 file(GLOB_RECURSE POET_PUBLIC_HEADERS

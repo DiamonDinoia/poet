@@ -61,6 +61,28 @@ static_assert(available_registers().lanes_32bit == POET_HW_LANES_32BIT, "POET la
 
 // --- Runtime: Catch2 tests ---
 
+// ============================================================================
+// Explicit-Arch / SVEBits instantiation
+// ============================================================================
+
+static_assert(vector_register_count<instruction_set::sse2>() == 16);
+static_assert(vector_register_count<instruction_set::avx_512>() == 32);
+static_assert(vector_width_bits<instruction_set::avx2>() == 256);
+static_assert(vector_width_bits<instruction_set::avx_512>() == 512);
+static_assert(vector_lanes_64bit<instruction_set::avx_512>() == 8);
+static_assert(vector_lanes_32bit<instruction_set::sse2>() == 4);
+
+// Table values only; no ARM target needed.
+static_assert(vector_width_bits<instruction_set::arm_sve, 128>() == 128);
+static_assert(vector_width_bits<instruction_set::arm_sve, 512>() == 512);
+static_assert(vector_width_bits<instruction_set::arm_sve2, 256>() == 256);
+static_assert(vector_lanes_64bit<instruction_set::arm_sve, 512>() == 8);
+static_assert(available_registers<instruction_set::arm_sve, 256>().lanes_32bit == 8);
+static_assert(available_registers<instruction_set::arm_sve, 256>().vector_registers == 32);
+static_assert(detected_isa<instruction_set::ppc_vsx>() == instruction_set::ppc_vsx);
+
+static_assert(vector_width_bits() == vector_width_bits<detected_isa()>());
+
 TEST_CASE("instruction_set enum properties") {
     static_assert(std::is_enum_v<instruction_set>);
     static_assert(sizeof(instruction_set) <= 1);

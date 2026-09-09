@@ -50,15 +50,18 @@ struct cache_line_info {
 
 namespace detail {
 
+    // Internal linkage: these definitions are preprocessor-selected per TU;
+    // at external linkage they would violate ODR in mixed-ISA links.
+
     /// SVE is scalable: the width is known only when the build pins it with
     /// `-msve-vector-bits=N`. Without a pin it is the 128-bit architectural floor.
 #if defined(__ARM_FEATURE_SVE_BITS) && __ARM_FEATURE_SVE_BITS > 0
-    inline constexpr std::size_t sve_vector_bits = __ARM_FEATURE_SVE_BITS;
+    [[maybe_unused]] static constexpr std::size_t sve_vector_bits = __ARM_FEATURE_SVE_BITS;
 #else
-    inline constexpr std::size_t sve_vector_bits = 128;
+    [[maybe_unused]] static constexpr std::size_t sve_vector_bits = 128;
 #endif
 
-    POET_CPP20_CONSTEVAL auto detect_instruction_set() noexcept -> instruction_set {
+    [[maybe_unused]] static POET_CPP20_CONSTEVAL auto detect_instruction_set() noexcept -> instruction_set {
 #ifdef __AVX512F__
         return instruction_set::avx_512;
 #endif
@@ -117,7 +120,8 @@ namespace detail {
         return instruction_set::generic;
     }
 
-    POET_CPP20_CONSTEVAL auto get_register_info(instruction_set isa) noexcept -> register_info {
+    // Value, not the inline variable, so callers can carry it in template identity.
+    POET_CPP20_CONSTEVAL auto get_register_info(instruction_set isa, std::size_t sve_bits) noexcept -> register_info {
         switch (isa) {
         case instruction_set::sse2:
         case instruction_set::sse4_2:
@@ -166,9 +170,9 @@ namespace detail {
             return register_info{
                 31,// gp_registers
                 32,// vector_registers
-                sve_vector_bits,// vector_width_bits
-                sve_vector_bits / 64,// lanes_64bit
-                sve_vector_bits / 32,// lanes_32bit
+                sve_bits,// vector_width_bits
+                sve_bits / 64,// lanes_64bit
+                sve_bits / 32,// lanes_32bit
                 isa,
             };
 
@@ -215,7 +219,7 @@ namespace detail {
         }
     }
 
-    POET_CPP20_CONSTEVAL auto detect_cache_line_info() noexcept -> cache_line_info {
+    [[maybe_unused]] static POET_CPP20_CONSTEVAL auto detect_cache_line_info() noexcept -> cache_line_info {
 #if defined(__GCC_DESTRUCTIVE_SIZE) && defined(__GCC_CONSTRUCTIVE_SIZE)
         return cache_line_info{ __GCC_DESTRUCTIVE_SIZE, __GCC_CONSTRUCTIVE_SIZE };
 #else
@@ -246,44 +250,70 @@ namespace detail {
 
 }// namespace detail
 
+// Default arguments evaluate per TU, so mixed-ISA links cannot merge the
+// specializations (plain inline functions merge arbitrarily in C++17).
+// registers_for() and inline wrappers around these calls reintroduce that.
+
 /// \brief The ISA the current translation unit compiles for.
 ///
 /// Returns `instruction_set::generic` when no SIMD ISA is enabled.
-POET_CPP20_CONSTEVAL auto detected_isa() noexcept -> instruction_set { return detail::detect_instruction_set(); }
+template<instruction_set Arch = detail::detect_instruction_set()>
+POET_CPP20_CONSTEVAL auto detected_isa() noexcept -> instruction_set {
+    return Arch;
+}
 
 /// \brief Register information for `detected_isa()`.
+template<instruction_set Arch = detail::detect_instruction_set(), std::size_t SVEBits = detail::sve_vector_bits>
 POET_CPP20_CONSTEVAL auto available_registers() noexcept -> register_info {
-    return detail::get_register_info(detected_isa());
+    return detail::get_register_info(Arch, SVEBits);
 }
 
 /// \brief Register information for an explicitly named ISA.
 /// \param isa The ISA to describe, independent of the build's own target.
+///
+/// Takes a runtime ISA; not merge-safe across mixed -msve-vector-bits TUs.
 POET_CPP20_CONSTEVAL auto registers_for(instruction_set isa) noexcept -> register_info {
-    return detail::get_register_info(isa);
+    return detail::get_register_info(isa, detail::sve_vector_bits);
 }
 
+template<instruction_set Arch = detail::detect_instruction_set(), std::size_t SVEBits = detail::sve_vector_bits>
 POET_CPP20_CONSTEVAL auto vector_register_count() noexcept -> std::size_t {
-    return available_registers().vector_registers;
+    return available_registers<Arch, SVEBits>().vector_registers;
 }
 
+template<instruction_set Arch = detail::detect_instruction_set(), std::size_t SVEBits = detail::sve_vector_bits>
 POET_CPP20_CONSTEVAL auto vector_width_bits() noexcept -> std::size_t {
-    return available_registers().vector_width_bits;
+    return available_registers<Arch, SVEBits>().vector_width_bits;
 }
 
-POET_CPP20_CONSTEVAL auto vector_lanes_64bit() noexcept -> std::size_t { return available_registers().lanes_64bit; }
+template<instruction_set Arch = detail::detect_instruction_set(), std::size_t SVEBits = detail::sve_vector_bits>
+POET_CPP20_CONSTEVAL auto vector_lanes_64bit() noexcept -> std::size_t {
+    return available_registers<Arch, SVEBits>().lanes_64bit;
+}
 
-POET_CPP20_CONSTEVAL auto vector_lanes_32bit() noexcept -> std::size_t { return available_registers().lanes_32bit; }
+template<instruction_set Arch = detail::detect_instruction_set(), std::size_t SVEBits = detail::sve_vector_bits>
+POET_CPP20_CONSTEVAL auto vector_lanes_32bit() noexcept -> std::size_t {
+    return available_registers<Arch, SVEBits>().lanes_32bit;
+}
 
-POET_CPP20_CONSTEVAL auto cache_line() noexcept -> cache_line_info { return detail::detect_cache_line_info(); }
+// Value-keyed: __GCC_DESTRUCTIVE_SIZE can differ between same-ISA TUs (aarch64 -mcpu).
+
+template<std::size_t DS = detail::detect_cache_line_info().destructive_size,
+  std::size_t CS = detail::detect_cache_line_info().constructive_size>
+POET_CPP20_CONSTEVAL auto cache_line() noexcept -> cache_line_info {
+    return cache_line_info{ DS, CS };
+}
 
 /// \brief Minimum separation that avoids false sharing.
+template<std::size_t V = detail::detect_cache_line_info().destructive_size>
 POET_CPP20_CONSTEVAL auto destructive_interference_size() noexcept -> std::size_t {
-    return cache_line().destructive_size;
+    return V;
 }
 
 /// \brief Maximum span that shares one cache line.
+template<std::size_t V = detail::detect_cache_line_info().constructive_size>
 POET_CPP20_CONSTEVAL auto constructive_interference_size() noexcept -> std::size_t {
-    return cache_line().constructive_size;
+    return V;
 }
 
 }// namespace poet
