@@ -305,6 +305,29 @@ if(POET_STRICT_WARNINGS)
   poet_enable_warnings(poet_standalone_headers)
 endif()
 
+# dynamic_for<U> emits exactly U bodies: compile the fixture to assembly with this
+# build's compiler and count them. MSVC has no unroll-disabling pragma, nothing to assert.
+if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang|IntelLLVM)$"
+   AND NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+  add_executable(poet_exact_unroll_check exact_unroll_check.cpp)
+  target_compile_features(poet_exact_unroll_check PRIVATE cxx_std_17)
+  if(POET_STRICT_WARNINGS)
+    poet_enable_warnings(poet_exact_unroll_check)
+  endif()
+  # A bare Xcode clang++ finds no SDK without the sysroot this build resolved.
+  set(_exact_unroll_sysroot)
+  if(CMAKE_OSX_SYSROOT)
+    set(_exact_unroll_sysroot -isysroot "${CMAKE_OSX_SYSROOT}")
+  endif()
+  add_test(NAME exact_unroll
+    COMMAND poet_exact_unroll_check
+      "${CMAKE_CXX_COMPILER}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/exact_unroll_fixture.cpp"
+      "${CMAKE_SOURCE_DIR}/include"
+      "${CMAKE_CURRENT_BINARY_DIR}/exact_unroll"
+      ${_exact_unroll_sysroot})
+endif()
+
 add_executable(poet_header_analysis header_analysis.cpp)
 target_link_libraries(poet_header_analysis PRIVATE poet)
 target_compile_features(poet_header_analysis PRIVATE cxx_std_17)
