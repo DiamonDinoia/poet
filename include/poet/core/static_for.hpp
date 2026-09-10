@@ -89,8 +89,6 @@ POET_FORCEINLINE constexpr void static_for(Func &&func) {
     if constexpr (detail::takes_index_v<callable_t, Begin>) {
         detail::run_blocks<callable_t, Begin, Step, BlockSize, full_blocks, remainder>(callable);
     } else {
-        // `template <auto I> operator()()` form: adapt it to the
-        // integral_constant call the block emitters use.
         using invoker_t = detail::template_invoker<callable_t>;
         invoker_t invoker{ callable };
         detail::run_blocks<invoker_t, Begin, Step, BlockSize, full_blocks, remainder>(invoker);

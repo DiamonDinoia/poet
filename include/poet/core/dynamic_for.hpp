@@ -118,8 +118,6 @@ namespace detail {
 
         const auto magnitude = static_cast<std::size_t>(stride);
         const std::size_t span = (static_cast<std::size_t>(end - begin) + magnitude) - 1;
-        // A power-of-two stride, including the dominant stride==1 case,
-        // shifts instead of dividing.
         if (POET_LIKELY(is_power_of_two(magnitude))) { return span >> count_trailing_zeros(magnitude); }
         return span / magnitude;
     }
@@ -219,15 +217,12 @@ namespace detail {
                 index += stride_of<T>(stride);
             }
         } else if (POET_UNLIKELY(count < Unroll)) {
-            // Tiny range: there is no main loop to run, so inline the tail and
-            // keep the lane constants visible.
             tail_binary<Unroll, WantsLane>(count, func, index, stride, args...);
         } else {
             const T block_step = static_cast<T>(Unroll) * stride_of<T>(stride);
             const std::size_t blocks = count / Unroll;
             const std::size_t remaining = count % Unroll;
             if (POET_IS_CONSTANT(blocks) && blocks == 1) {
-                // A constant count of exactly `Unroll`: one block, no loop.
                 emit_block<Unroll, WantsLane>(func, index, stride, args...);
                 index += block_step;
             } else {
