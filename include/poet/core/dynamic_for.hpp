@@ -10,6 +10,11 @@
 /// decomposition with O(log2 Unroll) branches; a range smaller than `Unroll`
 /// is inlined so the lane constants stay visible.
 ///
+/// `Unroll` is exact: `POET_NO_UNROLL` keeps the compiler from unrolling the main
+/// loop again and `opaque_count` hides the block count from the complete unroller.
+/// A range of exactly `Unroll` is one block and no loop. `tests/exact_unroll_check.cpp`
+/// counts the bodies.
+///
 /// `dynamic_for` pays off for multi-accumulator work: the lane form
 /// (`func(lane_constant, index)`) gives one accumulator per lane, breaking the
 /// serial dependence of a plain loop. For element-wise work or one serial
@@ -176,14 +181,12 @@ namespace detail {
 
     /// \brief Returns `count` in a form the optimizer cannot constant-fold.
     ///
-    /// `Unroll == 1` is a contract: without this barrier, a provably constant
-    /// trip count lets the compiler re-inflate the loop it must keep rolled.
-    /// GNU/clang: an empty asm barrier costs zero instructions. MSVC has no
-    /// x64 inline asm, so a `volatile` round-trip (one stack store+load) does
-    /// the same job.
+    /// `POET_NO_UNROLL` caps the unroller but does not stop GCC's complete
+    /// unroller from peeling a visible constant trip count; hiding the count
+    /// does. On MSVC the pragma is empty, so the barrier is the only guard.
     template<typename T> POET_FORCEINLINE auto opaque_count(T count) -> T {
 #if defined(__GNUC__) || defined(__clang__)
-        asm volatile("" : "+r"(count));// NOLINT(hicpp-no-assembler)
+        asm volatile("" : "+r"(count));// NOLINT(hicpp-no-assembler,portability-no-assembler)
         return count;
 #elif defined(_MSC_VER)
         volatile T laundered = count;
@@ -210,6 +213,7 @@ namespace detail {
 
         if constexpr (Unroll == 1) {
             const std::size_t trips = opaque_count(count);
+            POET_NO_UNROLL
             for (std::size_t i = 0; i < trips; ++i) {
                 invoke_lane<WantsLane, 0>(func, index, args...);
                 index += stride_of<T>(stride);
@@ -220,11 +224,21 @@ namespace detail {
             tail_binary<Unroll, WantsLane>(count, func, index, stride, args...);
         } else {
             const T block_step = static_cast<T>(Unroll) * stride_of<T>(stride);
-            std::size_t remaining = count;
-            while (remaining >= Unroll) {
+            const std::size_t blocks = count / Unroll;
+            const std::size_t remaining = count % Unroll;
+            if (POET_IS_CONSTANT(blocks) && blocks == 1) {
+                // A constant count of exactly `Unroll`: one block, no loop.
                 emit_block<Unroll, WantsLane>(func, index, stride, args...);
                 index += block_step;
-                remaining -= Unroll;
+            } else {
+                // Only the block count is hidden: `remaining` stays visible, so
+                // a constant count still folds its tail.
+                const std::size_t trips = opaque_count(blocks);
+                POET_NO_UNROLL
+                for (std::size_t block = 0; block < trips; ++block) {
+                    emit_block<Unroll, WantsLane>(func, index, stride, args...);
+                    index += block_step;
+                }
             }
             if (remaining > 0) { tail_binary_outlined<Unroll, WantsLane>(remaining, func, index, stride, args...); }
         }
@@ -241,9 +255,10 @@ namespace detail {
 /// Iterates over `[begin, end)` with the given `step`, emitting blocks of
 /// `Unroll` iterations. `step == 1` selects the compile-time-stride path.
 ///
-/// \tparam Unroll Iterations per unrolled block. No default: choose per call
-///   site. `2` small codegen, `4` balanced, `8` profiled hot loops, `1` plain
-///   loop.
+/// \tparam Unroll Iterations per unrolled block, exactly: the compiler does not
+///   unroll the main loop further, and a range of exactly `Unroll` is one block
+///   and no loop. No default: choose per call site. `2` small codegen, `4`
+///   balanced, `8` profiled hot loops, `1` a loop that stays rolled.
 /// \param begin Inclusive start bound.
 /// \param end Exclusive end bound.
 /// \param step Increment per iteration. May be negative.

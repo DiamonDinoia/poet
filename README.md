@@ -10,7 +10,7 @@
 POET is a header-only C++ library for three related jobs:
 
 - `static_for`: compile-time unrolled loops
-- `dynamic_for`: runtime loops emitted as compile-time unrolled blocks
+- `dynamic_for`: runtime loops emitted as compile-time unrolled blocks of exactly `Unroll` bodies
 - `dispatch` / `dispatch_set`: runtime-to-compile-time specialization
 
 It also exposes CPU detection helpers (`poet::available_registers()`, `poet::cache_line()`)
@@ -46,6 +46,10 @@ poet::static_for<0, 64, 1, 8>([&](auto I) {
 [![Source: static_for.cpp][src-badge-static-for]](examples/static_for.cpp) [![Try on Compiler Explorer][ce-badge]][ce-static-for]
 
 ### `dynamic_for`
+
+`Unroll` is exact: the compiler does not unroll the main loop further, even under
+`-funroll-loops` or with a constant iteration count. A range of exactly `Unroll` is
+one block and no loop.
 
 ```cpp
 poet::dynamic_for<4>(0u, n, [](std::size_t i) {
