@@ -25,7 +25,6 @@ struct Horner {
 };
 
 int main() {
-    // p(x) = 1 + 2x + 3x^2 + 4x^3 + 5x^4 + 6x^5 + 7x^6 + 8x^7 + 9x^8
     constexpr std::array<double, 9> coeffs{ 1, 2, 3, 4, 5, 6, 7, 8, 9 };
 
     // `volatile` keeps the dispatch path live so the asm pane shows the
@@ -39,7 +38,6 @@ int main() {
 
     std::printf("p(%.1f) at degree %d = %.6f\n", x, degree, y);
 
-    // Sanity: degree-3 evaluation of 1 + 2x + 3x^2 + 4x^3 at x=2.
     v_degree = 3;
     v_x = 2.0;
     double y3 = poet::dispatch(Horner{},

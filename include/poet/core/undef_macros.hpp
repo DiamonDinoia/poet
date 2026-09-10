@@ -18,7 +18,6 @@
 #undef POET_IS_CONSTANT
 #undef POET_CPP20_CONSTEVAL
 
-// Optimization pragmas and the internal pieces POET_PUSH_OPTIMIZE is built from.
 #undef POET_PUSH_OPTIMIZE
 #undef POET_POP_OPTIMIZE
 #undef POET_PUSH_OPTIMIZE_BASE_

@@ -41,7 +41,6 @@ namespace detail {
           impl(std::index_sequence<Idx...> /*idx_seq*/, const RuntimeTuple &runtime_tuple, F &&func, Args &&...args)
             -> result_holder<ResultType> {
             result_holder<ResultType> res;
-            // Every runtime slot must equal its compile-time candidate.
             if (((std::get<Idx>(runtime_tuple) == V) && ...)) {
                 if constexpr (std::is_void_v<ResultType>) {
                     std::forward<F>(func).template operator()<V...>(std::forward<Args>(args)...);
@@ -175,9 +174,6 @@ namespace detail {
                 const V current_key = out.sorted_keys[i];
                 const std::size_t current_index = out.sorted_indices[i];
                 std::size_t insert_pos = i;
-                // Shift larger keys and their original-position tags right in
-                // lockstep until the position of the first key not greater
-                // than `current_key`.
                 while (insert_pos > 0 && out.sorted_keys[insert_pos - 1] > current_key) {
                     out.sorted_keys[insert_pos] = out.sorted_keys[insert_pos - 1];
                     out.sorted_indices[insert_pos] = out.sorted_indices[insert_pos - 1];
@@ -257,8 +253,6 @@ namespace detail {
         }
     };
 
-    // Non-contiguous sequences: detect a uniform positive stride at compile time and
-    // specialize `find` to a div/mod (strided) instead of a binary search (truly sparse).
     template<typename V, V... Values> struct seq_lookup<std::integer_sequence<V, Values...>, false> {
         using sparse_data = sparse_index<std::integer_sequence<V, Values...>>;
 
@@ -270,7 +264,6 @@ namespace detail {
                 // Keys are sorted and unique, so the gap is positive in any value type.
                 constexpr V stride0 = static_cast<V>(sparse_data::keys[1] - sparse_data::keys[0]);
                 if constexpr (stride0 == 0) { return false; }
-                // When any later gap differs from `stride0`, `find` uses binary search.
                 // cppcheck-suppress syntaxError ; cppcheck cannot parse a loop inside if constexpr
                 for (std::size_t i = 2; i < sparse_data::unique_count; ++i) {
                     if (static_cast<V>(sparse_data::keys[i] - sparse_data::keys[i - 1]) != stride0) { return false; }
@@ -302,11 +295,8 @@ namespace detail {
                 if (diff % static_cast<U>(stride) != 0) { return count; }
                 const auto slot = static_cast<std::size_t>(diff / static_cast<U>(stride));
                 if (slot >= sparse_data::unique_count) { return count; }
-                // Map the sorted position back to the slot the user declared.
                 return bounded(sparse_data::indices[slot]);
             } else {
-                // Keys are sorted, so a binary search finds `value`; `indices`
-                // maps the found position back to the declared slot.
                 const auto pos = std::lower_bound(sparse_data::keys.begin(), sparse_data::keys.end(), value);
                 if (pos == sparse_data::keys.end() || *pos != value) { return count; }
                 return bounded(sparse_data::indices[static_cast<std::size_t>(pos - sparse_data::keys.begin())]);
@@ -387,10 +377,6 @@ namespace detail {
         return extract_sequences_impl<TupleType>(std::make_index_sequence<std::tuple_size_v<TupleType>>{});
     }
 
-    // Computes the functor's return type by probing the two calling conventions:
-    // `func(integral_constant<int, V>{}, args...)` (value form) and
-    // `func.template operator()<V>(args...)` (template form). The value form is
-    // preferred when viable.
     template<typename Functor, typename... Seq> struct dispatch_result_helper {
         template<typename... Args>
         static auto compute_impl(std::true_type /*use_value_args*/)
@@ -421,10 +407,6 @@ namespace detail {
     template<typename T>
     inline constexpr bool is_stateless_v = std::is_empty_v<T> && std::is_default_constructible_v<T>;
 
-    // Picks the per-arg calling convention in the function-pointer table. A
-    // small trivially-copyable rvalue or const-lvalue goes by value, which is
-    // cheaper than synthesising a reference. Any other arg keeps its original
-    // reference category.
     template<typename T> struct arg_pass {
         using raw = std::remove_reference_t<T>;
         using raw_unqual = std::remove_cv_t<raw>;
@@ -466,8 +448,7 @@ namespace detail {
         // Stateless functors are default-constructed inside the thunk; stateful
         // functors arrive by reference, so every table entry has one signature.
         // Two overloads, not one `if constexpr` with two returns: nvcc reports
-        // the `if constexpr` form as a missing return. This note is referenced
-        // from nd_table_builder below.
+        // the `if constexpr` form as a missing return.
         template<V Value> static POET_CPP20_CONSTEVAL auto make_entry(std::true_type /*stateless*/) {
             return +[](pass_t<Args &&>... args) -> R {
                 Functor func{};
@@ -551,7 +532,6 @@ namespace detail {
             }
         };
 
-        // Two overloads for the nvcc reason stated at table_builder::make_entry.
         template<typename R> static constexpr auto make_table(std::true_type /*stateless*/) {
             using fn_type = decltype(&nd_index_caller<0>::template call_stateless<R>);
             return std::array<fn_type, sizeof...(FlatIndices)>{
@@ -734,12 +714,7 @@ namespace detail {
       All &&...all) -> decltype(auto) {
 
         constexpr std::size_t num_params = sizeof...(ParamIdx);
-        // A reference-tuple view over the whole pack permits two indexing passes
-        // without copies.
         auto all_refs = std::forward_as_tuple(std::forward<All>(all)...);
-
-        // Copy the leading dispatch_params into a value tuple; each holds one
-        // runtime int, so the copy is trivial.
         auto params = std::make_tuple(std::get<ParamIdx>(all_refs)...);
 
         // `std::move(all_refs)` moves only the tuple; the references inside keep
@@ -750,8 +725,6 @@ namespace detail {
             std::move(all_refs))...);// NOLINT(bugprone-use-after-move,hicpp-invalid-access-moved)
     }
 
-    // Splits the pack into leading dispatch_params and trailing args: count
-    // dispatch_param types until the first non-param; the rest are plain args.
     template<bool ThrowOnNoMatch, typename Functor, typename FirstParam, typename... Rest>
     POET_FORCEINLINE auto dispatch_variadic_impl(Functor &functor, FirstParam &&first_param, Rest &&...rest)
       -> decltype(auto) {
