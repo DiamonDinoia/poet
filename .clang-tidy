@@ -1,0 +1,24 @@
+---
+Checks: "*,
+        -abseil-*,
+        -altera-*,
+        -android-*,
+        -fuchsia-*,
+        -google-*,
+        -llvm*,
+        -zircon-*,
+        -boost-use-ranges,
+        -cppcoreguidelines-avoid-magic-numbers,
+        -readability-magic-numbers,
+        -portability-avoid-pragma-once,
+        -cppcoreguidelines-avoid-const-or-ref-data-members"
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '^${PROJECT_SOURCE_DIR}/(include|src)'
+FormatStyle:     none
+
+CheckOptions:
+  - key: readability-identifier-length.IgnoredVariableNames
+    value: 'x|y|z'
+  - key: readability-identifier-length.IgnoredParameterNames
+    value: 'x|y|z'

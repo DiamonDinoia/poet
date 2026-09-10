@@ -1,0 +1,106 @@
+name: Docs
+
+# Builds the Doxygen + Sphinx documentation and publishes it to the branch that
+# GitHub Pages serves (`godbolt-links`, legacy branch source -- no Pages setting
+# change required).
+#
+# Two workflows write that branch, and both force-push an orphan, so each must
+# carry the other's content forward:
+#   - this workflow re-fetches the Compiler Explorer redirect pages into the root
+#   - godbolt-links.yml re-fetches the `docs/` subtree
+# They share the `pages-branch` concurrency group so the two force-pushes cannot
+# interleave.
+#
+# Resulting layout: /poet/<example>.html (redirects), /poet/docs/ (Sphinx).
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'include/**'
+      - 'docs/**'
+      - 'cmake/dev_helpers.cmake'
+      - 'CMakeLists.txt'
+      - '.github/workflows/docs.yml'
+  # Re-publish when the Compiler Explorer shortlinks refresh, so the redirect
+  # pages copied into the site root stay current.
+  workflow_run:
+    workflows: [ "Godbolt Links" ]
+    types: [ completed ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Shared with godbolt-links.yml: both force-push the Pages branch.
+concurrency:
+  group: pages-branch
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install documentation toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen
+          python -m pip install --upgrade pip
+          pip install -r docs/requirements.txt
+
+      - name: Build docs (Doxygen + Sphinx)
+        run: |
+          cmake -S . -B build -DPOET_GENERATE_DOCS=ON
+          cmake --build build --target docs -- -j 2
+
+      - name: Assemble site (CE redirects at root, Sphinx docs under /docs)
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          # Pull the Compiler Explorer redirect pages from the godbolt-links
+          # branch (maintained by the Godbolt Links workflow) into the root.
+          if git ls-remote --exit-code origin godbolt-links >/dev/null 2>&1; then
+            git fetch --depth 1 origin godbolt-links
+            git archive origin/godbolt-links | tar -x -C _site
+          else
+            echo "godbolt-links branch not found; publishing docs only."
+          fi
+          # Sphinx HTML lives under /docs.
+          mkdir -p _site/docs
+          cp -r build/docs/_build/html/. _site/docs/
+          # Stop Pages from running Jekyll over Sphinx's _static directory.
+          touch _site/.nojekyll
+          # No CNAME: the site is served from <owner>.github.io/<repo>. Adding a
+          # custom domain needs both a Pages setting and DNS -- a CNAME file on
+          # its own does nothing.
+
+      - name: Publish to the Pages branch (orphan, force-pushed)
+        env:
+          PAGES_BRANCH: godbolt-links
+        run: |
+          set -euo pipefail
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+          WORK=$(mktemp -d)
+          git worktree add --orphan -B "$PAGES_BRANCH" "$WORK"
+          # An orphan worktree can inherit working-tree state; start empty.
+          find "$WORK" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          cp -r _site/. "$WORK/"
+
+          cd "$WORK"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Site unchanged; nothing to publish."
+            exit 0
+          fi
+          git commit -m 'docs: rebuild documentation site'
+          git push --force origin "$PAGES_BRANCH"

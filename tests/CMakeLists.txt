@@ -1,0 +1,341 @@
+CPMAddPackage(
+  NAME Catch2
+  GITHUB_REPOSITORY catchorg/Catch2
+  VERSION 3.5.3
+)
+
+# Mark Catch2 includes as SYSTEM so dependency warnings don't leak into project builds.
+if(TARGET Catch2::Catch2WithMain)
+  get_target_property(_catch2_includes Catch2::Catch2WithMain INTERFACE_INCLUDE_DIRECTORIES)
+  if(_catch2_includes)
+    set_target_properties(Catch2::Catch2WithMain PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_catch2_includes}")
+  endif()
+endif()
+
+if(Catch2_SOURCE_DIR)
+  list(APPEND CMAKE_MODULE_PATH ${Catch2_SOURCE_DIR}/extras)
+endif()
+
+include(Catch)
+# -- Hardware ISA detection from /proc/cpuinfo ------------------------------
+# Derives the actual ISA and register layout from the host CPU flags.
+
+set(POET_HW_DETECTION_AVAILABLE OFF)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_CROSSCOMPILING AND EXISTS "/proc/cpuinfo")
+  file(READ "/proc/cpuinfo" _cpuinfo)
+
+  # Extract the first "flags" line (x86) or "Features" line (ARM)
+  string(REGEX MATCH "(flags|Features)[^\n]*" _flagline "${_cpuinfo}")
+  string(REGEX REPLACE "^[^:]*:" "" _flags "${_flagline}")
+
+  # Detect highest x86 ISA
+  if(_flags MATCHES " avx512f ")
+    set(POET_HW_ISA 5)  # avx_512
+    set(POET_HW_VECTOR_REGISTERS 32)
+    set(POET_HW_VECTOR_WIDTH_BITS 512)
+    set(POET_HW_GP_REGISTERS 16)
+  elseif(_flags MATCHES " avx2 ")
+    set(POET_HW_ISA 4)  # avx2
+    set(POET_HW_VECTOR_REGISTERS 16)
+    set(POET_HW_VECTOR_WIDTH_BITS 256)
+    set(POET_HW_GP_REGISTERS 16)
+  elseif(_flags MATCHES " avx ")
+    set(POET_HW_ISA 3)  # avx
+    set(POET_HW_VECTOR_REGISTERS 16)
+    set(POET_HW_VECTOR_WIDTH_BITS 256)
+    set(POET_HW_GP_REGISTERS 16)
+  elseif(_flags MATCHES " sse4_2 ")
+    set(POET_HW_ISA 2)  # sse4_2
+    set(POET_HW_VECTOR_REGISTERS 16)
+    set(POET_HW_VECTOR_WIDTH_BITS 128)
+    set(POET_HW_GP_REGISTERS 16)
+  elseif(_flags MATCHES " sse2 ")
+    set(POET_HW_ISA 1)  # sse2
+    set(POET_HW_VECTOR_REGISTERS 16)
+    set(POET_HW_VECTOR_WIDTH_BITS 128)
+    set(POET_HW_GP_REGISTERS 16)
+  # ARM detection
+  elseif(_flags MATCHES " sve2 ")
+    set(POET_HW_ISA 8)  # arm_sve2
+    set(POET_HW_VECTOR_REGISTERS 32)
+    set(POET_HW_VECTOR_WIDTH_BITS 128)  # minimum guaranteed
+    set(POET_HW_GP_REGISTERS 31)
+  elseif(_flags MATCHES " sve ")
+    set(POET_HW_ISA 7)  # arm_sve
+    set(POET_HW_VECTOR_REGISTERS 32)
+    set(POET_HW_VECTOR_WIDTH_BITS 128)
+    set(POET_HW_GP_REGISTERS 31)
+  elseif(_flags MATCHES " asimd " OR _flags MATCHES " neon ")
+    set(POET_HW_ISA 6)  # arm_neon
+    set(POET_HW_VECTOR_REGISTERS 32)
+    set(POET_HW_VECTOR_WIDTH_BITS 128)
+    set(POET_HW_GP_REGISTERS 31)
+  endif()
+
+  # Detect cache line size from sysfs
+  set(POET_HW_CACHE_LINE_SIZE 0)
+  if(EXISTS "/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size")
+    file(READ "/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size" _cache_line_raw)
+    string(STRIP "${_cache_line_raw}" POET_HW_CACHE_LINE_SIZE)
+    message(STATUS "POET: detected hardware cache line size ${POET_HW_CACHE_LINE_SIZE}")
+  endif()
+
+  if(DEFINED POET_HW_ISA)
+    set(POET_HW_LANES_64BIT "${POET_HW_VECTOR_WIDTH_BITS}")
+    math(EXPR POET_HW_LANES_64BIT "${POET_HW_VECTOR_WIDTH_BITS} / 64")
+    set(POET_HW_LANES_32BIT "${POET_HW_VECTOR_WIDTH_BITS}")
+    math(EXPR POET_HW_LANES_32BIT "${POET_HW_VECTOR_WIDTH_BITS} / 32")
+
+    set(POET_HW_DETECTION_AVAILABLE ON)
+    message(STATUS "POET: detected hardware ISA ${POET_HW_ISA} "
+      "(${POET_HW_VECTOR_REGISTERS} vec regs, ${POET_HW_VECTOR_WIDTH_BITS}-bit)")
+
+    configure_file(
+      "${CMAKE_CURRENT_SOURCE_DIR}/poet_detected_isa.hpp.in"
+      "${CMAKE_CURRENT_BINARY_DIR}/poet_detected_isa.hpp"
+      @ONLY
+    )
+  endif()
+endif()
+
+# -march=native must survive -Werror: llvm-18 rejects the computed feature set
+# on AVX10.1 hosts (+avx10.1-256 promotion). A failed probe drops the native
+# build and the hardware cross-check assertions with it.
+if(POET_HW_DETECTION_AVAILABLE)
+  include(CheckCXXCompilerFlag)
+  set(_save_req "${CMAKE_REQUIRED_FLAGS}")
+  set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -Werror")
+  check_cxx_compiler_flag("-march=native" POET_MARCH_NATIVE_OK)
+  set(CMAKE_REQUIRED_FLAGS "${_save_req}")
+  if(NOT POET_MARCH_NATIVE_OK)
+    set(POET_HW_DETECTION_AVAILABLE OFF)
+    message(STATUS "POET: -march=native rejected under -Werror; hardware ISA cross-checks disabled")
+  endif()
+endif()
+
+# Disable LTO/IPO for tests: template-heavy instantiations exhaust link-time memory.
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
+
+set(HEADERS_TEST_SRCS
+  poet_header_tests.cpp
+  macro_hygiene_tests.cpp
+)
+set(DYNAMIC_FOR_TEST_SRCS
+  dynamic_for_tests.cpp
+)
+set(STATIC_FOR_TEST_SRCS
+  static_for_tests.cpp
+)
+set(CPU_INFO_TEST_SRCS
+  cpu_info_tests.cpp
+)
+set(DISPATCH_TEST_SRCS
+  dispatch_tests.cpp
+)
+set(CACHE_LINE_INFO_TEST_SRCS
+  cache_line_info_tests.cpp
+)
+option(POET_ENABLE_TEST_PCH "Enable precompiled headers for test targets" ON)
+
+# Internal macro: applies common configuration to all test targets
+macro(_configure_poet_test target_name cxx_feature)
+  set_property(TARGET ${target_name} PROPERTY INTERPROCEDURAL_OPTIMIZATION FALSE)
+
+  # Mark Catch2 includes as system to suppress warnings
+  if(_catch2_includes)
+    target_include_directories(${target_name} SYSTEM PRIVATE ${_catch2_includes})
+  endif()
+
+  # Apply precompiled headers to speed up compilation
+  if(POET_ENABLE_TEST_PCH)
+    target_precompile_headers(${target_name} PRIVATE
+      "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/test_pch.hpp>")
+  endif()
+
+  # Include generated headers (poet_detected_isa.hpp)
+  target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+
+  target_link_libraries(${target_name} PRIVATE Catch2::Catch2WithMain poet)
+
+  # -O1 for tests: O3 on template-heavy instantiations is too costly.
+  target_compile_options(${target_name} PRIVATE
+    $<$<CXX_COMPILER_ID:GNU>:-O1>
+    $<$<CXX_COMPILER_ID:Clang>:-O1>
+    $<$<CXX_COMPILER_ID:AppleClang>:-O1>
+    $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<NOT:$<CONFIG:Debug>>>:/O1>
+  )
+
+  # Add coverage instrumentation if enabled
+  if(POET_ENABLE_COVERAGE)
+    target_compile_options(${target_name} PRIVATE ${POET_COVERAGE_COMPILE_FLAGS})
+    target_link_options(${target_name} PRIVATE ${POET_COVERAGE_LINK_FLAGS})
+  endif()
+
+  target_compile_features(${target_name} PRIVATE ${cxx_feature})
+
+  if(POET_STRICT_WARNINGS)
+    poet_enable_warnings(${target_name})
+  endif()
+
+  poet_enable_sanitizers(${target_name})
+
+  # Suppress C2y extension warnings on Clang
+  include(CheckCXXCompilerFlag)
+  check_cxx_compiler_flag("-Wno-c2y-extensions" HAS_WNO_C2Y_EXTENSIONS)
+  target_compile_options(${target_name} PRIVATE
+    $<$<AND:$<CXX_COMPILER_ID:Clang>,$<BOOL:${HAS_WNO_C2Y_EXTENSIONS}>>:-Wno-c2y-extensions>
+  )
+endmacro()
+
+# Creates a test executable with Catch2 test discovery
+# Usage: add_poet_test_exec(target_name cxx_feature sources...)
+macro(add_poet_test_exec target_name cxx_feature)
+  add_executable(${target_name} ${ARGN})
+  _configure_poet_test(${target_name} ${cxx_feature})
+  catch_discover_tests(${target_name})
+
+  # Track all test executables for coverage target
+  set_property(GLOBAL APPEND PROPERTY POET_TEST_EXEC_TARGETS ${target_name})
+endmacro()
+
+# One executable per test category: keeps link memory bounded and enables parallel compilation.
+macro(add_poet_tests_suite suite_target cxx_feature)
+  set(_suite_execs
+    ${suite_target}_headers
+    ${suite_target}_dynamic_for
+    ${suite_target}_static_for
+    ${suite_target}_cpu_info
+    ${suite_target}_cache_line_info
+    ${suite_target}_dispatch
+  )
+
+  add_poet_test_exec(${suite_target}_headers ${cxx_feature} ${HEADERS_TEST_SRCS})
+  add_poet_test_exec(${suite_target}_dynamic_for ${cxx_feature} ${DYNAMIC_FOR_TEST_SRCS})
+  add_poet_test_exec(${suite_target}_static_for ${cxx_feature} ${STATIC_FOR_TEST_SRCS})
+  add_poet_test_exec(${suite_target}_cpu_info ${cxx_feature} ${CPU_INFO_TEST_SRCS})
+  # -march=native so POET detects the full hardware ISA, validated against /proc/cpuinfo.
+  if(POET_HW_DETECTION_AVAILABLE)
+    target_compile_options(${suite_target}_cpu_info PRIVATE -march=native)
+    target_compile_definitions(${suite_target}_cpu_info PRIVATE POET_HAS_HW_DETECTION)
+  endif()
+  add_poet_test_exec(${suite_target}_cache_line_info ${cxx_feature} ${CACHE_LINE_INFO_TEST_SRCS})
+  if(POET_HW_DETECTION_AVAILABLE)
+    target_compile_options(${suite_target}_cache_line_info PRIVATE -march=native)
+    target_compile_definitions(${suite_target}_cache_line_info PRIVATE POET_HAS_HW_DETECTION)
+  endif()
+  add_poet_test_exec(${suite_target}_dispatch ${cxx_feature} ${DISPATCH_TEST_SRCS})
+
+  # Create umbrella target for building all tests in this suite
+  add_custom_target(${suite_target} DEPENDS ${_suite_execs})
+endmacro()
+
+set(POET_CXX_STANDARD DETECT CACHE STRING "Detect highest supported C++ standard")
+set_property(CACHE POET_CXX_STANDARD PROPERTY STRINGS DETECT)
+
+if(POET_CXX_STANDARD STREQUAL "DETECT")
+  foreach(CXX_STANDARD_VAR 23 20 17)
+    if("cxx_std_${CXX_STANDARD_VAR}" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
+      message(STATUS "Detected support for C++${CXX_STANDARD_VAR} standard")
+      set(POET_CXX_STANDARD ${CXX_STANDARD_VAR})
+      break()
+    endif()
+  endforeach()
+  if(NOT POET_CXX_STANDARD)
+    message(FATAL_ERROR "No supported C++ standard available (need at least C++17)")
+  endif()
+  message(STATUS "Using C++${POET_CXX_STANDARD} for extra test targets")
+endif()
+
+set(POET_TEST_STANDARDS 23 20 17)
+foreach(POET_STD IN LISTS POET_TEST_STANDARDS)
+  if(POET_CXX_STANDARD GREATER_EQUAL ${POET_STD})
+    add_poet_tests_suite(poet_tests_std${POET_STD} cxx_std_${POET_STD})
+  endif()
+endforeach()
+
+# Aggregate target grouping the std17 tests without a second build of the same sources.
+if(TARGET poet_tests_std17)
+  add_custom_target(poet_tests DEPENDS poet_tests_std17)
+endif()
+
+# Mixed-ISA link regression: two TUs with different ISA flags must keep their
+# own cpu_info answers at runtime. Needs per-file flags, hence no suite target.
+# x86-64 + GNU/Clang only: 32-bit x86 has no SSE2 baseline; MSVC's D9002
+# warning exits 0, defeating the flag probe.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64" AND NOT CMAKE_CROSSCOMPILING AND NOT MSVC)
+  include(CheckCXXCompilerFlag)
+  check_cxx_compiler_flag("-mavx512f" POET_HAS_MAVX512F)
+  if(POET_HAS_MAVX512F)
+    add_executable(poet_mixed_isa_link mixed_isa/main.cpp mixed_isa/tu_base.cpp mixed_isa/tu_avx512.cpp)
+    target_link_libraries(poet_mixed_isa_link PRIVATE poet)
+    # Exactly C++17 -O0: the merge was observable there.
+    set_target_properties(poet_mixed_isa_link PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+    target_compile_options(poet_mixed_isa_link PRIVATE -O0)
+    set_source_files_properties(mixed_isa/tu_avx512.cpp PROPERTIES COMPILE_OPTIONS "-mavx512f")
+    add_test(NAME poet_mixed_isa_link COMMAND poet_mixed_isa_link)
+    # The coverage target builds via DEPENDS poet_tests; without this the test
+    # is registered but its executable is never built there.
+    add_dependencies(poet_tests poet_mixed_isa_link)
+  else()
+    message(STATUS "poet_mixed_isa_link: skipped (-mavx512f unsupported by ${CMAKE_CXX_COMPILER_ID})")
+  endif()
+else()
+  message(STATUS "poet_mixed_isa_link: skipped (not an x86-64 host build)")
+endif()
+
+# Every public header must compile standalone, not only through poet.hpp:
+# the umbrella can mask a missing include by pulling a header's siblings first.
+file(GLOB_RECURSE POET_PUBLIC_HEADERS
+  RELATIVE "${CMAKE_SOURCE_DIR}/include/poet"
+  "${CMAKE_SOURCE_DIR}/include/poet/*.hpp")
+list(REMOVE_ITEM POET_PUBLIC_HEADERS core/undef_macros.hpp)  # undefines only; nothing to compile
+
+set(POET_STANDALONE_SRCS "")
+foreach(POET_HEADER IN LISTS POET_PUBLIC_HEADERS)
+  string(REGEX REPLACE "[/.]" "_" _stem "${POET_HEADER}")
+  configure_file(standalone_header.cpp.in "${CMAKE_CURRENT_BINARY_DIR}/standalone_${_stem}.cpp" @ONLY)
+  list(APPEND POET_STANDALONE_SRCS "${CMAKE_CURRENT_BINARY_DIR}/standalone_${_stem}.cpp")
+endforeach()
+
+add_library(poet_standalone_headers OBJECT ${POET_STANDALONE_SRCS})
+target_link_libraries(poet_standalone_headers PRIVATE poet)
+target_compile_features(poet_standalone_headers PRIVATE cxx_std_17)
+if(POET_STRICT_WARNINGS)
+  poet_enable_warnings(poet_standalone_headers)
+endif()
+
+# dynamic_for<U> emits exactly U bodies: compile the fixture to assembly with this
+# build's compiler and count them. MSVC has no unroll-disabling pragma, nothing to assert.
+if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang|IntelLLVM)$"
+   AND NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+  add_executable(poet_exact_unroll_check exact_unroll_check.cpp)
+  target_compile_features(poet_exact_unroll_check PRIVATE cxx_std_17)
+  if(POET_STRICT_WARNINGS)
+    poet_enable_warnings(poet_exact_unroll_check)
+  endif()
+  # A bare Xcode clang++ finds no SDK without the sysroot this build resolved.
+  set(_exact_unroll_sysroot)
+  if(CMAKE_OSX_SYSROOT)
+    set(_exact_unroll_sysroot -isysroot "${CMAKE_OSX_SYSROOT}")
+  endif()
+  add_test(NAME exact_unroll
+    COMMAND poet_exact_unroll_check
+      "${CMAKE_CXX_COMPILER}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/exact_unroll_fixture.cpp"
+      "${CMAKE_SOURCE_DIR}/include"
+      "${CMAKE_CURRENT_BINARY_DIR}/exact_unroll"
+      ${_exact_unroll_sysroot})
+endif()
+
+add_executable(poet_header_analysis header_analysis.cpp)
+target_link_libraries(poet_header_analysis PRIVATE poet)
+target_compile_features(poet_header_analysis PRIVATE cxx_std_17)
+poet_configure_static_analysis(poet_header_analysis)
+
+if(TARGET coverage)
+  get_property(_poet_all_tests GLOBAL PROPERTY POET_TEST_EXEC_TARGETS)
+  if(_poet_all_tests)
+    add_dependencies(coverage ${_poet_all_tests})
+  endif()
+endif()
