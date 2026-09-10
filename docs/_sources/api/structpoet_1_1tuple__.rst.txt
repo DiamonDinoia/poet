@@ -1,0 +1,17 @@
+.. _exhale_struct_structpoet_1_1tuple__:
+
+Template Struct tuple_
+======================
+
+- Defined in :ref:`file_include_poet_core_dispatch.hpp`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: poet::tuple_
+   :project: POET
+   :members:
+   :protected-members:
+   :undoc-members:

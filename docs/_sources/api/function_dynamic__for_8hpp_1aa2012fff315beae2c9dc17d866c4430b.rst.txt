@@ -1,0 +1,14 @@
+.. _exhale_function_dynamic__for_8hpp_1aa2012fff315beae2c9dc17d866c4430b:
+
+Template Function poet::operator|(Range&&, dynamic_for_adaptor<Func, Unroll> const&)
+====================================================================================
+
+- Defined in :ref:`file_include_poet_core_dynamic_for.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: poet::operator|(Range&&, dynamic_for_adaptor<Func, Unroll> const&)
+   :project: POET

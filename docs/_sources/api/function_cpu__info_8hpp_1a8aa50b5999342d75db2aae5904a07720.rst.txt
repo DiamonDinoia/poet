@@ -1,0 +1,14 @@
+.. _exhale_function_cpu__info_8hpp_1a8aa50b5999342d75db2aae5904a07720:
+
+Function poet::constructive_interference_size
+=============================================
+
+- Defined in :ref:`file_include_poet_core_cpu_info.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: poet::constructive_interference_size()
+   :project: POET

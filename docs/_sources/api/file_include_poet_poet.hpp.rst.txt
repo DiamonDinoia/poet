@@ -1,0 +1,48 @@
+
+.. _file_include_poet_poet.hpp:
+
+File poet.hpp
+=============
+
+|exhale_lsh| :ref:`Parent directory <dir_include_poet>` (``include/poet``)
+
+.. |exhale_lsh| unicode:: U+021B0 .. UPWARDS ARROW WITH TIP LEFTWARDS
+
+
+
+Umbrella header for the public POET API. 
+
+
+
+.. contents:: Contents
+   :local:
+   :backlinks: none
+
+Definition (``include/poet/poet.hpp``)
+--------------------------------------
+
+
+
+
+
+
+Includes
+--------
+
+
+- ``poet/core/cpu_info.hpp`` (:ref:`file_include_poet_core_cpu_info.hpp`)
+
+- ``poet/core/dispatch.hpp`` (:ref:`file_include_poet_core_dispatch.hpp`)
+
+- ``poet/core/dynamic_for.hpp`` (:ref:`file_include_poet_core_dynamic_for.hpp`)
+
+
+- ``poet/core/static_for.hpp`` (:ref:`file_include_poet_core_static_for.hpp`)
+
+
+- ``poet/version.hpp`` (:ref:`file_include_poet_version.hpp`)
+
+
+
+
+

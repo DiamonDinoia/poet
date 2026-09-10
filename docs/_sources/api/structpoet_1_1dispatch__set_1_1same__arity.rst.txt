@@ -1,0 +1,32 @@
+.. _exhale_struct_structpoet_1_1dispatch__set_1_1same__arity:
+
+Template Struct dispatch_set::same_arity
+========================================
+
+- Defined in :ref:`file_include_poet_core_dispatch.hpp`
+
+
+Nested Relationships
+--------------------
+
+This struct is a nested type of :ref:`exhale_struct_structpoet_1_1dispatch__set`.
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public std::bool_constant< detail::sequence_size< S >::value==tuple_arity >``
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: poet::dispatch_set::same_arity
+   :project: POET
+   :members:
+   :protected-members:
+   :undoc-members:

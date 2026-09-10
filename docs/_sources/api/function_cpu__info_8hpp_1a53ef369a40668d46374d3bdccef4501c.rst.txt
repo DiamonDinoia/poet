@@ -1,0 +1,14 @@
+.. _exhale_function_cpu__info_8hpp_1a53ef369a40668d46374d3bdccef4501c:
+
+Template Function poet::detected_isa
+====================================
+
+- Defined in :ref:`file_include_poet_core_cpu_info.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: poet::detected_isa()
+   :project: POET

@@ -1,0 +1,29 @@
+.. _exhale_struct_structpoet_1_1dispatch__set:
+
+Template Struct dispatch_set
+============================
+
+- Defined in :ref:`file_include_poet_core_dispatch.hpp`
+
+
+Nested Relationships
+--------------------
+
+
+Nested Types
+************
+
+- :ref:`exhale_struct_structpoet_1_1dispatch__set_1_1convert__tuple`
+- :ref:`exhale_struct_structpoet_1_1dispatch__set_1_1convert__tuple_3_01tuple___3_01_vs_8_8_8_01_4_01_4`
+- :ref:`exhale_struct_structpoet_1_1dispatch__set_1_1same__arity`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: poet::dispatch_set
+   :project: POET
+   :members:
+   :protected-members:
+   :undoc-members:

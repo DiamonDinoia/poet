@@ -1,0 +1,14 @@
+.. _exhale_enum_cpu__info_8hpp_1a13f162022ee5b308163ebff1db0cf306:
+
+Enum instruction_set
+====================
+
+- Defined in :ref:`file_include_poet_core_cpu_info.hpp`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: poet::instruction_set
+   :project: POET

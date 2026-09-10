@@ -1,0 +1,14 @@
+.. _exhale_variable_version_8hpp_1ad7abaf6a52908ec082e2b016644f4453:
+
+Variable poet::version_patch
+============================
+
+- Defined in :ref:`file_include_poet_version.hpp`
+
+
+Variable Documentation
+----------------------
+
+
+.. doxygenvariable:: poet::version_patch
+   :project: POET

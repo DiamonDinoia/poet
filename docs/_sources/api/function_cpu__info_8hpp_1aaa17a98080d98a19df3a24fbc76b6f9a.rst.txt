@@ -1,0 +1,14 @@
+.. _exhale_function_cpu__info_8hpp_1aaa17a98080d98a19df3a24fbc76b6f9a:
+
+Function poet::vector_register_count
+====================================
+
+- Defined in :ref:`file_include_poet_core_cpu_info.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: poet::vector_register_count()
+   :project: POET

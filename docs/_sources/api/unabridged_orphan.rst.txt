@@ -1,0 +1,130 @@
+:orphan:
+
+
+Full API
+========
+
+Namespaces
+**********
+
+
+.. toctree::
+   :maxdepth: 5
+
+   namespace_poet.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   namespace_std.rst
+
+Classes and Structs
+*******************
+
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1cache__line__info.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1dispatch__param.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1dispatch__set.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1dispatch__set_1_1convert__tuple.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1dispatch__set_1_1convert__tuple_3_01tuple___3_01_vs_8_8_8_01_4_01_4.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1dispatch__set_1_1same__arity.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1dynamic__for__adaptor.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1no__match__error.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1register__info.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1throw__on__no__match__t.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   structpoet_1_1tuple__.rst
+
+Enums
+*****
+
+
+.. toctree::
+   :maxdepth: 5
+
+   enum_cpu__info_8hpp_1a13f162022ee5b308163ebff1db0cf306.rst
+
+Variables
+*********
+
+
+.. toctree::
+   :maxdepth: 5
+
+   variable_dispatch_8hpp_1a7e30452aafbc35be56c4aee4df34fd61.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   variable_version_8hpp_1a8b2530c09633370fffbb3f6a501267eb.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   variable_version_8hpp_1a0d2f16c22496911d684dbf31b8e79aeb.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   variable_version_8hpp_1ae49f4198604232490431c2af628040aa.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   variable_version_8hpp_1ad7abaf6a52908ec082e2b016644f4453.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   variable_version_8hpp_1a1ec9f15e4ffa606a13346bc697112a3f.rst
+
+Typedefs
+********
+
+
+.. toctree::
+   :maxdepth: 5
+
+   typedef_dispatch_8hpp_1aa4bfd5b4c4e4dcb29eebe0270dc91dd2.rst

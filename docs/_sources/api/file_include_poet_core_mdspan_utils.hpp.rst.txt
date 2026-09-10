@@ -1,0 +1,54 @@
+
+.. _file_include_poet_core_mdspan_utils.hpp:
+
+File mdspan_utils.hpp
+=====================
+
+|exhale_lsh| :ref:`Parent directory <dir_include_poet_core>` (``include/poet/core``)
+
+.. |exhale_lsh| unicode:: U+021B0 .. UPWARDS ARROW WITH TIP LEFTWARDS
+
+
+
+Row-major stride computation for the N-D dispatch in :ref:`file_include_poet_core_dispatch.hpp`. 
+
+
+
+.. contents:: Contents
+   :local:
+   :backlinks: none
+
+Definition (``include/poet/core/mdspan_utils.hpp``)
+---------------------------------------------------
+
+
+
+
+
+
+Includes
+--------
+
+
+- ``array``
+
+- ``cstddef``
+
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_include_poet_core_dispatch.hpp`
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_poet`
+

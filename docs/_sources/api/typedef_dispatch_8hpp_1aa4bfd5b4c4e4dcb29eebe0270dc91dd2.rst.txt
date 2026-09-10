@@ -1,0 +1,14 @@
+.. _exhale_typedef_dispatch_8hpp_1aa4bfd5b4c4e4dcb29eebe0270dc91dd2:
+
+Typedef poet::inclusive_range
+=============================
+
+- Defined in :ref:`file_include_poet_core_dispatch.hpp`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: poet::inclusive_range
+   :project: POET

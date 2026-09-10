@@ -1,0 +1,26 @@
+.. _dir_include_poet_core:
+
+
+Directory core
+==============
+
+
+|exhale_lsh| :ref:`Parent directory <dir_include_poet>` (``include/poet``)
+
+.. |exhale_lsh| unicode:: U+021B0 .. UPWARDS ARROW WITH TIP LEFTWARDS
+
+
+*Directory path:* ``include/poet/core``
+
+
+Files
+-----
+
+- :ref:`file_include_poet_core_cpu_info.hpp`
+- :ref:`file_include_poet_core_dispatch.hpp`
+- :ref:`file_include_poet_core_dynamic_for.hpp`
+- :ref:`file_include_poet_core_for_utils.hpp`
+- :ref:`file_include_poet_core_mdspan_utils.hpp`
+- :ref:`file_include_poet_core_static_for.hpp`
+
+

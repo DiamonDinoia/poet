@@ -1,0 +1,14 @@
+.. _exhale_function_static__for_8hpp_1aa79b1ee3440b36b279cff6ae0bd2222b:
+
+Template Function poet::static_for(Func&&)
+==========================================
+
+- Defined in :ref:`file_include_poet_core_static_for.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: poet::static_for(Func&&)
+   :project: POET

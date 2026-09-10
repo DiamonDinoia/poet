@@ -1,0 +1,17 @@
+.. _exhale_struct_structpoet_1_1dynamic__for__adaptor:
+
+Template Struct dynamic_for_adaptor
+===================================
+
+- Defined in :ref:`file_include_poet_core_dynamic_for.hpp`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: poet::dynamic_for_adaptor
+   :project: POET
+   :members:
+   :protected-members:
+   :undoc-members:

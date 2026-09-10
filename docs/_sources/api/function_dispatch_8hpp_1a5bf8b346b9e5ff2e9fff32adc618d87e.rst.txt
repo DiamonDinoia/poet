@@ -1,0 +1,14 @@
+.. _exhale_function_dispatch_8hpp_1a5bf8b346b9e5ff2e9fff32adc618d87e:
+
+Template Function poet::dispatch(Functor&&, ParamTuple const&, Args&&...)
+=========================================================================
+
+- Defined in :ref:`file_include_poet_core_dispatch.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: poet::dispatch(Functor&&, ParamTuple const&, Args&&...)
+   :project: POET

@@ -1,0 +1,66 @@
+
+.. _file_include_poet_core_static_for.hpp:
+
+File static_for.hpp
+===================
+
+|exhale_lsh| :ref:`Parent directory <dir_include_poet_core>` (``include/poet/core``)
+
+.. |exhale_lsh| unicode:: U+021B0 .. UPWARDS ARROW WITH TIP LEFTWARDS
+
+
+
+Compile-time loop unrolling over integer ranges. 
+
+
+
+.. contents:: Contents
+   :local:
+   :backlinks: none
+
+Definition (``include/poet/core/static_for.hpp``)
+-------------------------------------------------
+
+
+
+
+
+
+Includes
+--------
+
+
+- ``cstddef``
+
+- ``poet/core/for_utils.hpp`` (:ref:`file_include_poet_core_for_utils.hpp`)
+
+- ``type_traits``
+
+- ``utility``
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_include_poet_poet.hpp`
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_poet`
+
+
+Functions
+---------
+
+
+- :ref:`exhale_function_static__for_8hpp_1a79131cbff1d2843d2592a6129480ae55`
+
+- :ref:`exhale_function_static__for_8hpp_1aa79b1ee3440b36b279cff6ae0bd2222b`
+

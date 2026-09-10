@@ -1,0 +1,274 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>File dynamic_for.hpp &mdash; POET  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/collapsible-lists/css/tree_view.css?v=a885cde7" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/collapsible-lists/js/CollapsibleLists.compressed.js?v=73120307"></script>
+      <script src="../_static/collapsible-lists/js/apply-collapsible-lists.js?v=660e4f45"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="File for_utils.hpp" href="file_include_poet_core_for_utils.hpp.html" />
+    <link rel="prev" title="File dispatch.hpp" href="file_include_poet_core_dispatch.hpp.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            POET
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../install.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../install.html#local-cmake-project">Local CMake project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../install.html#installed-package">Installed package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../install.html#fetchcontent">FetchContent</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../install.html#non-cmake-builds">Non-CMake builds</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Guides</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../guides/static_for.html">Static Loops</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../guides/static_for.html#basic-form">Basic form</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guides/static_for.html#step-and-direction">Step and direction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guides/static_for.html#block-size">Block size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guides/static_for.html#runnable-example">Runnable example</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../guides/dynamic_for.html">Dynamic Loops</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../guides/dynamic_for.html#basic-form">Basic form</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guides/dynamic_for.html#lane-aware-callbacks">Lane-aware callbacks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guides/dynamic_for.html#compile-time-step">Compile-time step</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guides/dynamic_for.html#c-20-adaptor">C++20 adaptor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guides/dynamic_for.html#runnable-example">Runnable example</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../guides/dispatch.html">Dispatch</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../guides/dispatch.html#single-parameter">Single parameter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guides/dispatch.html#multiple-parameters">Multiple parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guides/dispatch.html#sparse-combinations">Sparse combinations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guides/dispatch.html#error-handling">Error handling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guides/dispatch.html#runnable-examples">Runnable examples</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../guides/benchmarks.html">Benchmarks</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../guides/benchmarks.html#run-locally">Run locally</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guides/benchmarks.html#key-takeaways">Key takeaways</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guides/benchmarks.html#run-a-microbench-on-compiler-explorer">Run a microbench on Compiler Explorer</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="library_root.html">POET API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="library_root.html#class-hierarchy">Class Hierarchy</a></li>
+<li class="toctree-l2"><a class="reference internal" href="library_root.html#file-hierarchy">File Hierarchy</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="library_root.html#full-api">Full API</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="library_root.html#functions">Functions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="function_cpu__info_8hpp_1a7cdced62aa3b3b0ed8bed444540b3af4.html">Template Function poet::available_registers</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_cpu__info_8hpp_1ae7ac6ddfe0982113373095a1c75eb226.html">Template Function poet::cache_line</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_cpu__info_8hpp_1af20d8e021b4d91adbaf22cf54eeddcea.html">Template Function poet::constructive_interference_size</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_cpu__info_8hpp_1a8800d92e985a249699f2cbc3e1fcfab4.html">Template Function poet::destructive_interference_size</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_cpu__info_8hpp_1a53ef369a40668d46374d3bdccef4501c.html">Template Function poet::detected_isa</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_dispatch_8hpp_1a79a2854c7465d3e8b60ca58a09babc07.html">Template Function poet::dispatch(Functor&amp;&amp;, FirstParam&amp;&amp;, Rest&amp;&amp;…)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_dispatch_8hpp_1a5bf8b346b9e5ff2e9fff32adc618d87e.html">Template Function poet::dispatch(Functor&amp;&amp;, ParamTuple const&amp;, Args&amp;&amp;…)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_dispatch_8hpp_1ae2abb9b9f345cdbac3d07c8af3091c9e.html">Template Function poet::dispatch(Functor&amp;&amp;, const dispatch_set&lt;ValueType, Tuples…&gt;&amp;, Args&amp;&amp;…)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_dispatch_8hpp_1a9b1a66890b40e53b50ceb2241cbb2077.html">Template Function poet::dispatch(throw_on_no_match_t, Functor&amp;&amp;, const dispatch_set&lt;ValueType, Tuples…&gt;&amp;, Args&amp;&amp;…)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_dispatch_8hpp_1a988c6af34ee4109bf4bf4c5a6eb3afd0.html">Template Function poet::dispatch(throw_on_no_match_t, Functor&amp;&amp;, FirstParam&amp;&amp;, Rest&amp;&amp;…)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_dispatch_8hpp_1ad629458a1a921ce24b7e0e375a11fc65.html">Template Function poet::dispatch(throw_on_no_match_t, Functor&amp;&amp;, ParamTuple const&amp;, Args&amp;&amp;…)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_dynamic__for_8hpp_1a2c4fc4de499072f1af65cd9de2ce7aac.html">Template Function poet::dynamic_for(T1, T2, T3, Func&amp;&amp;)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_dynamic__for_8hpp_1aafabe6b4658ce0e8b1ac53508bf4914c.html">Template Function poet::dynamic_for(T1, T2, Func&amp;&amp;)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_dynamic__for_8hpp_1ae12044ae7d668014a4056686b11b55e3.html">Template Function poet::dynamic_for(T1, T2, Func&amp;&amp;)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_dynamic__for_8hpp_1ae900a5a153ddeee7b9539b7c87c4643c.html">Template Function poet::dynamic_for(std::size_t, Func&amp;&amp;)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_dynamic__for_8hpp_1a30e88a84e270547148f63b11a82c49c0.html">Template Function poet::dynamic_for(std::size_t, Func&amp;&amp;, Args…)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_dynamic__for_8hpp_1a52d6ae56a994d308ee69791a75a72ffb.html">Template Function poet::make_dynamic_for</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_dynamic__for_8hpp_1aa2012fff315beae2c9dc17d866c4430b.html">Template Function poet::operator|(Range&amp;&amp;, dynamic_for_adaptor&lt;Func, Unroll&gt; const&amp;)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_dynamic__for_8hpp_1a040af26fef3690a8dcba589c107ea0af.html">Template Function poet::operator|(std::tuple&lt;B, E, S&gt; const&amp;, dynamic_for_adaptor&lt;Func, Unroll&gt; const&amp;)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_cpu__info_8hpp_1a1238544685f5461d8a7f5c5169c30b55.html">Function poet::registers_for</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_static__for_8hpp_1a79131cbff1d2843d2592a6129480ae55.html">Template Function poet::static_for(Func&amp;&amp;)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_static__for_8hpp_1aa79b1ee3440b36b279cff6ae0bd2222b.html">Template Function poet::static_for(Func&amp;&amp;)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_cpu__info_8hpp_1a33f26e538caf79974edba4874513d4b1.html">Template Function poet::vector_lanes_32bit</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_cpu__info_8hpp_1afbe3648db0e7731c159a8462729efd91.html">Template Function poet::vector_lanes_64bit</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_cpu__info_8hpp_1a44f179b3051ac3b0f245154499fb92f8.html">Template Function poet::vector_register_count</a></li>
+<li class="toctree-l4"><a class="reference internal" href="function_cpu__info_8hpp_1ad391f3c2b3f4691c7efae76958a1f86c.html">Template Function poet::vector_width_bits</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="library_root.html#directories">Directories</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="dir_include.html">Directory include</a></li>
+<li class="toctree-l4"><a class="reference internal" href="dir_include_poet.html">Directory poet</a></li>
+<li class="toctree-l4"><a class="reference internal" href="dir_include_poet_core.html">Directory core</a></li>
+</ul>
+</li>
+<li class="toctree-l3 current"><a class="reference internal" href="library_root.html#files">Files</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="file_include_poet_core_cpu_info.hpp.html">File cpu_info.hpp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="file_include_poet_core_dispatch.hpp.html">File dispatch.hpp</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">File dynamic_for.hpp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="file_include_poet_core_for_utils.hpp.html">File for_utils.hpp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="file_include_poet_core_mdspan_utils.hpp.html">File mdspan_utils.hpp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="file_include_poet_poet.hpp.html">File poet.hpp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="file_include_poet_core_static_for.hpp.html">File static_for.hpp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="file_include_poet_version.hpp.html">File version.hpp</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">POET</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="library_root.html">POET API Reference</a></li>
+      <li class="breadcrumb-item active">File dynamic_for.hpp</li>
+      <li class="wy-breadcrumbs-aside">
+              <a href="https://github.com/flatironinstitute/poet/blob/main/docs/api/file_include_poet_core_dynamic_for.hpp.rst" class="fa fa-github"> Edit on GitHub</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="file-dynamic-for-hpp">
+<span id="file-include-poet-core-dynamic-for-hpp"></span><h1>File dynamic_for.hpp<a class="headerlink" href="#file-dynamic-for-hpp" title="Link to this heading"></a></h1>
+<p>↰ <a class="reference internal" href="dir_include_poet_core.html#dir-include-poet-core"><span class="std std-ref">Parent directory</span></a> (<code class="docutils literal notranslate"><span class="pre">include/poet/core</span></code>)</p>
+<p>Runtime-bounded loops with a compile-time-unrolled body.</p>
+<nav class="contents local" id="contents">
+<p class="topic-title">Contents</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="#definition-include-poet-core-dynamic-for-hpp" id="id1">Definition (<code class="docutils literal notranslate"><span class="pre">include/poet/core/dynamic_for.hpp</span></code>)</a></p></li>
+<li><p><a class="reference internal" href="#detailed-description" id="id2">Detailed Description</a></p></li>
+<li><p><a class="reference internal" href="#includes" id="id3">Includes</a></p></li>
+<li><p><a class="reference internal" href="#included-by" id="id4">Included By</a></p></li>
+<li><p><a class="reference internal" href="#namespaces" id="id5">Namespaces</a></p></li>
+<li><p><a class="reference internal" href="#classes" id="id6">Classes</a></p></li>
+<li><p><a class="reference internal" href="#functions" id="id7">Functions</a></p></li>
+</ul>
+</nav>
+<section id="definition-include-poet-core-dynamic-for-hpp">
+<h2>Definition (<code class="docutils literal notranslate"><span class="pre">include/poet/core/dynamic_for.hpp</span></code>)<a class="headerlink" href="#definition-include-poet-core-dynamic-for-hpp" title="Link to this heading"></a></h2>
+</section>
+<section id="detailed-description">
+<h2>Detailed Description<a class="headerlink" href="#detailed-description" title="Link to this heading"></a></h2>
+<p>One <code class="docutils literal notranslate"><span class="pre">run_loop</span></code> template covers every public overload: the stride, the callable form, and the extra by-value arguments are template parameters, so no tag object or dispatch value is passed at run time. The main loop emits fully unrolled blocks of <code class="docutils literal notranslate"><span class="pre">Unroll</span></code> iterations; the tail is a binary decomposition with O(log2 Unroll) branches; a range smaller than <code class="docutils literal notranslate"><span class="pre">Unroll</span></code> is inlined so the lane constants stay visible.</p>
+<p><code class="docutils literal notranslate"><span class="pre">Unroll</span></code> is exact: <code class="docutils literal notranslate"><span class="pre">POET_NO_UNROLL</span></code> keeps the compiler from unrolling the main loop again and <code class="docutils literal notranslate"><span class="pre">opaque_count</span></code> hides the block count from the complete unroller. A range of exactly <code class="docutils literal notranslate"><span class="pre">Unroll</span></code> is one block and no loop. <code class="docutils literal notranslate"><span class="pre">tests/exact_unroll_check.cpp</span></code> counts the bodies.</p>
+<p><code class="docutils literal notranslate"><span class="pre">dynamic_for</span></code> pays off for multi-accumulator work: the lane form (<code class="docutils literal notranslate"><span class="pre">func(lane_constant,</span> <span class="pre">index)</span></code>) gives one accumulator per lane, breaking the serial dependence of a plain loop. For element-wise work or one serial chain, a plain <code class="docutils literal notranslate"><span class="pre">for</span></code> loop has less overhead.</p>
+</section>
+<section id="includes">
+<h2>Includes<a class="headerlink" href="#includes" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">cstddef</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">limits</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">poet/core/for_utils.hpp</span></code> (<a class="reference internal" href="file_include_poet_core_for_utils.hpp.html#file-include-poet-core-for-utils-hpp"><span class="std std-ref">File for_utils.hpp</span></a>)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ranges</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tuple</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">type_traits</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">utility</span></code></p></li>
+</ul>
+</section>
+<section id="included-by">
+<h2>Included By<a class="headerlink" href="#included-by" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="file_include_poet_poet.hpp.html#file-include-poet-poet-hpp"><span class="std std-ref">File poet.hpp</span></a></p></li>
+</ul>
+</section>
+<section id="namespaces">
+<h2>Namespaces<a class="headerlink" href="#namespaces" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="namespace_poet.html#namespace-poet"><span class="std std-ref">Namespace poet</span></a></p></li>
+</ul>
+</section>
+<section id="classes">
+<h2>Classes<a class="headerlink" href="#classes" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="structpoet_1_1dynamic__for__adaptor.html#exhale-struct-structpoet-1-1dynamic-for-adaptor"><span class="std std-ref">Template Struct dynamic_for_adaptor</span></a></p></li>
+</ul>
+</section>
+<section id="functions">
+<h2>Functions<a class="headerlink" href="#functions" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="function_dynamic__for_8hpp_1a2c4fc4de499072f1af65cd9de2ce7aac.html#exhale-function-dynamic-for-8hpp-1a2c4fc4de499072f1af65cd9de2ce7aac"><span class="std std-ref">Template Function poet::dynamic_for(T1, T2, T3, Func&amp;&amp;)</span></a></p></li>
+<li><p><a class="reference internal" href="function_dynamic__for_8hpp_1aafabe6b4658ce0e8b1ac53508bf4914c.html#exhale-function-dynamic-for-8hpp-1aafabe6b4658ce0e8b1ac53508bf4914c"><span class="std std-ref">Template Function poet::dynamic_for(T1, T2, Func&amp;&amp;)</span></a></p></li>
+<li><p><a class="reference internal" href="function_dynamic__for_8hpp_1ae12044ae7d668014a4056686b11b55e3.html#exhale-function-dynamic-for-8hpp-1ae12044ae7d668014a4056686b11b55e3"><span class="std std-ref">Template Function poet::dynamic_for(T1, T2, Func&amp;&amp;)</span></a></p></li>
+<li><p><a class="reference internal" href="function_dynamic__for_8hpp_1ae900a5a153ddeee7b9539b7c87c4643c.html#exhale-function-dynamic-for-8hpp-1ae900a5a153ddeee7b9539b7c87c4643c"><span class="std std-ref">Template Function poet::dynamic_for(std::size_t, Func&amp;&amp;)</span></a></p></li>
+<li><p><a class="reference internal" href="function_dynamic__for_8hpp_1a30e88a84e270547148f63b11a82c49c0.html#exhale-function-dynamic-for-8hpp-1a30e88a84e270547148f63b11a82c49c0"><span class="std std-ref">Template Function poet::dynamic_for(std::size_t, Func&amp;&amp;, Args…)</span></a></p></li>
+<li><p><a class="reference internal" href="function_dynamic__for_8hpp_1a52d6ae56a994d308ee69791a75a72ffb.html#exhale-function-dynamic-for-8hpp-1a52d6ae56a994d308ee69791a75a72ffb"><span class="std std-ref">Template Function poet::make_dynamic_for</span></a></p></li>
+<li><p><a class="reference internal" href="function_dynamic__for_8hpp_1aa2012fff315beae2c9dc17d866c4430b.html#exhale-function-dynamic-for-8hpp-1aa2012fff315beae2c9dc17d866c4430b"><span class="std std-ref">Template Function poet::operator|(Range&amp;&amp;, dynamic_for_adaptor&lt;Func, Unroll&gt; const&amp;)</span></a></p></li>
+<li><p><a class="reference internal" href="function_dynamic__for_8hpp_1a040af26fef3690a8dcba589c107ea0af.html#exhale-function-dynamic-for-8hpp-1a040af26fef3690a8dcba589c107ea0af"><span class="std std-ref">Template Function poet::operator|(std::tuple&lt;B, E, S&gt; const&amp;, dynamic_for_adaptor&lt;Func, Unroll&gt; const&amp;)</span></a></p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="file_include_poet_core_dispatch.hpp.html" class="btn btn-neutral float-left" title="File dispatch.hpp" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="file_include_poet_core_for_utils.hpp.html" class="btn btn-neutral float-right" title="File for_utils.hpp" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, POET Authors.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

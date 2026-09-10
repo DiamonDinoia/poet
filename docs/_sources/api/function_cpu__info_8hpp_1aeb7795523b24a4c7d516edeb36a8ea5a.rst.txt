@@ -1,0 +1,14 @@
+.. _exhale_function_cpu__info_8hpp_1aeb7795523b24a4c7d516edeb36a8ea5a:
+
+Function poet::available_registers
+==================================
+
+- Defined in :ref:`file_include_poet_core_cpu_info.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: poet::available_registers()
+   :project: POET

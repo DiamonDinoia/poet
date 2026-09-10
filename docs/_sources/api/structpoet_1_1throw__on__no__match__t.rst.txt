@@ -1,0 +1,17 @@
+.. _exhale_struct_structpoet_1_1throw__on__no__match__t:
+
+Struct throw_on_no_match_t
+==========================
+
+- Defined in :ref:`file_include_poet_core_dispatch.hpp`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: poet::throw_on_no_match_t
+   :project: POET
+   :members:
+   :protected-members:
+   :undoc-members:

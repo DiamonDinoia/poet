@@ -1,0 +1,17 @@
+.. _exhale_struct_structpoet_1_1dispatch__param:
+
+Template Struct dispatch_param
+==============================
+
+- Defined in :ref:`file_include_poet_core_dispatch.hpp`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: poet::dispatch_param
+   :project: POET
+   :members:
+   :protected-members:
+   :undoc-members:

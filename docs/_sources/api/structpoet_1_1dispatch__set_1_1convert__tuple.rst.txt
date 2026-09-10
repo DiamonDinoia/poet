@@ -1,0 +1,23 @@
+.. _exhale_struct_structpoet_1_1dispatch__set_1_1convert__tuple:
+
+Template Struct dispatch_set::convert_tuple
+===========================================
+
+- Defined in :ref:`file_include_poet_core_dispatch.hpp`
+
+
+Nested Relationships
+--------------------
+
+This struct is a nested type of :ref:`exhale_struct_structpoet_1_1dispatch__set`.
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: poet::dispatch_set::convert_tuple
+   :project: POET
+   :members:
+   :protected-members:
+   :undoc-members:

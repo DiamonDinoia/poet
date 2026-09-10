@@ -1,0 +1,14 @@
+.. _exhale_function_dynamic__for_8hpp_1a52d6ae56a994d308ee69791a75a72ffb:
+
+Template Function poet::make_dynamic_for
+========================================
+
+- Defined in :ref:`file_include_poet_core_dynamic_for.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: poet::make_dynamic_for(F&&)
+   :project: POET

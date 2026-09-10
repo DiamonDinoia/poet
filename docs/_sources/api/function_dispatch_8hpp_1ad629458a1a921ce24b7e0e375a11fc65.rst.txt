@@ -1,0 +1,14 @@
+.. _exhale_function_dispatch_8hpp_1ad629458a1a921ce24b7e0e375a11fc65:
+
+Template Function poet::dispatch(throw_on_no_match_t, Functor&&, ParamTuple const&, Args&&...)
+==============================================================================================
+
+- Defined in :ref:`file_include_poet_core_dispatch.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: poet::dispatch(throw_on_no_match_t, Functor&&, ParamTuple const&, Args&&...)
+   :project: POET

@@ -1,0 +1,17 @@
+.. _exhale_struct_structpoet_1_1register__info:
+
+Struct register_info
+====================
+
+- Defined in :ref:`file_include_poet_core_cpu_info.hpp`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: poet::register_info
+   :project: POET
+   :members:
+   :protected-members:
+   :undoc-members:

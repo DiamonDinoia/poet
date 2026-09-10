@@ -1,0 +1,14 @@
+.. _exhale_function_cpu__info_8hpp_1ae7ac6ddfe0982113373095a1c75eb226:
+
+Template Function poet::cache_line
+==================================
+
+- Defined in :ref:`file_include_poet_core_cpu_info.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: poet::cache_line()
+   :project: POET

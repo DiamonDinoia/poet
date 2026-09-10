@@ -1,0 +1,102 @@
+
+.. _file_include_poet_core_dynamic_for.hpp:
+
+File dynamic_for.hpp
+====================
+
+|exhale_lsh| :ref:`Parent directory <dir_include_poet_core>` (``include/poet/core``)
+
+.. |exhale_lsh| unicode:: U+021B0 .. UPWARDS ARROW WITH TIP LEFTWARDS
+
+
+
+Runtime-bounded loops with a compile-time-unrolled body. 
+
+
+
+.. contents:: Contents
+   :local:
+   :backlinks: none
+
+Definition (``include/poet/core/dynamic_for.hpp``)
+--------------------------------------------------
+
+
+
+
+Detailed Description
+--------------------
+
+One ``run_loop`` template covers every public overload: the stride, the callable form, and the extra by-value arguments are template parameters, so no tag object or dispatch value is passed at run time. The main loop emits fully unrolled blocks of ``Unroll`` iterations; the tail is a binary decomposition with O(log2 Unroll) branches; a range smaller than ``Unroll`` is inlined so the lane constants stay visible.
+
+``Unroll`` is exact: ``POET_NO_UNROLL`` keeps the compiler from unrolling the main loop again and ``opaque_count`` hides the block count from the complete unroller. A range of exactly ``Unroll`` is one block and no loop. ``tests/exact_unroll_check.cpp`` counts the bodies.
+
+``dynamic_for`` pays off for multi-accumulator work: the lane form (``func(lane_constant, index)``) gives one accumulator per lane, breaking the serial dependence of a plain loop. For element-wise work or one serial chain, a plain ``for`` loop has less overhead. 
+
+
+
+
+Includes
+--------
+
+
+- ``cstddef``
+
+- ``limits``
+
+- ``poet/core/for_utils.hpp`` (:ref:`file_include_poet_core_for_utils.hpp`)
+
+
+- ``ranges``
+
+- ``tuple``
+
+- ``type_traits``
+
+- ``utility``
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_include_poet_poet.hpp`
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_poet`
+
+
+Classes
+-------
+
+
+- :ref:`exhale_struct_structpoet_1_1dynamic__for__adaptor`
+
+
+Functions
+---------
+
+
+- :ref:`exhale_function_dynamic__for_8hpp_1a2c4fc4de499072f1af65cd9de2ce7aac`
+
+- :ref:`exhale_function_dynamic__for_8hpp_1aafabe6b4658ce0e8b1ac53508bf4914c`
+
+- :ref:`exhale_function_dynamic__for_8hpp_1ae12044ae7d668014a4056686b11b55e3`
+
+- :ref:`exhale_function_dynamic__for_8hpp_1ae900a5a153ddeee7b9539b7c87c4643c`
+
+- :ref:`exhale_function_dynamic__for_8hpp_1a30e88a84e270547148f63b11a82c49c0`
+
+- :ref:`exhale_function_dynamic__for_8hpp_1a52d6ae56a994d308ee69791a75a72ffb`
+
+- :ref:`exhale_function_dynamic__for_8hpp_1aa2012fff315beae2c9dc17d866c4430b`
+
+- :ref:`exhale_function_dynamic__for_8hpp_1a040af26fef3690a8dcba589c107ea0af`
+

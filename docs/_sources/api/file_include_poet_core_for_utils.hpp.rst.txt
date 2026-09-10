@@ -1,0 +1,58 @@
+
+.. _file_include_poet_core_for_utils.hpp:
+
+File for_utils.hpp
+==================
+
+|exhale_lsh| :ref:`Parent directory <dir_include_poet_core>` (``include/poet/core``)
+
+.. |exhale_lsh| unicode:: U+021B0 .. UPWARDS ARROW WITH TIP LEFTWARDS
+
+
+
+Internal helpers shared by the loop primitives. 
+
+
+
+.. contents:: Contents
+   :local:
+   :backlinks: none
+
+Definition (``include/poet/core/for_utils.hpp``)
+------------------------------------------------
+
+
+
+
+
+
+Includes
+--------
+
+
+- ``cstddef``
+
+
+- ``type_traits``
+
+- ``utility``
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_include_poet_core_dynamic_for.hpp`
+
+- :ref:`file_include_poet_core_static_for.hpp`
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_poet`
+

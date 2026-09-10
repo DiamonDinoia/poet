@@ -1,0 +1,14 @@
+.. _exhale_variable_dispatch_8hpp_1a7e30452aafbc35be56c4aee4df34fd61:
+
+Variable poet::throw_on_no_match
+================================
+
+- Defined in :ref:`file_include_poet_core_dispatch.hpp`
+
+
+Variable Documentation
+----------------------
+
+
+.. doxygenvariable:: poet::throw_on_no_match
+   :project: POET

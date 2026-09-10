@@ -1,0 +1,120 @@
+
+.. _file_include_poet_core_dispatch.hpp:
+
+File dispatch.hpp
+=================
+
+|exhale_lsh| :ref:`Parent directory <dir_include_poet_core>` (``include/poet/core``)
+
+.. |exhale_lsh| unicode:: U+021B0 .. UPWARDS ARROW WITH TIP LEFTWARDS
+
+
+
+Runtime-to-compile-time dispatch for integer choices and tuples. 
+
+
+
+.. contents:: Contents
+   :local:
+   :backlinks: none
+
+Definition (``include/poet/core/dispatch.hpp``)
+-----------------------------------------------
+
+
+
+
+
+
+Includes
+--------
+
+
+- ``algorithm``
+
+- ``array``
+
+- ``cstddef``
+
+- ``optional``
+
+
+- ``poet/core/mdspan_utils.hpp`` (:ref:`file_include_poet_core_mdspan_utils.hpp`)
+
+- ``stdexcept``
+
+- ``tuple``
+
+- ``type_traits``
+
+- ``utility``
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_include_poet_poet.hpp`
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_poet`
+
+
+Classes
+-------
+
+
+- :ref:`exhale_struct_structpoet_1_1dispatch__param`
+
+- :ref:`exhale_struct_structpoet_1_1dispatch__set`
+
+- :ref:`exhale_struct_structpoet_1_1dispatch__set_1_1convert__tuple`
+
+- :ref:`exhale_struct_structpoet_1_1dispatch__set_1_1convert__tuple_3_01tuple___3_01_vs_8_8_8_01_4_01_4`
+
+- :ref:`exhale_struct_structpoet_1_1dispatch__set_1_1same__arity`
+
+- :ref:`exhale_struct_structpoet_1_1no__match__error`
+
+- :ref:`exhale_struct_structpoet_1_1throw__on__no__match__t`
+
+- :ref:`exhale_struct_structpoet_1_1tuple__`
+
+
+Functions
+---------
+
+
+- :ref:`exhale_function_dispatch_8hpp_1a79a2854c7465d3e8b60ca58a09babc07`
+
+- :ref:`exhale_function_dispatch_8hpp_1a5bf8b346b9e5ff2e9fff32adc618d87e`
+
+- :ref:`exhale_function_dispatch_8hpp_1ae2abb9b9f345cdbac3d07c8af3091c9e`
+
+- :ref:`exhale_function_dispatch_8hpp_1a9b1a66890b40e53b50ceb2241cbb2077`
+
+- :ref:`exhale_function_dispatch_8hpp_1a988c6af34ee4109bf4bf4c5a6eb3afd0`
+
+- :ref:`exhale_function_dispatch_8hpp_1ad629458a1a921ce24b7e0e375a11fc65`
+
+
+Typedefs
+--------
+
+
+- :ref:`exhale_typedef_dispatch_8hpp_1aa4bfd5b4c4e4dcb29eebe0270dc91dd2`
+
+
+Variables
+---------
+
+
+- :ref:`exhale_variable_dispatch_8hpp_1a7e30452aafbc35be56c4aee4df34fd61`
+

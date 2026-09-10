@@ -1,0 +1,99 @@
+
+.. _file_include_poet_core_cpu_info.hpp:
+
+File cpu_info.hpp
+=================
+
+|exhale_lsh| :ref:`Parent directory <dir_include_poet_core>` (``include/poet/core``)
+
+.. |exhale_lsh| unicode:: U+021B0 .. UPWARDS ARROW WITH TIP LEFTWARDS
+
+
+
+Compile-time CPU register, vector-width, and cache-line queries. 
+
+
+
+.. contents:: Contents
+   :local:
+   :backlinks: none
+
+Definition (``include/poet/core/cpu_info.hpp``)
+-----------------------------------------------
+
+
+
+
+Detailed Description
+--------------------
+
+Every value resolves from the compiler's target predefines; the result describes the compile target, not the machine that runs the binary. 
+
+
+
+
+Includes
+--------
+
+
+- ``cstddef``
+
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_include_poet_poet.hpp`
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_poet`
+
+
+Classes
+-------
+
+
+- :ref:`exhale_struct_structpoet_1_1cache__line__info`
+
+- :ref:`exhale_struct_structpoet_1_1register__info`
+
+
+Enums
+-----
+
+
+- :ref:`exhale_enum_cpu__info_8hpp_1a13f162022ee5b308163ebff1db0cf306`
+
+
+Functions
+---------
+
+
+- :ref:`exhale_function_cpu__info_8hpp_1a7cdced62aa3b3b0ed8bed444540b3af4`
+
+- :ref:`exhale_function_cpu__info_8hpp_1ae7ac6ddfe0982113373095a1c75eb226`
+
+- :ref:`exhale_function_cpu__info_8hpp_1af20d8e021b4d91adbaf22cf54eeddcea`
+
+- :ref:`exhale_function_cpu__info_8hpp_1a8800d92e985a249699f2cbc3e1fcfab4`
+
+- :ref:`exhale_function_cpu__info_8hpp_1a53ef369a40668d46374d3bdccef4501c`
+
+- :ref:`exhale_function_cpu__info_8hpp_1a1238544685f5461d8a7f5c5169c30b55`
+
+- :ref:`exhale_function_cpu__info_8hpp_1a33f26e538caf79974edba4874513d4b1`
+
+- :ref:`exhale_function_cpu__info_8hpp_1afbe3648db0e7731c159a8462729efd91`
+
+- :ref:`exhale_function_cpu__info_8hpp_1a44f179b3051ac3b0f245154499fb92f8`
+
+- :ref:`exhale_function_cpu__info_8hpp_1ad391f3c2b3f4691c7efae76958a1f86c`
+
