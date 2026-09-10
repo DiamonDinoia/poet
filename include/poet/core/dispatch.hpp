@@ -158,8 +158,6 @@ namespace detail {
     template<typename Seq> struct sparse_index;
 
     template<typename V, V... Values> struct sparse_index<std::integer_sequence<V, Values...>> {
-        using seq_type = std::integer_sequence<V, Values...>;
-        using value_type = V;
         static constexpr std::size_t value_count = sizeof...(Values);
 
         struct sorted_data_t {
@@ -529,10 +527,6 @@ namespace detail {
         };
 
         template<std::size_t FlatIdx> struct nd_index_caller {
-            template<std::size_t... Is>
-            static auto make_ve(std::index_sequence<Is...>) -> value_extractor<FlatIdx, Is...>;
-            using VE = decltype(make_ve(std::make_index_sequence<sizeof...(Seqs)>{}));
-
             template<typename R, std::size_t... SeqIdx>
             static POET_FORCEINLINE auto invoke(Functor &func, std::index_sequence<SeqIdx...> /*idx*/, Args &&...args)
               -> R {
