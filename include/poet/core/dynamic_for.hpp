@@ -35,19 +35,17 @@ namespace detail {
 
     // --- Callable form: resolved once per instantiation, never per iteration ---
 
+    /// \brief True when the callable takes the lane as a leading `integral_constant`.
+    /// Given `is_df_callable_v`, "not this" means the index-only form.
+    template<typename F, typename T, typename... Args>
+    inline constexpr bool wants_lane_v = std::is_invocable_v<F &, std::integral_constant<std::size_t, 0>, T, Args...>;
+
     /// \brief True if F accepts `(index, args...)` or `(lane_constant, index, args...)`.
     ///
     /// Guards the enable_if on every public overload so a non-callable Func
     /// slot is removed from overload resolution.
     template<typename F, typename T, typename... Args>
-    inline constexpr bool is_df_callable_v =
-      std::is_invocable_v<F &, T, Args...>
-      || std::is_invocable_v<F &, std::integral_constant<std::size_t, 0>, T, Args...>;
-
-    /// \brief True when the callable takes the lane as a leading `integral_constant`.
-    /// Given `is_df_callable_v`, "not this" means the index-only form.
-    template<typename F, typename T, typename... Args>
-    inline constexpr bool wants_lane_v = std::is_invocable_v<F &, std::integral_constant<std::size_t, 0>, T, Args...>;
+    inline constexpr bool is_df_callable_v = std::is_invocable_v<F &, T, Args...> || wants_lane_v<F, T, Args...>;
 
     template<bool WantsLane, std::size_t Lane, typename Func, typename T, typename... Args>
     POET_FORCEINLINE constexpr void invoke_lane(Func &func, T index, Args... args) {

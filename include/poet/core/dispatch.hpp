@@ -628,20 +628,11 @@ namespace detail {
     template<typename R, typename EntryFn, typename FunctorFwd, typename... Args>
     POET_FORCEINLINE auto invoke_table_entry(FunctorFwd &functor, EntryFn entry, Args &&...args) -> R {
         using FT = std::decay_t<FunctorFwd>;
+        // `return <void expression>` is valid in a void function: no result-type split needed.
         if constexpr (is_stateless_v<FT>) {
-            if constexpr (std::is_void_v<R>) {
-                entry(std::forward<Args>(args)...);
-                return;
-            } else {
-                return entry(std::forward<Args>(args)...);
-            }
+            return entry(std::forward<Args>(args)...);
         } else {
-            if constexpr (std::is_void_v<R>) {
-                entry(static_cast<FT &>(functor), std::forward<Args>(args)...);
-                return;
-            } else {
-                return entry(static_cast<FT &>(functor), std::forward<Args>(args)...);
-            }
+            return entry(static_cast<FT &>(functor), std::forward<Args>(args)...);
         }
     }
 
@@ -697,15 +688,12 @@ namespace detail {
 }// namespace detail
 
 namespace detail {
-    template<typename... Ts> struct leading_param_count;
+    template<typename... Ts> struct leading_param_count : std::integral_constant<std::size_t, 0> {};
 
-    template<> struct leading_param_count<> {
-        static constexpr std::size_t value = 0;
-    };
-
-    template<typename First, typename... Rest> struct leading_param_count<First, Rest...> {
-        static constexpr std::size_t value = is_dispatch_param_v<First> ? (1 + leading_param_count<Rest...>::value) : 0;
-    };
+    template<typename First, typename... Rest>
+    struct leading_param_count<First, Rest...>
+      : std::integral_constant<std::size_t,
+          is_dispatch_param_v<First> ? (1 + leading_param_count<Rest...>::value) : 0> {};
 
     template<bool ThrowOnNoMatch, typename Functor, std::size_t... ParamIdx, std::size_t... ArgIdx, typename... All>
     POET_FORCEINLINE auto dispatch_split_impl(Functor &functor,
