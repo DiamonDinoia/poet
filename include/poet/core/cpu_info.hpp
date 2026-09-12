@@ -122,101 +122,48 @@ namespace detail {
 
     // Value, not the inline variable, so callers can carry it in template identity.
     POET_CPP20_CONSTEVAL auto get_register_info(instruction_set isa, std::size_t sve_bits) noexcept -> register_info {
+        // Lanes derive from the width in every row; the initialized defaults
+        // cover the {16, 16, 128} rows (sse2/sse4_2/generic).
+        std::size_t gprs = 16;
+        std::size_t vecs = 16;
+        std::size_t width = 128;
         switch (isa) {
-        case instruction_set::sse2:
-        case instruction_set::sse4_2:
-            return register_info{
-                16,// gp_registers
-                16,// vector_registers
-                128,// vector_width_bits
-                2,// lanes_64bit
-                4,// lanes_32bit
-                isa,
-            };
-
         case instruction_set::avx:
         case instruction_set::avx2:
-            return register_info{
-                16,// gp_registers
-                16,// vector_registers
-                256,// vector_width_bits
-                4,// lanes_64bit
-                8,// lanes_32bit
-                isa,
-            };
-
+            width = 256;
+            break;
         case instruction_set::avx_512:
-            return register_info{
-                16,// gp_registers
-                32,// vector_registers
-                512,// vector_width_bits
-                8,// lanes_64bit
-                16,// lanes_32bit
-                isa,
-            };
-
+            vecs = 32;
+            width = 512;
+            break;
         case instruction_set::arm_neon:
-            return register_info{
-                31,// gp_registers
-                32,// vector_registers
-                128,// vector_width_bits
-                2,// lanes_64bit
-                4,// lanes_32bit
-                isa,
-            };
-
+            gprs = 31;
+            vecs = 32;
+            break;
         case instruction_set::arm_sve:
         case instruction_set::arm_sve2:
-            return register_info{
-                31,// gp_registers
-                32,// vector_registers
-                sve_bits,// vector_width_bits
-                sve_bits / 64,// lanes_64bit
-                sve_bits / 32,// lanes_32bit
-                isa,
-            };
-
+            gprs = 31;
+            vecs = 32;
+            width = sve_bits;
+            break;
         case instruction_set::ppc_altivec:
-            return register_info{
-                32,// gp_registers
-                32,// vector_registers
-                128,// vector_width_bits
-                2,// lanes_64bit
-                4,// lanes_32bit
-                isa,
-            };
-
-        case instruction_set::ppc_vsx:
-            return register_info{
-                32,// gp_registers
-                64,// vector_registers
-                128,// vector_width_bits
-                2,// lanes_64bit
-                4,// lanes_32bit
-                isa,
-            };
-
         case instruction_set::mips_msa:
-            return register_info{
-                32,// gp_registers
-                32,// vector_registers
-                128,// vector_width_bits
-                2,// lanes_64bit
-                4,// lanes_32bit
-                isa,
-            };
-
+            gprs = 32;
+            vecs = 32;
+            break;
+        case instruction_set::ppc_vsx:
+            gprs = 32;
+            vecs = 64;
+            break;
+        case instruction_set::sse2:
+        case instruction_set::sse4_2:
         case instruction_set::generic:
+            break;
         default:
-            return register_info{
-                16,// gp_registers
-                16,// vector_registers
-                128,// vector_width_bits
-                2,// lanes_64bit
-                4,// lanes_32bit
-                instruction_set::generic,
-            };
+            isa = instruction_set::generic;
+            break;
         }
+        return register_info{ gprs, vecs, width, width / 64, width / 32, isa };
     }
 
     [[maybe_unused]] static POET_CPP20_CONSTEVAL auto detect_cache_line_info() noexcept -> cache_line_info {
