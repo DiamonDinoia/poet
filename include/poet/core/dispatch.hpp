@@ -820,7 +820,7 @@ namespace detail {
             }
         }
         if constexpr (ThrowOnNoMatch) {
-            throw no_match_error("poet::dispatch_tuples: no matching compile-time tuple for runtime inputs");
+            throw no_match_error("poet::dispatch: no matching compile-time tuple for runtime inputs");
         } else if constexpr (!std::is_void_v<result_type>) {
             return result_type{};
         }
